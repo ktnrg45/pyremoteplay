@@ -3,8 +3,8 @@ import logging
 
 from .ctrl import CTRL
 
-logging.basicConfig(level=logging.DEBUG)
-_LOGGER = logging.getLogger(__name__)
+# logging.basicConfig(level=logging.INFO)
+# _LOGGER = logging.getLogger(__name__)
 
 
 def run(host: str, regist_data: dict):

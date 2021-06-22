@@ -164,9 +164,12 @@ def test_gmac():
 
     local = crypt.LocalCipher(handshake_key, secret)
     remote = crypt.RemoteCipher(handshake_key, secret)
-    assert local.get_gmac(l_data1, 29) == l_tag1
-    assert local.get_gmac(l_data2, 2) == l_tag2
-    assert local.get_gmac(l_data3, 29) == l_tag3
+    assert local.get_gmac(l_data1) == l_tag1
+    local.advance_key_pos(len(l_data1))
+    assert local.get_gmac(l_data2) == l_tag2
+    local.advance_key_pos(2)
+    assert local.get_gmac(l_data3) == l_tag3
+
     assert remote.get_gmac(r_data1, 0) == r_tag1
     assert remote.get_gmac(r_data2, 16) == r_tag2
     assert remote.get_gmac(r_data3, 32) == r_tag3
@@ -213,10 +216,45 @@ def test_encrypt_decrypt():
     local._base_index = remote._base_index = 42
     local._init_cipher()
     remote._init_cipher()
-    assert local.base_key, remote.base_key == key
-    assert local.base_iv, remote.base_iv == iv
+    assert local.base_key == key
+    assert remote.base_key == key
+    assert local.base_iv == iv
+    assert remote.base_iv == iv
     stream = crypt.StreamCipher(local, remote)
-    mock_enc = stream.encrypt(data, key_pos)
+    stream.advance_key_pos(key_pos)
+    mock_enc = stream.encrypt(data)
     mock_data = stream.decrypt(enc_data, key_pos)
     assert mock_enc == enc_data
     assert mock_data == data
+
+
+def test_encrypt():
+    """Test Encryption with local cipher."""
+    key_pos = 0xa3
+    handshake_key = bytes([
+        0x75, 0xeb, 0x74, 0xef, 0x5b, 0xc8, 0x28, 0xa1,
+        0xbc, 0xab, 0xee, 0x56, 0x15, 0xdc, 0x00, 0x98,
+    ])
+    secret = bytes([
+        0x01, 0xc3, 0x31, 0xf5, 0xe9, 0x4e, 0x41, 0x27,
+        0x04, 0xec, 0xfc, 0x61, 0x3c, 0x3d, 0xf5, 0x0c,
+        0xee, 0xeb, 0x87, 0xf2, 0x06, 0xf4, 0x53, 0xe5,
+        0x37, 0x5e, 0xf5, 0x4a, 0x55, 0xbe, 0xf3, 0xa3,
+    ])
+    payload = bytes([
+        0xa0, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff,
+        0x7f, 0x99, 0x99, 0xff, 0x7f, 0xfe, 0xf7, 0xef,
+        0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00,
+    ])
+    payload_enc = bytes([
+        0xf0, 0xe5, 0x9a, 0x7e, 0x54, 0x2b, 0x11, 0xd2,
+        0x48, 0x0a, 0xbe, 0x5b, 0x8f, 0x97, 0x45, 0xda,
+        0x58, 0xbc, 0x37, 0xc7, 0x11, 0x3c, 0xcd, 0x99,
+        0x2c,
+    ])
+
+    local_cipher = crypt.LocalCipher(handshake_key, secret)
+    local_cipher.advance_key_pos(key_pos)
+    mock_enc = local_cipher.encrypt(payload)
+    assert mock_enc == payload_enc

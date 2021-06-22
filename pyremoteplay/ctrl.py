@@ -2,7 +2,10 @@ import logging
 import queue
 import socket
 import threading
+import time
 from base64 import b64decode, b64encode
+from enum import IntEnum
+from struct import pack_into
 
 import requests
 from Cryptodome.Random import get_random_bytes
@@ -12,6 +15,7 @@ from .const import (OS_TYPE, RP_CRYPT_SIZE, RP_PORT, RP_VERSION, TYPE_PS4,
                     TYPE_PS5, USER_AGENT)
 from .crypt import RPCipher
 from .errors import RemotePlayError
+from .feedback import Controller
 from .keys import CTRL_KEY_0, CTRL_KEY_1
 from .stream import RPStream
 from .util import from_b, listener, log_bytes
@@ -109,16 +113,15 @@ class CTRL():
     """Controller for RP Session."""
     STATE_INIT = "init"
     STATE_READY = "ready"
+    HEADER_LENGTH = 8
 
-    MSG_LOGIN = "Login"
-    MSG_SESSION_ID = "Session ID"
-    MSG_HEARTBEAT = "Heartbeat"
-
-    MSG_TYPES = {
-        5: MSG_LOGIN,
-        51: MSG_SESSION_ID,
-        254: MSG_HEARTBEAT,
-    }
+    class MessageType(IntEnum):
+        """Enum for Message Types."""
+        LOGIN = 0x05
+        SESSION_ID = 0x33
+        HEARTBEAT_REQUEST = 0xfe
+        HEARTBEAT_RESPONSE = 0x1fe
+        STANDBY = 0x50
 
     def __init__(self, host: str, regist_data: dict):
         self._host = host
@@ -132,9 +135,11 @@ class CTRL():
         self._sock = None
         self._send_buf = queue.Queue()
         self._stop_event = threading.Event()
+        self._hb_last = 0
         self._cipher = None
         self._state = CTRL.STATE_INIT
         self._stream = None
+        self.controller = None
 
         self._init_attrs()
 
@@ -208,16 +213,54 @@ class CTRL():
         if payload:
             payload = self._cipher.decrypt(payload)
             log_bytes("CTRL PAYLOAD", payload)
-        msg_type = CTRL.MSG_TYPES.get(data[5])
-        if msg_type is not None:
-            if msg_type == CTRL.MSG_HEARTBEAT:
-                _LOGGER.debug("RECV Heartbeat")
-                self._send_buf.put_nowait(self._cipher.encrypt(HEARTBEAT_RESPONSE))
-            elif msg_type == CTRL.MSG_SESSION_ID:
-                _LOGGER.debug("RECV Session ID")
-                self.session_id = payload[2:]
-                self._stream = RPStream(self._host, self._stop_event, self)
-                self._stream.connect()
+        try:
+            msg_type = CTRL.MessageType(data[5])
+        except ValueError:
+            _LOGGER.warning("CTRL RECV invalid Message Type: %s", data[5])
+            return
+        if msg_type == CTRL.MessageType.HEARTBEAT_REQUEST:
+            _LOGGER.debug("RECV Heartbeat Request")
+            self._hb_last = time.time()
+            self._send_hb_response()
+        if msg_type == CTRL.MessageType.HEARTBEAT_RESPONSE:
+            _LOGGER.debug("RECV Heartbeat Response")
+            self._hb_last = time.time()
+        elif msg_type == CTRL.MessageType.SESSION_ID:
+            _LOGGER.debug("RECV Session ID")
+            session_id = payload[2:]
+            try:
+                session_id.decode()
+            except UnicodeDecodeError:
+                _LOGGER.warning("CTRL RECV Malformed Session ID")
+                self.send_disconnect()
+                return
+            self.session_id = session_id
+            self._stream = RPStream(self._host, self._stop_event, self)
+            self._stream.connect()
+
+        if time.time() - self._hb_last > 5:
+            _LOGGER.info("CTRL HB Timeout. Sending HB")
+            self._send_hb_request()
+
+    def _build_msg(self, msg_type: int, payload=b'') -> bytes:
+        """Return Message."""
+        payload_size = len(payload)
+        self._cipher.encrypt(payload)
+        buf = bytearray(CTRL.HEADER_LENGTH + payload_size)
+        pack_into(f"!IHxx{payload_size}s", buf, 0, payload_size, msg_type, payload)
+        return bytes(buf)
+
+    def _send_hb_response(self):
+        msg = self._build_msg(CTRL.MessageType.HEARTBEAT_RESPONSE, HEARTBEAT_RESPONSE)
+        self._sock.send(msg)
+
+    def _send_hb_request(self):
+        msg = self._build_msg(CTRL.MessageType.HEARTBEAT_REQUEST)
+        self._sock.send(msg)
+
+    def _send_standby(self):
+        msg = self._build_msg(CTRL.MessageType.STANDBY)
+        self._sock.send(msg)
 
     def send(self):
         if not self._send_buf.empty():
@@ -248,6 +291,10 @@ class CTRL():
             return False
         headers = self._get_ctrl_headers(nonce)
         return self._send_auth(headers)
+
+    def init_controller(self):
+        self.controller = Controller(self._stream, self._stop_event)
+        self.controller.start()
 
     @property
     def host(self) -> str:

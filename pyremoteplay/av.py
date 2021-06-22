@@ -160,4 +160,3 @@ class AVReceiver():
         self.v_cur += 1
         fps = 1/(time.time() - self._timer)
         _LOGGER.debug("Completed Video Frames %s/%s; FPS: %s", self.v_complete, self.v_cur, fps)
-        log_bytes("vheader", self.v_header)

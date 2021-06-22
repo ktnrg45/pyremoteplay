@@ -1,122 +1,110 @@
 """Feedback for pyremoteplay."""
 import logging
 import threading
+import time
+from collections import deque
 
 from construct import Bytes, Const, Struct
+
+from .stream_packets import FeedbackEvent, FeedbackHeader
+from .util import log_bytes
 
 _LOGGER = logging.getLogger(__name__)
 
 
-STICK_STATE_HEADER = bytes([
-    0xa0, 0xff, 0x7f, 0xff, 0x10, 0x7f, 0xff, 0x7f, 0xff,
-    0x7f, 0x99, 0x99, 0xff, 0x7f, 0xfe, 0xf7, 0xef, 0x1f,
-])
-
-STICK_STATE_STRUCT = Struct(
-    "header" / Const(STICK_STATE_HEADER),
-    "left_x" / Bytes(2),
-    "left_y" / Bytes(2),
-    "right_x" / Bytes(2),
-    "right_y" / Bytes(2),
-)
-
-BUTTON_PREFIX = b'\x80'
-
-BUTTON_ID = {
-    'd_up': 0x80,
-    'd_down': 0x81,
-    'd_left': 0x82,
-    'd_right': 0x83,
-    'l1': 0x84,
-    'r1': 0x85,
-    'l2': 0x86,
-    'r2': 0x87,
-    'cross': 0x88,
-    'circle': 0x89,
-    'square': 0x8a,
-    'triangle': 0x8b,
-    'options': 0x8c,
-    'share': 0x8d,
-    'ps': 0x8e,
-    'l3': 0x8f,
-    'r3': 0x90,
-    'touchpad': 0x91,
-}
-
-BUTTON_EVENT_STRUCT = Struct(
-    "prefix" / Const(BUTTON_PREFIX),
-    "id" / Bytes(1),
-    "state" / Bytes(1),
-)
-
-
-def get_stick_state(stick_state: dict) -> bytes:
-    """Return Stick State Packet."""
-    state = STICK_STATE_STRUCT.build(stick_state)
-    return state
-
-
-def get_button_event(button: str, active: bool = False) -> bytes:
-    """Return button event packet."""
-    button_id = BUTTON_ID.get(button)
-    if button_id >= 0x8c and active:
-        # Some buttons have different ID for active.
-        button_id += 32
-    event = BUTTON_EVENT_STRUCT.build({
-        "id": button_id,
-        "state": 0xff if active else 0x00,
-    })
-    return event
-
-
-# def controller_worker(controller, stop_event):
-#     """Worker for socket."""
-#     _LOGGER.debug("Thread Started: Controller")
-#     stop_event.clear()
-#     while not stop_event.is_set():
-#         controller.send_state()
-#     _LOGGER.info("Controller Stopped")
-
-
 class Controller():
     """Stateful controller object."""
+    MAX_EVENTS = 16
+    ACTION_TAP = "tap"
+    ACTION_RELEASE = "release"
+    ACTION_PRESS = "press"
+    ACTIONS = (ACTION_TAP, ACTION_RELEASE, ACTION_PRESS)
+    STATE_INTERVAL_MAX_MS = 0.200
+    STATE_INTERVAL_MIN_MS = 0.100
 
-    def __init__(self, stream):
+
+    def __init__(self, stream, stop_event, **kwargs):
         self._stream = stream
-        self._worker = None
         self._left_x = 0
         self._left_y = 0
         self._right_x = 0
         self._right_y = 0
-        self._buttons = BUTTON_ID.fromkeys(BUTTON_ID, False)
-        self.sequence_num = 0
+        self._sequence_event = 0
+        self._sequence_state = 0
+        self._event_buf = deque([], Controller.MAX_EVENTS)
+        self._event_queue = []
+        self._buttons = {}
+        self._stop_event = stop_event
+        self._params = kwargs
 
-    def set_button(self, button, state):
-        """Update button state."""
-        if not isinstance(state, bool):
-            raise ValueError("Invalid State; Must be bool")
-        if button not in self._buttons:
-            raise ValueError(f"Invalid button: {button}")
-        if self._buttons[button] != state:
-            self._buttons[button] = state
-            event = get_button_event(button, state)
-            self.send_button_event(event)
+    def start(self):
+        """Start controller worker."""
+        if not self._stream.cipher:
+            raise RuntimeError("Stream has no cipher")
+        self._worker = threading.Thread(
+            target=self.worker,
+        )
+        self._worker.start()
 
-    def send_button_event(self, event: bytes):
-        """Send Button Event."""
-        self._stream.send_feedback(True, event)
+    def worker(self):
+        _LOGGER.info("Controller Started")
+        while not self._stop_event.is_set():
+            if self.has_sticks:
+                self._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
+                self._sequence_state += 1
 
-    def send_state(self):
-        """Send state."""
-        state = get_stick_state(self.stick_state)
-        self._stream.send_feedback(False, state)
+            if self._event_queue:
+                self.add_event_buffer(self._event_queue.pop(0))
+                data = b"".join(self._event_buf)
+                self._stream.send_feedback(FeedbackHeader.Type.EVENT, self.sequence_event, data=data)
+                self._sequence_event += 1
+
+            time.sleep(self.STATE_INTERVAL_MIN_MS)
+        _LOGGER.info("Controller Stopped")
+
+    def add_event_buffer(self, event: FeedbackEvent):
+        """Append event to end of byte buf."""
+        msg = event.bytes()
+        self._event_buf.appendleft(msg)
+
+    def add_event_queue(self, event: FeedbackEvent):
+        """Append event to queue."""
+        self._event_queue.append(event)
+
+    def button(self, name: str, action="tap"):
+        """Emulate pressing or releasing button."""
+        if action not in self.ACTIONS:
+            raise ValueError(f"Invalid Action: {action}")
+        try:
+            button = int(FeedbackEvent.Type[name.upper()])
+        except KeyError:
+            _LOGGER.error("Invalid button: %s", name)
+        else:
+            if action == self.ACTION_PRESS:
+                self.add_event_queue(FeedbackEvent(button, is_active=True))
+            elif action == self.ACTION_RELEASE:
+                self.add_event_queue(FeedbackEvent(button, is_active=False))
+            elif action == self.ACTION_TAP:
+                self.add_event_queue(FeedbackEvent(button, is_active=True))
+                self.add_event_queue(FeedbackEvent(button, is_active=False))
+
+    @property
+    def sequence_event(self) -> int:
+        """Return Sequence Number for events."""
+        return self._sequence_event
 
     @property
     def stick_state(self) -> dict:
         """Return stick state as dict."""
         return {
-            "left_x": self._left_x,
-            "left_y": self._left_y,
-            "right_x": self._right_x,
-            "right_y": self._right_y,
+            "left": {"x": self._left_x, "y": self._left_y},
+            "right": {"x": self._right_x, "y": self._right_y},
         }
+
+    @property
+    def has_sticks(self) -> bool:
+        """Return True if has sticks."""
+        has_sticks = self._params.get("has_sticks")
+        if has_sticks:
+            return True
+        return False
