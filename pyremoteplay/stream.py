@@ -416,15 +416,16 @@ class StreamTest():
         _LOGGER.debug("MTU Requested: %s Sent: %s RECV: %s", mtu_req, mtu_sent, self._last_mtu)
         if mtu_req != mtu_sent:
             _LOGGER.error("MTU requested %s but received %s", mtu_req, mtu_sent)
-            self.stop()
+            self.stop_mtu_in()
         elif self._last_mtu:
             if self._last_mtu == mtu_sent:
                 _LOGGER.debug("MTU at maximum: %s", self._last_mtu)
+                self.stop_mtu_in()
             elif self._last_mtu < mtu_sent:
                 _LOGGER.debug("MTU RECV %s less than sent %s", self._last_mtu, mtu_sent)
                 self._cur_mtu -= (self._cur_mtu - self._last_mtu) // 2
                 if self._index < 3:
                     self._last_mtu = 0
                     self._send_mtu_in()
-                else:
-                    self.stop_mtu_in()
+            else:
+                self.stop_mtu_in()

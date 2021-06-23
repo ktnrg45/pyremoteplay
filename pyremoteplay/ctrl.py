@@ -317,7 +317,7 @@ class CTRL():
         """Stop test and get MTU and RTT and start stream."""
         mtu = self._stream.mtu
         rtt = self._stream.rtt
-        _LOGGER.info("MTU: %s RTT: %s", mtu, rtt)
+        _LOGGER.info("Tested network and got MTU: %s; RTT: %sms", mtu, rtt * 1000)
         self._stream = None
         self.start_stream(test=False, mtu=mtu, rtt=rtt)
 

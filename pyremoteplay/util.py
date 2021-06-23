@@ -33,7 +33,7 @@ def listener(name: str, sock, handle, send, stop_event):
         send()
         available, _, _ = select.select([sock], [], [], 0.01)
         if sock in available:
-            data = sock.recv(1024)
+            data = sock.recv(4096)
             # log_bytes(f"{name} RECV", data)
             if len(data) > 0:
                 handle(data)
