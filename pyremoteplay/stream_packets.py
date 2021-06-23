@@ -728,6 +728,41 @@ class FeedbackPacket(PacketSection):
         return bytes(buf)
 
 
+class CongestionPacket(PacketSection):
+    """Congestion Packet."""
+
+    LENGTH = 15
+
+    class Type(IntEnum):
+        """Enums for Buttons."""
+        CONGESTION = Header.Type.CONGESTION
+
+    def __repr__(self) -> str:
+        return (
+            f"<RP Packet "
+            f"type={self.type.name} "
+            f"received={self.received} "
+            f"lost={self.lost}>"
+        )
+
+    def __init__(self, **kwargs):
+        super().__init__(CongestionPacket.Type.CONGESTION)
+        self.received = kwargs.get("received") or 0
+        self.lost = kwargs.get("lost") or 0
+
+    def bytes(self, cipher) -> bytes:
+        """Return compiled bytes."""
+        key_pos = cipher.key_pos
+        buf = bytearray(CongestionPacket.LENGTH)
+        gmac = 0
+        pack_into("!BxxHHII", buf, 0, self.type, self.received, self.lost, gmac, key_pos)
+        gmac = cipher.get_gmac(bytes(buf))
+        gmac = int.from_bytes(gmac, "big")
+        pack_into("!I", buf, 7, gmac)
+        cipher.advance_key_pos(CongestionPacket.LENGTH)
+        return bytes(buf)
+
+
 class ProtoHandler():
     """Handler for Protobuf Messages."""
 
@@ -787,13 +822,14 @@ class ProtoHandler():
         data = msg.SerializeToString()
         return data
 
-    def senkusha_mtu(req_id: int, mtu_req: int):
+    def senkusha_mtu(req_id: int, mtu_req: int, num: int):
         """Senkusha MTU Payload."""
         msg = ProtoHandler.message()
         msg.type = msg.PayloadType.SENKUSHA
         msg.senkusha_payload.command = SenkushaPayload.Command.MTU_COMMAND
         msg.senkusha_payload.mtu_command.id = req_id
         msg.senkusha_payload.mtu_command.mtu_req = mtu_req
+        msg.senkusha_payload.mtu_command.num = num
         data = msg.SerializeToString()
         return data
 
@@ -826,6 +862,17 @@ class ProtoHandler():
         log_bytes("Proto Send", msg)
         self._stream.send_data(msg, chunk_flag, channel, proto=True)
 
+    def _parse_streaminfo(self, msg, video_header: bytes):
+        info = {
+            "video_header": video_header,
+            "audio_header": msg.audio_header,
+            "start_timeout": msg.start_timeout,
+            "afk_timeout": msg.afk_timeout,
+            "afk_timeout_disconnect": msg.afk_timeout_disconnect,
+            "congestion_control_interval": msg.congestion_control_interval,
+        }
+        self._stream.recv_stream_info(info)
+
     def handle(self, data: bytes):
         if data == STREAM_START:
             _LOGGER.info("Stream Started")
@@ -855,7 +902,7 @@ class ProtoHandler():
                 #         'Width: {}, Height: {}'.format(
                 #             res.width, res.height))
                 _LOGGER.debug("RECV Stream Info")
-                self.parse_streaminfo(
+                self._parse_streaminfo(
                     msg.stream_info_payload, v_header)
             channel = 9
             msg = ProtoHandler.message()
@@ -865,6 +912,8 @@ class ProtoHandler():
 
         elif p_type == 'BANG' and not self._recv_bang:
             _LOGGER.debug("RECV Bang")
+            ecdh_pub_key = b''
+            ecdh_sig = b''
             accepted = True
             if not msg.bang_payload.version_accepted:
                 _LOGGER.error("Version not accepted")
@@ -872,13 +921,11 @@ class ProtoHandler():
             if not msg.bang_payload.encrypted_key_accepted:
                 _LOGGER.error("Enrypted Key not accepted")
                 accepted = False
-
             if accepted:
+                ecdh_pub_key = msg.bang_payload.ecdh_pub_key
+                ecdh_sig = msg.bang_payload.ecdh_sig
                 self._recv_bang = True
-                self._stream.set_ciphers(msg.bang_payload.ecdh_pub_key, msg.bang_payload.ecdh_sig)
-            else:
-                _LOGGER.error("RP Launch Spec not accepted")
-                self._stream._stop_event.set()
+            self._stream.recv_bang(accepted, ecdh_pub_key, ecdh_sig)
 
         elif p_type == 'HEARTBEAT':
             channel = 1
@@ -886,19 +933,15 @@ class ProtoHandler():
             msg.type = msg.PayloadType.HEARTBEAT
             self._ack(msg, channel)
             if self._stream.controller is not None:  #####
-                self._stream.controller.button("left")  #####
+                self._stream.controller.button("ps")  #####
 
         elif p_type == 'DISCONNECT':
             _LOGGER.info("Host Disconnected; Reason: %s", msg.disconnect_payload.reason)
             self._stream._stop_event.set()
 
-    def parse_streaminfo(self, msg, video_header: bytes):
-        info = {
-            "video_header": video_header,
-            "audio_header": msg.audio_header,
-            "start_timeout": msg.start_timeout,
-            "afk_timeout": msg.afk_timeout,
-            "afk_timeout_disconnect": msg.afk_timeout_disconnect,
-            "congestion_control_interval": msg.congestion_control_interval,
-        }
-        self._stream.recv_stream_info(info)
+        # Test Packets
+        elif p_type == 'SENKUSHA':
+            if self._stream._is_test and self._stream._test:
+                mtu_req = msg.senkusha_payload.mtu_command.mtu_req
+                mtu_sent = msg.senkusha_payload.mtu_command.mtu_sent
+                self._stream._test.recv_mtu_in(mtu_req, mtu_sent)

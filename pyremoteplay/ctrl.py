@@ -117,13 +117,30 @@ class CTRL():
 
     class MessageType(IntEnum):
         """Enum for Message Types."""
+        LOGIN_PIN_REQUEST = 0x04
+        LOGIN_PIN_RESPONSE = 0x8004
         LOGIN = 0x05
         SESSION_ID = 0x33
         HEARTBEAT_REQUEST = 0xfe
         HEARTBEAT_RESPONSE = 0x1fe
         STANDBY = 0x50
+        KEYBOARD_ENABLE_TOGGLE = 0x20
+        KEYBOARD_OPEN = 0x21
+        KEYBOARD_CLOSE_REMOTE = 0x22
+        KEYBOARD_TEXT_CHANGE_REQ = 0x23
+        KEYBOARD_TEXT_CHANGE_RES = 0x24
+        KEYBOARD_CLOSE_REQ = 0x25
 
-    def __init__(self, host: str, regist_data: dict):
+    class Error(IntEnum):
+        """Enum for errors."""
+        REGIST_FAILED = 0x80108b09
+        INVALID_PSN_ID = 0x80108b02
+        RP_IN_USE = 0x80108b10
+        CRASH = 0x80108b15
+        RP_VERSION_MISMATCH = 0x80108b11
+        UNKNOWN = 0x80108bff
+
+    def __init__(self, host: str, regist_data: dict, cb_start=None):
         self._host = host
         self._regist_data = regist_data
         self.session_id = None
@@ -139,6 +156,7 @@ class CTRL():
         self._cipher = None
         self._state = CTRL.STATE_INIT
         self._stream = None
+        self._cb_start = cb_start
         self.controller = None
 
         self._init_attrs()
@@ -169,9 +187,11 @@ class CTRL():
         nonce = None
         _LOGGER.debug(response.headers)
         if response.status_code != 200:
+            reason = response.headers.get("RP-Application-Reason")
+            reason = int.from_bytes(bytes.fromhex(reason), "big")
             _LOGGER.error(
-                "Failed to Init CTRL; Reason %s",
-                response.headers.get("RP-Application-Reason")
+                "Failed to Init CTRL; Reason: %s",
+                CTRL.Error(reason).name,
             )
         nonce = response.headers.get("RP-Nonce")
         if nonce is not None:
@@ -215,28 +235,29 @@ class CTRL():
             log_bytes("CTRL PAYLOAD", payload)
         try:
             msg_type = CTRL.MessageType(data[5])
+            _LOGGER.debug("RECV %s", CTRL.MessageType(msg_type).name)
         except ValueError:
             _LOGGER.warning("CTRL RECV invalid Message Type: %s", data[5])
             return
         if msg_type == CTRL.MessageType.HEARTBEAT_REQUEST:
-            _LOGGER.debug("RECV Heartbeat Request")
             self._hb_last = time.time()
             self._send_hb_response()
         if msg_type == CTRL.MessageType.HEARTBEAT_RESPONSE:
-            _LOGGER.debug("RECV Heartbeat Response")
             self._hb_last = time.time()
         elif msg_type == CTRL.MessageType.SESSION_ID:
-            _LOGGER.debug("RECV Session ID")
             session_id = payload[2:]
+            log_bytes("Session ID", session_id)
             try:
                 session_id.decode()
             except UnicodeDecodeError:
                 _LOGGER.warning("CTRL RECV Malformed Session ID")
-                self.send_disconnect()
+                #self.send_disconnect()
                 return
             self.session_id = session_id
-            self._stream = RPStream(self._host, self._stop_event, self)
-            self._stream.connect()
+            if self._cb_start is not None:
+                self._cb_start(self)
+            else:
+                self.start_stream()
 
         if time.time() - self._hb_last > 5:
             _LOGGER.info("CTRL HB Timeout. Sending HB")
@@ -291,6 +312,24 @@ class CTRL():
             return False
         headers = self._get_ctrl_headers(nonce)
         return self._send_auth(headers)
+
+    def _cb_stop_test(self):
+        """Stop test and get MTU and RTT and start stream."""
+        mtu = self._stream.mtu
+        rtt = self._stream.rtt
+        _LOGGER.info("MTU: %s RTT: %s", mtu, rtt)
+        self._stream = None
+        self.start_stream(test=False, mtu=mtu, rtt=rtt)
+
+    def start_stream(self, test=True, mtu=None, rtt=None):
+        """Start Stream."""
+        if self.session_id is None:
+            _LOGGER.error("Session ID not received")
+            return
+        stop_event = self._stop_event if not test else threading.Event()
+        cb_stop = self._cb_stop_test if test else None
+        self._stream = RPStream(self._host, stop_event, self, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
+        self._stream.connect()
 
     def init_controller(self):
         self.controller = Controller(self._stream, self._stop_event)

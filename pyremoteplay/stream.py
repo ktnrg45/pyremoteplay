@@ -4,6 +4,8 @@ import logging
 import queue
 import socket
 import threading
+import time
+from struct import pack_into
 
 from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
@@ -18,12 +20,15 @@ from .util import from_b, listener, log_bytes, to_b
 _LOGGER = logging.getLogger(__name__)
 
 STREAM_PORT = 9296
+TEST_STREAM_PORT = 9297
 A_RWND = 0x019000
 OUTBOUND_STREAMS = 0x64
 INBOUND_STREAMS = 0x64
 
 DEFAULT_RTT = 1
 DEFAULT_MTU = 1454
+MIN_MTU = 576
+UDP_IPV4_SIZE = 28
 
 DATA_LENGTH = 26
 DATA_ACK_LENGTH = 29
@@ -35,9 +40,12 @@ class RPStream():
     STATE_INIT = "init"
     STATE_READY = "ready"
 
-    def __init__(self, host: str, stop_event, ctrl, resolution="1080p", av_receiver=None):
+    def __init__(self, host: str, stop_event, ctrl, resolution="1080p", rtt=None, mtu=None, av_receiver=None, is_test=False, cb_stop=None):
         self._host = host
+        self._port = STREAM_PORT if not is_test else TEST_STREAM_PORT
         self._ctrl = ctrl
+        self._is_test = is_test
+        self._test = StreamTest(self) if is_test else None
         self._state = None
         self._tsn = self._tag_local = 1  #int.from_bytes(get_random_bytes(4), "big")
         self._tag_remote = 0
@@ -46,15 +54,20 @@ class RPStream():
         self._stop_event = stop_event
         self._worker = None
         self._send_buf = queue.Queue()
+        self._cb_stop = cb_stop
+        self._cb_ack = None
+        self._cb_ack_tsn = 0
         self._ecdh = None
         self.cipher = None
         self.proto = ProtoHandler(self)
-        self.av = AVReceiver(self)
+        self.av = av_receiver
         self.resolution = RESOLUTION_PRESETS.get(resolution)
         self.max_fps = 60
-        self.rtt = DEFAULT_RTT
-        self.mtu_in = DEFAULT_MTU
+        self.rtt = rtt if rtt is not None else DEFAULT_RTT
+        self.mtu = mtu if mtu is not None else DEFAULT_MTU
+        self.stream_info = None
         self.controller = None
+
 
     def connect(self):
         """Connect socket to Host."""
@@ -115,16 +128,22 @@ class RPStream():
     def send(self, msg: bytes):
         """Send Message."""
         log_bytes(f"Stream Send", msg)
-        self._protocol.sendto(msg, (self._host, STREAM_PORT))
+        self._protocol.sendto(msg, (self._host, self._port))
 
     def _send(self):
         pass
 
     def _handle(self, msg):
         """Handle packets."""
-        if Packet.is_av(msg[:1]):
-            if self.av:
+        av_type = Packet.is_av(msg[:1])
+        if av_type:
+            if self.av and not self._is_test:
                 packet = Packet.parse(msg)
+            elif self._is_test and self._test:
+                if av_type == Header.Type.AUDIO:
+                    self._test.recv_rtt()
+                else:
+                    self._test.recv_mtu(msg)
         else:
             packet = Packet.parse(msg)
             _LOGGER.debug(packet)
@@ -166,17 +185,35 @@ class RPStream():
         params = packet.params
         _LOGGER.debug(f"TSN={params['tsn']} GAP_ACKs={params['gap_ack_blocks_count']} DUP_TSNs={params['dup_tsns_count']}")
 
+        if self._cb_ack and self._cb_ack_tsn == params['tsn']:
+            _LOGGER.debug("Received waiting TSN ACK")
+            self._cb_ack()
+            self._cb_ack = None
+            self._cb_ack_tsn = 0
+
     def _send_big(self):
-        self._ecdh = StreamECDH()
         chunk_flag = channel = 1
-        launch_spec = self._format_launch_spec(self._ecdh.handshake_key)
+        if not self._is_test:
+            self._ecdh = StreamECDH()
+            launch_spec = self._format_launch_spec(self._ecdh.handshake_key)
+            encrypted_key = bytes(4)
+            ecdh_pub_key = self._ecdh.public_key
+            ecdh_sig = self._ecdh.public_sig
+            client_version = 9
+        else:
+            launch_spec = b""
+            encrypted_key = b""
+            ecdh_pub_key = None
+            ecdh_sig = None
+            client_version = 7
+
         data = ProtoHandler.big_payload(
-            client_version=9,
+            client_version=client_version,
             session_key=self._ctrl.session_id,
             launch_spec=launch_spec,
-            encrypted_key=bytes(4),
-            ecdh_pub_key=self._ecdh.public_key,
-            ecdh_sig=self._ecdh.public_sig,
+            encrypted_key=encrypted_key,
+            ecdh_pub_key=ecdh_pub_key,
+            ecdh_sig=ecdh_sig,
         )
         log_bytes("Big Payload", data)
         self.send_data(data, chunk_flag, channel)
@@ -186,8 +223,8 @@ class RPStream():
             handshake_key=handshake_key,
             resolution=self.resolution,
             max_fps=self.max_fps,
-            rtt=self.rtt,
-            mtu_in=self.mtu_in,
+            rtt=int(self.rtt),
+            mtu_in=self.mtu,
         )
         if format_type == "raw":
             return launch_spec
@@ -214,12 +251,180 @@ class RPStream():
         self._ctrl.init_controller()
         self.controller = self._ctrl.controller
 
+    def disconnect(self):
+        """Disconnect Stream."""
+        _LOGGER.info("Stream Disconnecting")
+        chunk_flag = channel = 1
+        data = ProtoHandler.disconnect_payload()
+        self._advance_sequence()
+        self.send_data(data, chunk_flag, channel)
+        if self._cb_stop is not None:
+            self._cb_stop()
+        self.stop()
+
+    def stop(self):
+        """Stop Stream."""
+        _LOGGER.info("Stopping Stream")
+        self._stop_event.set()
+
     def recv_stream_info(self, info: dict):
+        """Receive stream info."""
         self.stream_info = info
         if self.av:
             self.av.set_headers(info["video_header"], info["audio_header"])
+
+    def recv_bang(self, accepted: bool, ecdh_pub_key: bytes, ecdh_sig: bytes):
+        """Receive Bang Payload."""
+        if self._is_test and self._test:
+            self.ready()
+            self._test.run_rtt()
+        else:
+            if accepted:
+                self.set_ciphers(ecdh_pub_key, ecdh_sig)
+            else:
+                _LOGGER.error("RP Launch Spec not accepted")
+                self._stream._stop_event.set()
+
+    def wait_for_ack(self, tsn: int, cb: callable):
+        """Wait for ack received."""
+        self._cb_ack = cb
+        self._cb_ack_tsn = tsn
 
     @property
     def state(self) -> str:
         """Return State."""
         return self._state
+
+
+class StreamTest():
+    def __init__(self, stream: RPStream):
+        self._stream = stream
+        self._index = 0
+        self._max_pings = 10
+        self._ping_times = []
+        self._mtu_test_in = True
+        self._cur_mtu = 0
+        self._last_mtu = 0
+        self._mtu_in = 0
+        self._results = {"rtt": DEFAULT_RTT, "mtu": DEFAULT_MTU}
+
+    def _send_echo_command(self, enable: bool):
+        chunk_flag = 1
+        channel = 8
+        data = ProtoHandler.senkusha_echo(enable)
+        cb = self.send_rtt if enable else self.stop_rtt
+        self._stream._advance_sequence()
+        self._stream.wait_for_ack(self._stream._tsn, cb)
+        self._stream.send_data(data, chunk_flag, channel)
+
+    def _send_mtu_in(self):
+        chunk_flag = 1
+        channel = 8
+        self._index += 1
+        data = ProtoHandler.senkusha_mtu(self._index, self._cur_mtu, 1)
+        self._stream._advance_sequence()
+        self._stream.send_data(data, chunk_flag, channel)
+
+    def _send_mtu_out(self):
+        chunk_flag = 1
+        channel = 8
+        self._index += 1
+        data = ProtoHandler.senkusha_mtu_client(True, self._index, self._mtu_in, self._mtu_in)
+        self._stream._advance_sequence()
+        self._stream.send_data(data, chunk_flag, channel)
+
+    def _get_test_packet(self, length) -> bytes:
+        index = 0x1f + (self._index * 0x20)
+        gmac = int.from_bytes(get_random_bytes(4), "big")
+        buf = bytearray(length)
+        pack_into("!B", buf, 0, Header.Type.AUDIO)
+        pack_into("!HBxB", buf, 5, index, 0xfc, 0xff)
+        pack_into("!I", buf, 22, gmac)
+        return bytes(buf)
+
+    def stop(self):
+        """Stop Tests."""
+        self._stream.rtt = self._results["rtt"]
+        self._stream.mtu = self._results["mtu"]
+        self._stream.disconnect()
+
+    def run_rtt(self):
+        """Start RTT Test."""
+        _LOGGER.info("Running RTT test...")
+        self._send_echo_command(True)
+
+    def send_rtt(self):
+        """Send RTT Packet."""
+        buf = self._get_test_packet(548)
+        self._ping_times.insert(self._index, [time.time(), 0])
+        self._stream.send(buf)
+
+    def recv_rtt(self):
+        """Receive RTT Packet."""
+        _LOGGER.info("Received RTT Echo")
+        return_time = time.time()
+        self._ping_times[self._index][1] = return_time
+        self._index += 1
+
+        if self._index < self._max_pings:
+            self.send_rtt()
+        else:
+            self._send_echo_command(False)
+            _LOGGER.info("Stopping RTT Test")
+
+    def stop_rtt(self):
+        """Stop RTT Test."""
+        _LOGGER.info("RTT Test Complete")
+        rtt_results = []
+        for ping in self._ping_times:
+            rtt_results.append(ping[1] - ping[0])
+        average = sum(rtt_results) / self._max_pings
+        longest = max(rtt_results)
+        _LOGGER.info("Average RTT: %s ms; Longest RTT: %s ms", average, longest)
+        self._results["rtt"] = average
+        self.run_mtu_in()
+
+    def run_mtu_in(self):
+        """Run MTU In Test."""
+        self._index = 0
+        self._cur_mtu = DEFAULT_MTU
+        self._send_mtu_in()
+
+    def stop_mtu_in(self):
+        """Stop MTU In Test."""
+        _LOGGER.info("MTU IN Test Complete")
+        _LOGGER.info("MTU IN: %s", self._last_mtu)
+        self._mtu_in = self._last_mtu
+        self._results["mtu"] = self._mtu_in
+        self.stop()
+
+    def run_mtu_out(self):
+        """Run MTU Out Test."""
+        self._index = 0
+        self._cur_mtu = DEFAULT_MTU
+        self._send_mtu_out()
+
+    def recv_mtu(self, msg: bytes):
+        """Receive MTU."""
+        log_bytes("Mtu", msg)
+        # Add UDP header length
+        mtu = len(msg) + UDP_IPV4_SIZE
+        self._last_mtu = mtu
+
+    def recv_mtu_in(self, mtu_req: int, mtu_sent: int):
+        """Receive MTU Packet data."""
+        _LOGGER.debug("MTU Requested: %s Sent: %s RECV: %s", mtu_req, mtu_sent, self._last_mtu)
+        if mtu_req != mtu_sent:
+            _LOGGER.error("MTU requested %s but received %s", mtu_req, mtu_sent)
+            self.stop()
+        elif self._last_mtu:
+            if self._last_mtu == mtu_sent:
+                _LOGGER.debug("MTU at maximum: %s", self._last_mtu)
+            elif self._last_mtu < mtu_sent:
+                _LOGGER.debug("MTU RECV %s less than sent %s", self._last_mtu, mtu_sent)
+                self._cur_mtu -= (self._cur_mtu - self._last_mtu) // 2
+                if self._index < 3:
+                    self._last_mtu = 0
+                    self._send_mtu_in()
+                else:
+                    self.stop_mtu_in()
