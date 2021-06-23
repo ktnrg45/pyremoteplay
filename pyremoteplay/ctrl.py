@@ -11,6 +11,7 @@ import requests
 from Cryptodome.Random import get_random_bytes
 from pyps4_2ndscreen.helpers import Helper
 
+from .av import AVReceiver
 from .const import (OS_TYPE, RP_CRYPT_SIZE, RP_PORT, RP_VERSION, TYPE_PS4,
                     TYPE_PS5, USER_AGENT)
 from .crypt import RPCipher
@@ -143,7 +144,7 @@ class CTRL():
     def __init__(self, host: str, regist_data: dict, cb_start=None):
         self._host = host
         self._regist_data = regist_data
-        self.session_id = None
+        self._session_id = b''
         self._type = ""
         self._mac_address = ""
         self._name = ""
@@ -158,6 +159,7 @@ class CTRL():
         self._stream = None
         self._cb_start = cb_start
         self.controller = None
+        self.av_receiver = AVReceiver()
 
         self._init_attrs()
 
@@ -253,7 +255,7 @@ class CTRL():
                 _LOGGER.warning("CTRL RECV Malformed Session ID")
                 #self.send_disconnect()
                 return
-            self.session_id = session_id
+            self._session_id = session_id
             if self._cb_start is not None:
                 self._cb_start(self)
             else:
@@ -323,7 +325,7 @@ class CTRL():
 
     def start_stream(self, test=True, mtu=None, rtt=None):
         """Start Stream."""
-        if self.session_id is None:
+        if not self.session_id:
             _LOGGER.error("Session ID not received")
             return
         stop_event = self._stop_event if not test else threading.Event()
@@ -359,3 +361,8 @@ class CTRL():
     def state(self) -> str:
         """Return State."""
         return self._state
+
+    @property
+    def session_id(self) -> bytes:
+        """Return Session ID."""
+        return self._session_id

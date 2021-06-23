@@ -414,7 +414,10 @@ class AVPacket(PacketSection):
             f"<RP AVPacket "
             f"type={self.type.name} "
             f"index={self.index} "
-            f"frame={self.frame_index}>"
+            f"frame={self.frame_index} "
+            f"unit={self.unit_index + 1}/"
+            f"{self.frame_meta['units']['src']}/"
+            f"{self.frame_meta['units']['total']}>"
         )
 
     def __init__(self, _type: int, buf: bytearray, **kwargs):

@@ -10,7 +10,6 @@ from struct import pack_into
 from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
 
-from .av import AVReceiver
 from .const import FPS_PRESETS, RESOLUTION_PRESETS
 from .crypt import StreamECDH
 from .stream_packets import (AVPacket, Chunk, FeedbackPacket, Header, Packet,
@@ -40,7 +39,7 @@ class RPStream():
     STATE_INIT = "init"
     STATE_READY = "ready"
 
-    def __init__(self, host: str, stop_event, ctrl, resolution="1080p", rtt=None, mtu=None, av_receiver=None, is_test=False, cb_stop=None):
+    def __init__(self, host: str, stop_event, ctrl, resolution="1080p", rtt=None, mtu=None, is_test=False, cb_stop=None):
         self._host = host
         self._port = STREAM_PORT if not is_test else TEST_STREAM_PORT
         self._ctrl = ctrl
@@ -60,14 +59,13 @@ class RPStream():
         self._ecdh = None
         self.cipher = None
         self.proto = ProtoHandler(self)
-        self.av = av_receiver
+        self.av = ctrl.av_receiver
         self.resolution = RESOLUTION_PRESETS.get(resolution)
         self.max_fps = 60
         self.rtt = rtt if rtt is not None else DEFAULT_RTT
         self.mtu = mtu if mtu is not None else DEFAULT_MTU
         self.stream_info = None
         self.controller = None
-
 
     def connect(self):
         """Connect socket to Host."""
@@ -139,6 +137,9 @@ class RPStream():
         if av_type:
             if self.av and not self._is_test:
                 packet = Packet.parse(msg)
+                packet.decrypt(self.cipher)
+                if packet.type == 0x02:
+                    self.av.handle_video(packet)
             elif self._is_test and self._test:
                 if av_type == Header.Type.AUDIO:
                     self._test.recv_rtt()
