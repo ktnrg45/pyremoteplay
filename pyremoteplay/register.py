@@ -19,10 +19,6 @@ REG_START = b'RES2'
 REG_DATA = bytearray(b'A' * 480)
 REG_KEY_SIZE = 16
 
-ERRORS = {
-    "80108b02": "unknown",
-}
-
 
 def gen_key_0(pin: int) -> bytes:
     """Generate key from Key 0."""
@@ -76,8 +72,9 @@ def encrypt_payload(cipher, psn_id: str) -> bytes:
 def get_regist_headers(payload_length: int) -> bytes:
     """Get regist headers."""
     headers = (
+        # Appears to use a malformed http request so have to construct it
         'POST /sie/ps4/rp/sess/rgst HTTP/1.1\r\n HTTP/1.1\r\n'
-        'HOST: 10.0.2.15\r\n'
+        'HOST: 10.0.2.15\r\n'  # Doesn't Matter
         f'User-Agent: {USER_AGENT}\r\n'
         'Connection: close\r\n'
         f'Content-Length: {payload_length}\r\n'

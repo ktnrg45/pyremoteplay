@@ -5,31 +5,154 @@ import curses
 import json
 import logging
 import pathlib
-import time
+import sys
 from collections import OrderedDict
-from enum import IntEnum
 
 from .ctrl import CTRL
+from .oauth import prompt as oauth_prompt
 from .register import register
-from .stream_packets import FeedbackHeader
 
 PROFILE_DIR = ".pyremoteplay"
 PROFILE_FILE = ".profile.json"
 
+NEW_PROFILE = "New Profile"
+CANCEL = "Cancel"
 logging.basicConfig(level=logging.WARNING)
 _LOGGER = logging.getLogger(__name__)
 
 
-def cli():
+def main():
+    """Main entrypoint."""
     parser = argparse.ArgumentParser(description='Start Remote Play.')
     parser.add_argument('host', type=str, help="IP address of Remote Play host")
-    parser.add_argument('--profile', type=str, help='Path to profile config.')
+    parser.add_argument('-r', '--register', action="store_true", help='Register with Remote Play host.')
+    parser.add_argument('-p', '--path', type=str, help='Path to PSN profile config.')
     args = parser.parse_args()
     host = args.host
-    profile = args.profile
-    profiles = get_profiles(profile)
+    path = args.path
+    should_register = args.register
+
+    if should_register:
+        register_profile(host, path)
+        return
+    cli(host, path)
+
+
+def get_profiles(path=None) -> list:
+    """Return Profiles."""
+    data = []
+    if not path:
+        dir_path = pathlib.Path.home() / PROFILE_DIR
+        if not dir_path.is_dir():
+            dir_path.mkdir()
+        path = dir_path / PROFILE_FILE
+        if not path.is_file():
+            with open(path, "w") as _file:
+                json.dump({}, _file)
+    else:
+        path = pathlib.Path(path)
+    if not path.is_file():
+        print("File not found")
+        return data
+    with open(path, "r") as _file:
+        data = json.load(_file)
+    return data
+
+
+def write_profile(profile: dict, path: str):
+    """Write profile data."""
+    if not path:
+        path = pathlib.Path.home() / PROFILE_DIR / PROFILE_FILE
+    else:
+        path = pathlib.Path(path)
+
+    with open(path, "w") as _file:
+        json.dump(profile, _file)
+
+
+def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
+    """Return profile name."""
+    name = ""
+    if len(profiles) == 1 and use_single:
+        name = list(profiles.keys())[0]
+        return name
+    print("Found Profiles")
+    names = list(profiles.keys())
+    if get_new:
+        names.append(NEW_PROFILE)
+    names.append(CANCEL)
+    prompt = ""
+    for _index, item in enumerate(names):
+        prompt = f"{prompt}{_index}: {item}\n"
+    while True:
+        index = int(input(f"Select a profile to use:\n{prompt}>> "))
+        try:
+            name = names[index]
+        except IndexError:
+            print("Invalid Selection")
+            continue
+        if name == CANCEL:
+            sys.exit()
+        break
+    return name
+
+
+def register_profile(host: str, path: str):
+    """Register with host."""
+    name = ""
+    profiles = get_profiles(path)
     if profiles:
-        data = profiles[0]
+        name = select_profile(profiles, False, True)
+    if name == NEW_PROFILE or not profiles:
+        user_data = oauth_prompt()
+        if user_data is None:
+            sys.exit()
+        user_id = user_data.get("user_rpid")
+        if not isinstance(user_id, str) and not user_id:
+            _LOGGER.error("Invalid user id")
+            sys.exit()
+        name = str(input("Enter a Name for profile:\n>> "))
+        profile = {
+            name: {
+                "id": user_id,
+                "type": None,
+                "data": {},
+            }
+        }
+        profiles.update(profile)
+        write_profile(profiles, path)
+
+    user_id = profiles[name]["id"]
+    if not user_id:
+        _LOGGER.error("No User ID")
+        sys.exit()
+    pin = ""
+    while True:
+        pin = input(
+            "On Remote Play host, go to Settings -> "
+            "Remote Play Connection Settings -> "
+            "Add Device and enter the PIN shown\n>> "
+        )
+        if pin.isnumeric() and len(pin) == 8:
+            break
+        print("Invalid PIN. PIN must be only 8 numbers")
+
+    data = register(host, user_id, pin)
+    if not data:
+        sys.exit()
+    profiles[name]["data"].update(data)
+    for h_type in ["PS4", "PS5"]:
+        if f"{h_type}-RegistKey" in list(data.keys()):
+            profiles[name]["type"] = h_type
+            break
+    write_profile(profiles, path)
+
+
+def cli(host: str, path: str):
+    profiles = get_profiles(path)
+    if profiles:
+        name = select_profile(profiles, True, True)
+        data = profiles[name]
         ctrl = CTRL(host, data)
         if not ctrl.start():
             return
@@ -43,20 +166,6 @@ def cli():
 def start(stdscr, instance):
     """Start Instance."""
     instance.run(stdscr)
-
-
-def get_profiles(path=None) -> list:
-    data = []
-    if not path:
-        path = pathlib.Path.home() / PROFILE_DIR / PROFILE_FILE
-    else:
-        path = pathlib.Path(path)
-    if not path.is_file():
-        _LOGGER.error("File not found")
-        return data
-    with open(path, "r") as f:
-        data = json.load(f)
-    return data
 
 
 class CLIInstance():

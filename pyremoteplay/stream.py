@@ -244,12 +244,8 @@ class RPStream():
         if not self._ecdh.set_secret(ecdh_pub_key, ecdh_sig):
             self._stop_event.set()
         self.cipher = self._ecdh.init_ciphers()
+        self.ready()
         self._ctrl.init_controller()
-        self.controller = self._ctrl.controller
-
-    # def started(self):
-    #     self._ctrl.init_controller()
-    #     self.controller = self._ctrl.controller
 
     def disconnect(self):
         """Disconnect Stream."""
@@ -350,7 +346,7 @@ class StreamTest():
 
     def run_rtt(self):
         """Start RTT Test."""
-        _LOGGER.info("Running RTT test...")
+        _LOGGER.debug("Running RTT test...")
         self._send_echo_command(True)
 
     def send_rtt(self):
@@ -361,7 +357,7 @@ class StreamTest():
 
     def recv_rtt(self):
         """Receive RTT Packet."""
-        _LOGGER.info("Received RTT Echo")
+        _LOGGER.debug("Received RTT Echo")
         return_time = time.time()
         self._ping_times[self._index][1] = return_time
         self._index += 1
@@ -370,11 +366,11 @@ class StreamTest():
             self.send_rtt()
         else:
             self._send_echo_command(False)
-            _LOGGER.info("Stopping RTT Test")
+            _LOGGER.debug("Stopping RTT Test")
 
     def stop_rtt(self):
         """Stop RTT Test."""
-        _LOGGER.info("RTT Test Complete")
+        _LOGGER.debug("RTT Test Complete")
         rtt_results = []
         for ping in self._ping_times:
             rtt_results.append(ping[1] - ping[0])
@@ -392,8 +388,8 @@ class StreamTest():
 
     def stop_mtu_in(self):
         """Stop MTU In Test."""
-        _LOGGER.info("MTU IN Test Complete")
-        _LOGGER.info("MTU IN: %s", self._last_mtu)
+        _LOGGER.debug("MTU IN Test Complete")
+        _LOGGER.debug("MTU IN: %s", self._last_mtu)
         self._mtu_in = self._last_mtu
         self._results["mtu"] = self._mtu_in
         self.stop()

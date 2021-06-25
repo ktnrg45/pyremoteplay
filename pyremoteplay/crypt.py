@@ -175,7 +175,7 @@ class RemoteCipher(BaseCipher):
         verified = tag == gmac
         _LOGGER.debug("GMAC Verified: %s", verified)
         if not verified:
-            _LOGGER.info("GMAC Mismatch: Expected %s, RECV: %s", tag.hex(), gmac.hex())
+            _LOGGER.debug("GMAC Mismatch: Expected %s, RECV: %s", tag.hex(), gmac.hex())
         return verified
 
 

@@ -882,7 +882,7 @@ class ProtoHandler():
         try:
             msg.ParseFromString(data)
         except DecodeError:
-            _LOGGER.info("Protobuf Error with message: %s", data)
+            _LOGGER.debug("Protobuf Error with message: %s", data.hex())
             return
         p_type = ProtoHandler.get_payload_type(msg)
         _LOGGER.debug("RECV Payload Type: %s", p_type)
@@ -903,7 +903,6 @@ class ProtoHandler():
             channel = 9
             msg = ProtoHandler.message()
             msg.type = msg.PayloadType.STREAMINFOACK
-            self._stream.ready()
             self._ack(msg, channel)
 
         elif p_type == 'BANG' and not self._recv_bang:
