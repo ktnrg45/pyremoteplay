@@ -25,12 +25,11 @@ def to_b(_int: int, length: int = 2, order="big") -> bytes:
     return int.to_bytes(_int, length, order)
 
 
-def listener(name: str, sock, handle, send, stop_event):
+def listener(name: str, sock, handle, stop_event):
     """Worker for socket."""
     _LOGGER.debug("Thread Started: %s", name)
     stop_event.clear()
     while not stop_event.is_set():
-        send()
         available, _, _ = select.select([sock], [], [], 0.01)
         if sock in available:
             data = sock.recv(4096)
@@ -43,3 +42,15 @@ def listener(name: str, sock, handle, send, stop_event):
 
     sock.close()
     _LOGGER.info(f"{name} Stopped")
+
+
+def timeit(func):
+    """Time Function."""
+    def inner(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+        elapsed = round(end - start, 8)
+        _LOGGER.debug("Timed %s.%s at %s seconds", func.__module__, func.__name__, elapsed)
+        return result
+    return inner

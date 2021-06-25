@@ -10,7 +10,6 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from .const import RP_CRYPT_SIZE
 from .errors import CryptError
 from .keys import HMAC_KEY
 from .util import from_b, log_bytes, to_b
@@ -72,16 +71,6 @@ def get_gmac_tag(
     return tag
 
 
-def verify_gmac(key: bytes, iv: bytes, data: bytes, gmac: bytes) -> bool:
-    cipher = AES.new(key, AES.MODE_GCM, nonce=iv, mac_len=4)
-    tag = cipher.update(data).digest()
-    verified = tag == gmac
-    _LOGGER.debug("GMAC Verified: %s", verified)
-    if not verified:
-        _LOGGER.error("GMAC Mismatch: Expected %s, RECV: %s", tag.hex(), gmac.hex())
-    return verified
-
-
 def gen_iv_stream(buf: bytearray, iv: bytes, key_pos: int):
     """Pack buf with stream of incremented IVs."""
     length = len(buf)
@@ -95,6 +84,7 @@ def gen_iv_stream(buf: bytearray, iv: bytes, key_pos: int):
         current += 16
 
 
+# TODO: Make more efficient
 def get_key_stream(
         key: bytes, iv: bytes, key_pos: int, data_len: int) -> bytes:
     """Return the minimum CTR Keystream at key position."""
@@ -166,6 +156,7 @@ class BaseCipher():
 
 
 class RemoteCipher(BaseCipher):
+    """Cipher for receiving packets."""
 
     def __init__(self, handshake_key, secret):
         super().__init__(handshake_key, secret)
@@ -178,17 +169,18 @@ class RemoteCipher(BaseCipher):
         dec = decrypt_encrypt(self.base_key, self.base_iv, key_pos, data)
         return dec
 
-    def verify_gmac(self, data: bytes, key_pos: int, gmac: bytes):
+    def verify_gmac(self, data: bytes, key_pos: int, gmac: bytes) -> bool:
         """Verify GMAC."""
         tag = self.get_gmac(data, key_pos)
         verified = tag == gmac
-        _LOGGER.debug("Verified: %s", verified)
+        _LOGGER.debug("GMAC Verified: %s", verified)
         if not verified:
-            _LOGGER.error("GMAC Mismatch: Expected %s, RECV: %s", tag.hex(), gmac.hex())
+            _LOGGER.info("GMAC Mismatch: Expected %s, RECV: %s", tag.hex(), gmac.hex())
         return verified
 
 
 class LocalCipher(BaseCipher):
+    """Cipher for sending packets."""
 
     def __init__(self, handshake_key, secret):
         super().__init__(handshake_key, secret)
@@ -198,6 +190,7 @@ class LocalCipher(BaseCipher):
         self._init_cipher()
 
     def get_gmac(self, data: bytes) -> bytes:
+        """Return GMAC Tag."""
         tag = super().get_gmac(data, self.key_pos)
         return tag
 
@@ -230,6 +223,7 @@ class StreamCipher():
         return self._local_cipher.encrypt(data)
 
     def decrypt(self, data: bytes, key_pos: int) -> bytes:
+        """Return Decrypted data."""
         return self._remote_cipher.decrypt(data, key_pos)
 
     def get_gmac(self, data: bytes) -> bytes:

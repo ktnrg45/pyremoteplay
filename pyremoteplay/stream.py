@@ -77,7 +77,7 @@ class RPStream():
         self._state = RPStream.STATE_INIT
         self._worker = threading.Thread(
             target=listener,
-            args=("Stream", self._protocol, self._handle, self._send, self._stop_event),
+            args=("Stream", self._protocol, self._handle, self._stop_event),
         )
         self._worker.start()
         self._send_init()
@@ -127,9 +127,6 @@ class RPStream():
         """Send Message."""
         log_bytes(f"Stream Send", msg)
         self._protocol.sendto(msg, (self._host, self._port))
-
-    def _send(self):
-        pass
 
     def _handle(self, msg):
         """Handle packets."""
@@ -247,10 +244,12 @@ class RPStream():
         if not self._ecdh.set_secret(ecdh_pub_key, ecdh_sig):
             self._stop_event.set()
         self.cipher = self._ecdh.init_ciphers()
-
-    def started(self):
         self._ctrl.init_controller()
         self.controller = self._ctrl.controller
+
+    # def started(self):
+    #     self._ctrl.init_controller()
+    #     self.controller = self._ctrl.controller
 
     def disconnect(self):
         """Disconnect Stream."""

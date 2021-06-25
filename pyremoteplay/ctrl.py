@@ -8,20 +8,20 @@ from enum import IntEnum
 from struct import pack_into
 
 import requests
+from Cryptodome.Hash import SHA256
 from Cryptodome.Random import get_random_bytes
-from pyps4_2ndscreen.helpers import Helper
+from pyps4_2ndscreen.ddp import get_status, wakeup
 
 from .av import AVReceiver
 from .const import (OS_TYPE, RP_CRYPT_SIZE, RP_PORT, RP_VERSION, TYPE_PS4,
                     TYPE_PS5, USER_AGENT)
 from .crypt import RPCipher
-from .errors import RemotePlayError
+from .errors import RemotePlayError, RPErrorHandler
 from .feedback import Controller
 from .keys import CTRL_KEY_0, CTRL_KEY_1
 from .stream import RPStream
 from .util import from_b, listener, log_bytes
 
-logging.basicConfig(level=logging.DEBUG)
 _LOGGER = logging.getLogger(__name__)
 
 RP_INIT_URL = "/sie/ps4/rp/sess/init"
@@ -33,15 +33,7 @@ DID_PREFIX = b'\x00\x18\x00\x00\x00\x07\x00\x40\x00\x80'
 
 HEARTBEAT_RESPONSE = b"\x00\x00\x00\x00\x01\xfe\x00\x00"
 
-
-def _check_host(host: str):
-    """Return True if host is available."""
-    helper = Helper()
-    devices = helper.has_devices(host)
-    if not devices:
-        _LOGGER.error("Could not detect PS4 at: %s", host)
-        return False
-    return True
+RP_ERROR = RPErrorHandler()
 
 
 def _get_headers(host: str, regist_key: str) -> dict:
@@ -114,6 +106,7 @@ class CTRL():
     """Controller for RP Session."""
     STATE_INIT = "init"
     STATE_READY = "ready"
+    STATE_STOP = "stop"
     HEADER_LENGTH = 8
 
     class MessageType(IntEnum):
@@ -132,39 +125,35 @@ class CTRL():
         KEYBOARD_TEXT_CHANGE_RES = 0x24
         KEYBOARD_CLOSE_REQ = 0x25
 
-    class Error(IntEnum):
-        """Enum for errors."""
-        REGIST_FAILED = 0x80108b09
-        INVALID_PSN_ID = 0x80108b02
-        RP_IN_USE = 0x80108b10
-        CRASH = 0x80108b15
-        RP_VERSION_MISMATCH = 0x80108b11
-        UNKNOWN = 0x80108bff
-
-    def __init__(self, host: str, regist_data: dict, cb_start=None):
+    def __init__(self, host: str, regist_data: dict):
         self._host = host
-        self._regist_data = regist_data
+        self._regist_data = regist_data["data"]
         self._session_id = b''
         self._type = ""
         self._mac_address = ""
         self._name = ""
+        self._creds = regist_data["id"]
         self._regist_key = None
         self._rp_key = None
         self._sock = None
-        self._send_buf = queue.Queue()
         self._stop_event = threading.Event()
         self._hb_last = 0
         self._cipher = None
         self._state = CTRL.STATE_INIT
         self._stream = None
-        self._cb_start = cb_start
+        self.controller_ready_event = threading.Event()
         self.controller = None
         self.av_receiver = AVReceiver()
 
+        self.controller_ready_event.clear()
         self._init_attrs()
 
     def _init_attrs(self):
         """Init Class attrs."""
+        self._creds = SHA256.new(
+            str(int.from_bytes(b64decode(self._creds), "little")).encode()
+        ).hexdigest()
+
         _regist_str = "".join(list(self._regist_data.keys()))
         if TYPE_PS4 in _regist_str:
             self._type = TYPE_PS4
@@ -181,7 +170,9 @@ class CTRL():
         response = None
         headers = _get_headers(self.host, self._regist_key)
         url = f"http://{self.host}:{RP_PORT}{RP_INIT_URL}"
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=3)
+        if response is None:
+            _LOGGER.error("Timeout: Auth")
         return response
 
     def _parse_init(self, response: requests.models.Response) -> bytes:
@@ -193,13 +184,24 @@ class CTRL():
             reason = int.from_bytes(bytes.fromhex(reason), "big")
             _LOGGER.error(
                 "Failed to Init CTRL; Reason: %s",
-                CTRL.Error(reason).name,
+                RP_ERROR(reason),
             )
         nonce = response.headers.get("RP-Nonce")
         if nonce is not None:
             nonce = b64decode(nonce.encode())
             log_bytes("Nonce", nonce)
         return nonce
+
+    def _check_host(self) -> tuple:
+        """Return True, True if host is available."""
+        device = get_status(self._host)
+        if not device:
+            _LOGGER.error("Could not detect PS4 at: %s", self._host)
+            return (False, False)
+        if device.get("status_code") != 200:
+            _LOGGER.info("Host: %s is not on", self._host)
+            return (True, False)
+        return (True, True)
 
     def _get_ctrl_headers(self, nonce: bytes) -> dict:
         """Return CTRL headers."""
@@ -217,7 +219,11 @@ class CTRL():
     def _send_auth(self, headers: dict) -> bool:
         """Send CTRL Auth."""
         url = f"http://{self.host}:{RP_PORT}{RP_CTRL_URL}"
-        response = requests.get(url, headers=headers, stream=True)
+        response = None
+        response = requests.get(url, headers=headers, stream=True, timeout=3)
+        if response is None:
+            _LOGGER.error("Timeout: Auth")
+            return False
         _LOGGER.debug("CTRL Auth Headers: %s", response.headers)
         server_type = response.headers.get("RP-Server-Type")
         if response.status_code != 200 or server_type is None:
@@ -239,7 +245,7 @@ class CTRL():
             msg_type = CTRL.MessageType(data[5])
             _LOGGER.debug("RECV %s", CTRL.MessageType(msg_type).name)
         except ValueError:
-            _LOGGER.warning("CTRL RECV invalid Message Type: %s", data[5])
+            _LOGGER.debug("CTRL RECV invalid Message Type: %s", data[5])
             return
         if msg_type == CTRL.MessageType.HEARTBEAT_REQUEST:
             self._hb_last = time.time()
@@ -247,19 +253,19 @@ class CTRL():
         if msg_type == CTRL.MessageType.HEARTBEAT_RESPONSE:
             self._hb_last = time.time()
         elif msg_type == CTRL.MessageType.SESSION_ID:
+            if self.session_id:
+                _LOGGER.warning("RECV Session ID again")
+                return
             session_id = payload[2:]
             log_bytes("Session ID", session_id)
             try:
                 session_id.decode()
             except UnicodeDecodeError:
                 _LOGGER.warning("CTRL RECV Malformed Session ID")
-                #self.send_disconnect()
+                self.stop()
                 return
             self._session_id = session_id
-            if self._cb_start is not None:
-                self._cb_start(self)
-            else:
-                self.start_stream()
+            self.start_stream()
 
         if time.time() - self._hb_last > 5:
             _LOGGER.info("CTRL HB Timeout. Sending HB")
@@ -275,26 +281,41 @@ class CTRL():
 
     def _send_hb_response(self):
         msg = self._build_msg(CTRL.MessageType.HEARTBEAT_RESPONSE, HEARTBEAT_RESPONSE)
-        self._sock.send(msg)
+        self.send(msg)
 
     def _send_hb_request(self):
         msg = self._build_msg(CTRL.MessageType.HEARTBEAT_REQUEST)
-        self._sock.send(msg)
+        self.send(msg)
 
-    def _send_standby(self):
+    def standby(self):
+        """Set host to standby."""
         msg = self._build_msg(CTRL.MessageType.STANDBY)
-        self._sock.send(msg)
+        self.send(msg)
+        _LOGGER.info("Sending Standby.")
+        self.stop()
 
-    def send(self):
-        if not self._send_buf.empty():
-            data_send = self._send_buf.get_nowait()
-            self._sock.send(data_send)
-            log_bytes(f"CTRL Send", data_send)
+    def send(self, data: bytes):
+        """Send Data."""
+        self._sock.send(data)
+        log_bytes(f"CTRL Send", data)
 
-    def start(self):
+    def wakeup(self):
+        """Wakeup Host."""
+        wakeup(self._host, self._creds)
+
+    def start(self, wakeup=True) -> bool:
         """Start CTRL/RP Session."""
-        if not _check_host(self.host):
+        status = self._check_host()
+        if not status[0]:
+            _LOGGER.info("Aborting startup")
             return False
+        if not status[1]:
+            if wakeup:
+                self.wakeup()
+                _LOGGER.info("Sent Wakeup to host")
+            _LOGGER.info("Aborting startup")
+            return False
+
         if not self.connect():
             _LOGGER.error("CTRL Failed Auth")
             return False
@@ -302,13 +323,16 @@ class CTRL():
         self._state = CTRL.STATE_READY
         self._worker = threading.Thread(
             target=listener,
-            args=("CTRL", self._sock, self._handle, self.send, self._stop_event),
+            args=("CTRL", self._sock, self._handle, self._stop_event),
         )
         self._worker.start()
+        return True
 
     def connect(self) -> bool:
         """Connect to Host."""
         response = self._init_ctrl()
+        if response is None:
+            return False
         nonce = self._parse_init(response)
         if nonce is None:
             return False
@@ -333,9 +357,15 @@ class CTRL():
         self._stream = RPStream(self._host, stop_event, self, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
         self._stream.connect()
 
+    def stop(self):
+        """Stop Stream."""
+        self._stop_event.set()
+        self._state = CTRL.STATE_STOP
+
     def init_controller(self):
         self.controller = Controller(self._stream, self._stop_event)
         self.controller.start()
+        self.controller_ready_event.set()
 
     @property
     def host(self) -> str:
@@ -360,6 +390,8 @@ class CTRL():
     @property
     def state(self) -> str:
         """Return State."""
+        if self._stop_event.is_set():
+            return CTRL.STATE_STOP
         return self._state
 
     @property

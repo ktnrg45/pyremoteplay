@@ -1,4 +1,5 @@
 """Constants for pyremoteplay."""
+
 RP_PORT = 9295
 USER_AGENT = "remoteplay Windows"
 RP_VERSION = "10.0"
@@ -7,11 +8,6 @@ TYPE_PS4 = "PS4"
 TYPE_PS5 = "PS5"
 RP_CRYPT_SIZE = 16
 
-CTRL_ERROR = {
-    "80108b10": "RP Version mismatch",
-    "80108bff": "CTRL Bad Auth",
-    "80108b15": "RP Crashed on Host; Host needs restart"
-}
 
 RESOLUTION_360P = {
     'width': 640,

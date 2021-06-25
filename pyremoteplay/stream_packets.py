@@ -877,19 +877,15 @@ class ProtoHandler():
         self._stream.recv_stream_info(info)
 
     def handle(self, data: bytes):
-        if data == STREAM_START:
-            _LOGGER.info("Stream Started")
-            self._stream.started()
-            return
+
         msg = ProtoHandler.message()
         try:
             msg.ParseFromString(data)
         except DecodeError:
-            _LOGGER.error("Protobuf Error with message: %s", data)
-            raise ValueError
+            _LOGGER.info("Protobuf Error with message: %s", data)
+            return
         p_type = ProtoHandler.get_payload_type(msg)
         _LOGGER.debug("RECV Payload Type: %s", p_type)
-        # _LOGGER.debug(msg.ListFields())
 
         if p_type == 'STREAMINFO':
             if not self._recv_info:
@@ -900,10 +896,7 @@ class ProtoHandler():
                 s_height = self._stream.resolution['height']
                 if s_width != res.width or s_height != res.height:
                     _LOGGER.warning("RECV Unexpected resolution: %s x %s", res.width, res.height)
-                #     self.handle_exc(
-                #         UnexpectedData,
-                #         'Width: {}, Height: {}'.format(
-                #             res.width, res.height))
+
                 _LOGGER.debug("RECV Stream Info")
                 self._parse_streaminfo(
                     msg.stream_info_payload, v_header)
@@ -935,8 +928,6 @@ class ProtoHandler():
             msg = ProtoHandler.message()
             msg.type = msg.PayloadType.HEARTBEAT
             self._ack(msg, channel)
-            if self._stream.controller is not None:  #####
-                self._stream.controller.button("ps")  #####
 
         elif p_type == 'DISCONNECT':
             _LOGGER.info("Host Disconnected; Reason: %s", msg.disconnect_payload.reason)
@@ -948,3 +939,5 @@ class ProtoHandler():
                 mtu_req = msg.senkusha_payload.mtu_command.mtu_req
                 mtu_sent = msg.senkusha_payload.mtu_command.mtu_sent
                 self._stream._test.recv_mtu_in(mtu_req, mtu_sent)
+        else:
+            _LOGGER.info("RECV Unhandled Payload Type: %s", p_type)
