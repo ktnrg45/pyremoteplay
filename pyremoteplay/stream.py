@@ -59,7 +59,7 @@ class RPStream():
         self._ecdh = None
         self.cipher = None
         self.proto = ProtoHandler(self)
-        self.av = ctrl.av_receiver
+        self.av_handler = ctrl.av_handler
         self.resolution = RESOLUTION_PRESETS.get(resolution)
         self.max_fps = 60
         self.rtt = rtt if rtt is not None else DEFAULT_RTT
@@ -132,11 +132,8 @@ class RPStream():
         """Handle packets."""
         av_type = Packet.is_av(msg[:1])
         if av_type:
-            if self.av and not self._is_test:
-                packet = Packet.parse(msg)
-                packet.decrypt(self.cipher)
-                if packet.type == 0x02:
-                    self.av.handle_video(packet)
+            if self.av_handler.has_receiver and not self._is_test:
+                self.av_handler.add_packet(msg)
             elif self._is_test and self._test:
                 if av_type == Header.Type.AUDIO:
                     self._test.recv_rtt()
@@ -246,6 +243,8 @@ class RPStream():
         self.cipher = self._ecdh.init_ciphers()
         self.ready()
         self._ctrl.init_controller()
+        if self.av_handler.has_receiver:
+            self.av_handler.set_cipher(self.cipher)
 
     def disconnect(self):
         """Disconnect Stream."""
@@ -266,8 +265,7 @@ class RPStream():
     def recv_stream_info(self, info: dict):
         """Receive stream info."""
         self.stream_info = info
-        if self.av:
-            self.av.set_headers(info["video_header"], info["audio_header"])
+        self.av_handler.set_headers(info["video_header"], info["audio_header"])
 
     def recv_bang(self, accepted: bool, ecdh_pub_key: bytes, ecdh_sig: bytes):
         """Receive Bang Payload."""

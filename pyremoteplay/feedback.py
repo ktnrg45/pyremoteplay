@@ -49,6 +49,7 @@ class Controller():
     def worker(self):
         self._started = True
         _LOGGER.info("Controller Started")
+        last = 0
         while not self._stop_event.is_set():
             if self.has_sticks:
                 self._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
@@ -58,7 +59,6 @@ class Controller():
                 data = b"".join(self._event_buf)
                 self._stream.send_feedback(FeedbackHeader.Type.EVENT, self.sequence_event, data=data)
                 self._sequence_event += 1
-
             time.sleep(self.STATE_INTERVAL_MIN_MS)
         _LOGGER.info("Controller Stopped")
 

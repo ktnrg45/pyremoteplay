@@ -8,6 +8,7 @@ import pathlib
 import sys
 from collections import OrderedDict
 
+from .av import AVFileReceiver
 from .ctrl import CTRL
 from .oauth import prompt as oauth_prompt
 from .register import register
@@ -153,7 +154,7 @@ def cli(host: str, path: str):
     if profiles:
         name = select_profile(profiles, True, True)
         data = profiles[name]
-        ctrl = CTRL(host, data)
+        ctrl = CTRL(host, data, AVFileReceiver)
         if not ctrl.start():
             return
         instance = CLIInstance(ctrl)

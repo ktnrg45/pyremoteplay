@@ -1,5 +1,4 @@
 import logging
-import queue
 import socket
 import threading
 import time
@@ -12,7 +11,7 @@ from Cryptodome.Hash import SHA256
 from Cryptodome.Random import get_random_bytes
 from pyps4_2ndscreen.ddp import get_status, wakeup
 
-from .av import AVReceiver
+from .av import AVFileReceiver, AVHandler
 from .const import (OS_TYPE, RP_CRYPT_SIZE, RP_PORT, RP_VERSION, TYPE_PS4,
                     TYPE_PS5, USER_AGENT)
 from .crypt import RPCipher
@@ -125,7 +124,7 @@ class CTRL():
         KEYBOARD_TEXT_CHANGE_RES = 0x24
         KEYBOARD_CLOSE_REQ = 0x25
 
-    def __init__(self, host: str, regist_data: dict):
+    def __init__(self, host: str, regist_data: dict, av_receiver=None):
         self._host = host
         self._regist_data = regist_data["data"]
         self._session_id = b''
@@ -143,7 +142,8 @@ class CTRL():
         self._stream = None
         self.controller_ready_event = threading.Event()
         self.controller = None
-        self.av_receiver = AVReceiver()
+        self.av_receiver = av_receiver(self) if av_receiver is not None else None
+        self.av_handler = AVHandler(self)
 
         self.controller_ready_event.clear()
         self._init_attrs()
@@ -196,7 +196,7 @@ class CTRL():
         """Return True, True if host is available."""
         device = get_status(self._host)
         if not device:
-            _LOGGER.error("Could not detect PS4 at: %s", self._host)
+            _LOGGER.error("Could not detect host at: %s", self._host)
             return (False, False)
         if device.get("status_code") != 200:
             _LOGGER.info("Host: %s is not on", self._host)
@@ -237,6 +237,7 @@ class CTRL():
 
     def _handle(self, data: bytes):
         """Handle Data."""
+        log_bytes("CTRL RECV Data", data)
         payload = data[8:]
         if payload:
             payload = self._cipher.decrypt(payload)
@@ -258,6 +259,7 @@ class CTRL():
                 return
             session_id = payload[2:]
             log_bytes("Session ID", session_id)
+            _LOGGER.debug(session_id)
             try:
                 session_id.decode()
             except UnicodeDecodeError:

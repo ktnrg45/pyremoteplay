@@ -413,9 +413,12 @@ class AVPacket(PacketSection):
         return (
             f"<RP AVPacket "
             f"type={self.type.name} "
+            f"key_pos={self.key_pos} "
+            f"NALU={self.has_nalu} "
+            f"is_fec={self.is_fec} "
             f"index={self.index} "
             f"frame={self.frame_index} "
-            f"unit={self.unit_index + 1}/"
+            f"unit={self.unit_index}/"
             f"{self.frame_meta['units']['src']}/"
             f"{self.frame_meta['units']['total']}>"
         )
@@ -436,14 +439,45 @@ class AVPacket(PacketSection):
 
         offset = 1  # TODO: Offset 1 verify?
         if self.type == self.Type.VIDEO:
+            offset = 3
             self._unit_index = (self._dword2 >> 0x15) & 0x7ff
+            self._adaptive_stream_index = unpack_from("!b", buf, 19)[0] >> 5
             if self.has_nalu:
-                # Unknown ushort at offset 18
-                self._adaptive_stream_index = unpack_from("!b", buf, 20)[0] >> 5
-                offset = 3
+                # Unknown ushort at 18
+                offset = 6
         else:
             self._unit_index = (self._dword2 >> 0x18) & 0xff
         self._data = buf[18 + offset:]
+
+        self._get_frame_meta()
+
+    def _get_frame_meta(self):
+        self._frame_meta = {
+            'frame': self.frame_index,
+            'index': self.unit_index,
+        }
+        if self.type == self.Type.VIDEO:
+            total = ((self._dword2 >> 0xa) & 0x7ff) + 1
+            fec = self._dword2 & 0x3ff
+            src = total - fec
+            units = {
+                'total': total,
+                'fec': fec,
+                'src': src,
+            }
+        else:
+            _dword2 = self._dword2 & 0xffff
+            total = ((self._dword2 >> 0x10) & 0xff) + 1
+            fec = (_dword2 >> 4) & 0xf
+            src = _dword2 & 0xf  # TODO: Verify?
+            size = _dword2 >> 8  # TODO: Verify?
+            units = {
+                'total': total,
+                'fec': fec,
+                'src': src,
+                'size': size,
+            }
+        self._frame_meta['units'] = units
 
     def decrypt(self, cipher):
         """Decrypt AV Data."""
@@ -469,33 +503,6 @@ class AVPacket(PacketSection):
     @property
     def frame_meta(self) -> dict:
         """Return frame meta data."""
-        if not self._frame_meta:
-            self._frame_meta = {
-                'frame': self.frame_index,
-                'index': self.unit_index,
-            }
-            if self.type == self.Type.VIDEO:
-                total = ((self._dword2 >> 0xa) & 0x7ff) + 1
-                fec = self._dword2 & 0x3ff
-                src = total - fec
-                units = {
-                    'total': total,
-                    'fec': fec,
-                    'src': src,
-                }
-            else:
-                _dword2 = self._dword2 & 0xffff
-                total = ((self._dword2 >> 0x10) & 0xff) + 1
-                fec = (_dword2 >> 4) & 0xf
-                src = _dword2 & 0xf  # TODO: Verify?
-                size = _dword2 >> 8  # TODO: Verify?
-                units = {
-                    'total': total,
-                    'fec': fec,
-                    'src': src,
-                    'size': size,
-                }
-            self._frame_meta['units'] = units
         return self._frame_meta
 
     @property
@@ -507,6 +514,11 @@ class AVPacket(PacketSection):
     def unit_index(self) -> int:
         """Return the index within frame."""
         return self._unit_index
+
+    @property
+    def frame_length_src(self) -> int:
+        """Return the length of src units."""
+        return self._frame_meta['units']['src']
 
     @property
     def codec(self) -> int:
@@ -522,6 +534,16 @@ class AVPacket(PacketSection):
     def adapative_stream_index(self) -> int:
         """Return the Adaptive Stream Index."""
         return self._adapative_stream_index
+
+    @property
+    def is_last_src(self) -> bool:
+        """Return True if packet is the last src packet."""
+        return self.unit_index == self.frame_length_src - 1
+
+    @property
+    def is_fec(self) -> bool:
+        """Return True if packet is fec."""
+        return self.unit_index >= self.frame_length_src
 
     @property
     def encrypted(self) -> bool:
@@ -882,7 +904,7 @@ class ProtoHandler():
         try:
             msg.ParseFromString(data)
         except DecodeError:
-            _LOGGER.debug("Protobuf Error with message: %s", data.hex())
+            log_bytes("Protobuf Error", data)
             return
         p_type = ProtoHandler.get_payload_type(msg)
         _LOGGER.debug("RECV Payload Type: %s", p_type)

@@ -1,101 +1,147 @@
 """AV for pyremoteplay."""
 import logging
 import queue
+import threading
 import time
+from io import BytesIO
+from pathlib import Path
 
-import numpy as np
-from construct import (Bytes, BytesInteger, Const, GreedyBytes, Int32ub,
-                       Padding, Struct)
-
+from .stream_packets import AVPacket, Packet
 from .util import from_b, log_bytes, to_b
 
 _LOGGER = logging.getLogger(__name__)
 
-HEADER_TYPE_VIDEO = 0x02
-HEADER_TYPE_AUDIO = 0x03
 
+class AVHandler():
+    """AV Handler."""
 
-class VideoFrame():
-    def __init__(self, data: dict, callback):
-        self.callback = callback
-        self.total_size = data["units_frame_total"]
-        self.src_size = data["units_frame_src"]
-        self.fec_size = data["units_frame_fec"]
-        self.src_packets = [0] * self.src_size
-        self.fec_packets = [0] * self.fec_size
-        self.src_count = 0
-        self.fec_count = 0
-        self.complete = False
+    def __init__(self, ctrl):
+        self._ctrl = ctrl
+        self._receiver = ctrl.av_receiver
+        self._v_header = b''
+        self._a_header = b''
+        self._v_buf = BytesIO()
+        self._a_buf = BytesIO()
+        self._v_frame = -1
+        self._a_frame = -1
+        self._last_v_unit = -1
+        self._last_a_unit = -1
+        self._v_lock = threading.Lock()
+        self._queue = queue.Queue()
+        self._worker = None
 
-        self.add_packet(data)
+    def set_cipher(self, cipher):
+        self._cipher = cipher
+        self._worker = threading.Thread(
+            target=self.worker,
+        )
+        self._worker.start()
 
+    def set_headers(self, v_header, a_header):
+        """Set headers."""
+        self._v_header = v_header
+        self._a_header = a_header
 
-    def add_packet(self, data):
-        index = data["unit_index"]
-        if index + 1 <= self.src_size:
-            self.src_packets[index] = data["data"]
-            self.src_count += 1
-        else:
-            self.fec_packets[index - self.src_size] = data["data"]
-            self.fec_count += 1
-        if self.src_size == self.src_count and not self.complete:
-            self.complete = True
-            self.callback(b"".join(self.src_packets))
+    def add_packet(self, packet):
+        """Add Packet."""
+        self._queue.put(packet)
+
+    def worker(self):
+        while not self._ctrl._stop_event.is_set():
+            msg = self._queue.get()
+            packet = Packet.parse(msg)
+            packet.decrypt(self._cipher)
+            _LOGGER.debug(packet)
+            log_bytes("AV Data", packet.data)
+            if packet.type == AVPacket.Type.VIDEO:
+                self._handle_video(packet)
+            else:
+                self._handle_audio(packet)
+
+    def _handle_video(self, packet: AVPacket):
+        # New Frame
+        if packet.frame_index != self.v_frame:
+            # First packet of Frame
+            if packet.unit_index == 0:
+                self._v_frame = packet.frame_index
+                self._last_v_unit = -1
+                self._v_buf = BytesIO()
+                self._v_buf.write(self._v_header)
+                _LOGGER.debug("Started New Frame: %s", self._v_frame)
+        # Current Frame not FEC
+        if not packet.is_fec:
+            # Packet is in order
+            if packet.unit_index == self._last_v_unit + 1:
+                self._last_v_unit += 1
+                written = self._v_buf.write(packet.data)
+                _LOGGER.debug("Wrote: %s. Packet Size: %s", written, len(packet.data))
+            else:
+                _LOGGER.info("Received unit out of order: %s, expected: %s", packet.unit_index, self._last_v_unit)
+            if packet.is_last_src:
+                _LOGGER.debug("Frame: %s finished with length: %s", self._v_frame, self._v_buf.tell())
+                self._receiver.handle_video(self._v_buf)
+
+    def _handle_audio(self, packet: AVPacket):
+        pass
+
+    @property
+    def has_receiver(self) -> bool:
+        """Return True if receiver is not None."""
+        return self._receiver is not None
+
+    @property
+    def v_frame(self) -> int:
+        """Return current video frame index."""
+        return self._v_frame
+
+    @property
+    def a_frame(self) -> int:
+        """Return current video frame index."""
+        return self._a_frame
 
 
 class AVReceiver():
-    """AV Receiver."""
-    def __init__(self):
-        self._send_buf = queue.Queue()
-        self._timer = None
-        self.v_header = None
-        self.a_header = None
-        self.v_complete = 0
-        self.a_complete = 0
-        self.v_cur = -1
-        self.a_cur = -1
-        self.v_frame = None
-        self.a_frame = None
-        self.v_fec = None
-        self.a_fec = None
+    """Base Class for AV Receiver."""
 
-    def set_headers(self, video: bytes, audio: bytes):
-        """Set AV Headers."""
-        self.v_header = video
-        self.a_header = audio
+    def handle_video(self, frame: bytes):
+        """Handle video frame."""
+        raise NotImplementedError
 
-    # def handle_av(self, msg: bytes):
-    #     is_video = from_b(msg[:1]) & 0x0F == HEADER_TYPE_VIDEO
-    #     data = parse_av_packet_v9(msg, is_video)
-    #     data["data"] = self.stream.cipher.decrypt(data["data"], data["key_pos"])
-    #     if is_video:
-    #         self.handle_video(data)
-    #     else:
-    #         self.handle_audio(data)
+    def close(self):
+        """Close Receiver."""
+        raise NotImplementedError
 
-    # def handle_video(self, data):
-    #     if data['frame_index'] == self.v_cur:
-    #         if self.v_frame is not None:
-    #             self.v_frame.add_packet(data)
-    #     else:
-    #         if data['frame_index'] > self.v_cur + 1 and self.v_frame is not None and not self.v_frame.complete and self.v_cur >= 0:
-    #             _LOGGER.error("Unfinished frame: %s Got frame: %s", self.v_cur, data['frame_index'])
-    #         self.v_cur = data['frame_index']
-    #         self._timer = time.time()
-    #         self.v_frame = VideoFrame(data, self.handle_video_frame)
 
-    # def handle_audio(self, data):
-    #     pass
+class AVFileReceiver(AVReceiver):
+    """Writes AV to file."""
 
-    def handle_video(self, packet):
-        with open("test.h264", "ab") as f:
-            if packet.unit_index == 0:
-                f.write(self.v_header)
-            if packet.unit_index < packet.frame_meta['units']['src']:
-                f.write(packet.data)
+    def worker(stop_event, dest_file, v_queue):
+        _LOGGER.debug("File Receiver Started")
+        with open(dest_file, "wb") as _file:
+            while not stop_event.is_set():
+                buf = v_queue.get()
+                frame = buf.getvalue()
+                written = _file.write(frame)
+                _LOGGER.debug("File Receiver wrote: %s", written)
 
-        # self.v_frame = None
-        # self.v_complete += 1
-        # self.v_cur += 1
-        # fps = 1/(time.time() - self._timer)
-        # _LOGGER.debug("Completed Video Frames %s/%s; FPS: %s", self.v_complete, self.v_cur, fps)
+    def __init__(self, ctrl, av_file=None):
+        self._ctrl = ctrl
+        self._worker = None
+        self.file = av_file
+        self.v_queue = queue.Queue()
+        self.start()
+
+    def start(self):
+        if self.file is None:
+            self.file = "rp_av.h264"
+        self._worker = threading.Thread(
+            target=AVFileReceiver.worker,
+            args=(self._ctrl._stop_event, self.file, self.v_queue),
+        )
+        self._worker.start()
+
+    def handle_video(self, buf):
+        self.v_queue.put(buf)
+
+    def close(self):
+        pass
