@@ -1,5 +1,7 @@
 """Constants for pyremoteplay."""
 
+PROFILE_DIR = ".pyremoteplay"
+PROFILE_FILE = ".profile.json"
 RP_PORT = 9295
 USER_AGENT = "remoteplay Windows"
 RP_VERSION = "10.0"

@@ -14,9 +14,6 @@ from .ctrl import CTRL
 from .oauth import prompt as oauth_prompt
 from .register import register
 
-PROFILE_DIR = ".pyremoteplay"
-PROFILE_FILE = ".profile.json"
-
 NEW_PROFILE = "New Profile"
 CANCEL = "Cancel"
 logging.basicConfig(level=logging.WARNING)
