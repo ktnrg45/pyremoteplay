@@ -2,9 +2,7 @@
 
 import argparse
 import curses
-import json
 import logging
-import pathlib
 import sys
 from collections import OrderedDict
 
@@ -13,6 +11,7 @@ from pyps4_2ndscreen.ddp import get_status
 from .ctrl import CTRL
 from .oauth import prompt as oauth_prompt
 from .register import register
+from .util import get_profiles, write_profiles
 
 NEW_PROFILE = "New Profile"
 CANCEL = "Cancel"
@@ -35,38 +34,6 @@ def main():
         register_profile(host, path)
         return
     cli(host, path)
-
-
-def get_profiles(path=None) -> list:
-    """Return Profiles."""
-    data = []
-    if not path:
-        dir_path = pathlib.Path.home() / PROFILE_DIR
-        if not dir_path.is_dir():
-            dir_path.mkdir()
-        path = dir_path / PROFILE_FILE
-        if not path.is_file():
-            with open(path, "w") as _file:
-                json.dump({}, _file)
-    else:
-        path = pathlib.Path(path)
-    if not path.is_file():
-        print("File not found")
-        return data
-    with open(path, "r") as _file:
-        data = json.load(_file)
-    return data
-
-
-def write_profile(profile: dict, path: str):
-    """Write profile data."""
-    if not path:
-        path = pathlib.Path.home() / PROFILE_DIR / PROFILE_FILE
-    else:
-        path = pathlib.Path(path)
-
-    with open(path, "w") as _file:
-        json.dump(profile, _file)
 
 
 def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
@@ -134,7 +101,7 @@ def register_profile(host: str, path: str):
             }
         }
         profiles.update(profile)
-        write_profile(profiles, path)
+        write_profiles(profiles, path)
 
     user_id = profiles[name]["id"]
     if not user_id:
@@ -159,7 +126,7 @@ def register_profile(host: str, path: str):
         if f"{h_type}-RegistKey" in list(data.keys()):
             profiles[name]["hosts"][mac_address]["type"] = h_type
             break
-    write_profile(profiles, path)
+    write_profiles(profiles, path)
 
 
 def cli(host: str, path: str):

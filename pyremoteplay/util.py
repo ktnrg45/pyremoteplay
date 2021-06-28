@@ -1,11 +1,46 @@
 """Utility Methods."""
 import inspect
+import json
 import logging
+import pathlib
 import select
 import time
 from binascii import hexlify
 
+from .const import PROFILE_DIR, PROFILE_FILE
+
 _LOGGER = logging.getLogger(__name__)
+
+def get_profiles(path=None) -> list:
+    """Return Profiles."""
+    data = []
+    if not path:
+        dir_path = pathlib.Path.home() / PROFILE_DIR
+        if not dir_path.is_dir():
+            dir_path.mkdir()
+        path = dir_path / PROFILE_FILE
+        if not path.is_file():
+            with open(path, "w") as _file:
+                json.dump({}, _file)
+    else:
+        path = pathlib.Path(path)
+    if not path.is_file():
+        print("File not found")
+        return data
+    with open(path, "r") as _file:
+        data = json.load(_file)
+    return data
+
+
+def write_profiles(profiles: dict, path: str):
+    """Write profile data."""
+    if not path:
+        path = pathlib.Path.home() / PROFILE_DIR / PROFILE_FILE
+    else:
+        path = pathlib.Path(path)
+
+    with open(path, "w") as _file:
+        json.dump(profiles, _file)
 
 
 def log_bytes(name: str, data: bytes):
