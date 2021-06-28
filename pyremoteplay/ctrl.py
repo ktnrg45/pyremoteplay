@@ -341,7 +341,7 @@ class CTRL():
             _LOGGER.info("Aborting startup")
             return False
         if not self._init_attrs(status[2]):
-            _LOGGER.error("Error parsing profile")
+            _LOGGER.error("Profile is not registered with host")
             return False
         if not self.connect():
             _LOGGER.error("CTRL Failed Auth")

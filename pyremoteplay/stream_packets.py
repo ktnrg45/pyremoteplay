@@ -913,8 +913,8 @@ class ProtoHandler():
         msg = ProtoHandler.message()
         try:
             msg.ParseFromString(data)
-        except DecodeError:
-            log_bytes("Protobuf Error", data)
+        except (DecodeError, RuntimeWarning) as error:
+            log_bytes(f"Protobuf Error: {error}", data)
             return
         p_type = ProtoHandler.get_payload_type(msg)
         _LOGGER.debug("RECV Payload Type: %s", p_type)
