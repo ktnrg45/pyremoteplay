@@ -6,6 +6,8 @@ import time
 from io import BytesIO
 from pathlib import Path
 
+import av
+
 from .stream_packets import AVPacket, Packet
 from .util import from_b, log_bytes, to_b
 
@@ -48,11 +50,14 @@ class AVHandler():
 
     def worker(self):
         while not self._ctrl._stop_event.is_set():
-            msg = self._queue.get()
+            try:
+                msg = self._queue.get(timeout=1)
+            except queue.Empty:
+                time.sleep(0.01)
+                continue
             packet = Packet.parse(msg)
             packet.decrypt(self._cipher)
             _LOGGER.debug(packet)
-            log_bytes("AV Data", packet.data)
             if packet.type == AVPacket.Type.VIDEO:
                 self._handle_video(packet)
             else:
@@ -115,15 +120,6 @@ class AVReceiver():
 class AVFileReceiver(AVReceiver):
     """Writes AV to file."""
 
-    def worker(stop_event, dest_file, v_queue):
-        _LOGGER.debug("File Receiver Started")
-        with open(dest_file, "wb") as _file:
-            while not stop_event.is_set():
-                buf = v_queue.get()
-                frame = buf.getvalue()
-                written = _file.write(frame)
-                _LOGGER.debug("File Receiver wrote: %s", written)
-
     def __init__(self, ctrl, av_file=None):
         self._ctrl = ctrl
         self._worker = None
@@ -135,13 +131,43 @@ class AVFileReceiver(AVReceiver):
         if self.file is None:
             self.file = "rp_av.h264"
         self._worker = threading.Thread(
-            target=AVFileReceiver.worker,
-            args=(self._ctrl._stop_event, self.file, self.v_queue),
+            target=self.worker,
         )
         self._worker.start()
 
     def handle_video(self, buf):
         self.v_queue.put(buf)
+
+    def worker(self):
+        _LOGGER.debug("File Receiver Started")
+        output = av.open(self.file, 'w')
+        stream = output.add_stream('h264')
+        # codec = av.codec.Codec("h264")
+        # ctx = codec.create()
+        # ctx.width = 1920
+        # ctx.height = 1080
+        # ctx.bit_rate = 10000
+        pts = -1
+        while not self._ctrl._stop_event.is_set():
+            try:
+                buf = self.v_queue.get(timeout=1)
+            except queue.Empty:
+                time.sleep(0.01)
+                continue
+            frame = buf.getvalue()
+            packet = av.packet.Packet(len(frame))
+            packet.update(frame)
+            packet.stream = stream
+            pts += 1
+            packet.pts = pts
+            _LOGGER.debug(packet)
+            output.mux(packet)
+
+        # flush
+        packet = stream.encode(None)
+        output.mux(packet)
+
+        output.close()
 
     def close(self):
         pass

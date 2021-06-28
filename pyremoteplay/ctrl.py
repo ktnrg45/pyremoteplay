@@ -124,14 +124,15 @@ class CTRL():
         KEYBOARD_TEXT_CHANGE_RES = 0x24
         KEYBOARD_CLOSE_REQ = 0x25
 
-    def __init__(self, host: str, regist_data: dict, av_receiver=None):
+    def __init__(self, host: str, profile: dict, av_receiver=None):
         self._host = host
-        self._regist_data = regist_data["data"]
+        self._profile = profile
+        self._regist_data = {}
         self._session_id = b''
         self._type = ""
         self._mac_address = ""
         self._name = ""
-        self._creds = regist_data["id"]
+        self._creds = ""
         self._regist_key = None
         self._rp_key = None
         self._sock = None
@@ -145,14 +146,21 @@ class CTRL():
         self.av_receiver = av_receiver(self) if av_receiver is not None else None
         self.av_handler = AVHandler(self)
 
+        self._get_creds()
         self.controller_ready_event.clear()
-        self._init_attrs()
 
-    def _init_attrs(self):
-        """Init Class attrs."""
+    def _get_creds(self):
+        creds = self._profile["id"]
         self._creds = SHA256.new(
-            str(int.from_bytes(b64decode(self._creds), "little")).encode()
+            str(int.from_bytes(b64decode(creds), "little")).encode()
         ).hexdigest()
+
+    def _init_attrs(self, mac_address):
+        """Init Class attrs."""
+        regist_data = self._profile["hosts"].get(mac_address)
+        if not regist_data:
+            return False
+        self._regist_data = regist_data["data"]
 
         _regist_str = "".join(list(self._regist_data.keys()))
         if TYPE_PS4 in _regist_str:
@@ -164,6 +172,7 @@ class CTRL():
         self._name = self._regist_data[f"{self.type}-Nickname"]
         self._regist_key = self._regist_data[f"{self.type}-RegistKey"]
         self._rp_key = bytes.fromhex(self._regist_data["RP-Key"])
+        return True
 
     def _init_ctrl(self) -> requests.models.Response:
         """Init Connect."""
@@ -197,11 +206,12 @@ class CTRL():
         device = get_status(self._host)
         if not device:
             _LOGGER.error("Could not detect host at: %s", self._host)
-            return (False, False)
+            return (False, False, None)
+        mac_address = device.get("host-id")
         if device.get("status_code") != 200:
             _LOGGER.info("Host: %s is not on", self._host)
-            return (True, False)
-        return (True, True)
+            return (True, False, mac_address)
+        return (True, True, mac_address)
 
     def _get_ctrl_headers(self, nonce: bytes) -> dict:
         """Return CTRL headers."""
@@ -237,6 +247,17 @@ class CTRL():
 
     def _handle(self, data: bytes):
         """Handle Data."""
+        def invalid_session_id(session_id: bytes) -> bytes:
+            """Return a valid session id."""
+            for index in range(1, len(session_id)):
+                try:
+                    new_id = session_id[index:]
+                    new_id.decode()
+                    break
+                except UnicodeDecodeError:
+                    continue
+            return new_id
+
         log_bytes("CTRL RECV Data", data)
         payload = data[8:]
         if payload:
@@ -264,9 +285,11 @@ class CTRL():
                 session_id.decode()
             except UnicodeDecodeError:
                 _LOGGER.warning("CTRL RECV Malformed Session ID")
-                self.stop()
-                return
-            self._session_id = session_id
+                session_id = invalid_session_id(session_id)
+                # self.stop()
+                # return
+            finally:
+                self._session_id = session_id
             self.start_stream()
 
         if time.time() - self._hb_last > 5:
@@ -317,7 +340,9 @@ class CTRL():
                 _LOGGER.info("Sent Wakeup to host")
             _LOGGER.info("Aborting startup")
             return False
-
+        if not self._init_attrs(status[2]):
+            _LOGGER.error("Error parsing profile")
+            return False
         if not self.connect():
             _LOGGER.error("CTRL Failed Auth")
             return False

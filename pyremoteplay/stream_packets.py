@@ -516,6 +516,11 @@ class AVPacket(PacketSection):
         return self._unit_index
 
     @property
+    def frame_length(self) -> int:
+        """Return the length of units."""
+        return self._frame_meta['units']['total']
+
+    @property
     def frame_length_src(self) -> int:
         """Return the length of src units."""
         return self._frame_meta['units']['src']
@@ -534,6 +539,11 @@ class AVPacket(PacketSection):
     def adapative_stream_index(self) -> int:
         """Return the Adaptive Stream Index."""
         return self._adapative_stream_index
+
+    @property
+    def is_last(self) -> bool:
+        """Return True if packet is the last packet."""
+        return self.unit_index == self.frame_length - 1
 
     @property
     def is_last_src(self) -> bool:

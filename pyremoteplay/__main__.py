@@ -8,7 +8,8 @@ import pathlib
 import sys
 from collections import OrderedDict
 
-from .av import AVFileReceiver
+from pyps4_2ndscreen.ddp import get_status
+
 from .ctrl import CTRL
 from .oauth import prompt as oauth_prompt
 from .register import register
@@ -100,7 +101,14 @@ def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
 
 def register_profile(host: str, path: str):
     """Register with host."""
-    name = ""
+    status = get_status(host)
+    if not status:
+        print("Host is not reachable")
+        return
+    if status.get("status_code") != 200:
+        return
+    mac_address = status.get("host-id")
+
     profiles = get_profiles(path)
     if profiles:
         name = select_profile(profiles, False, True)
@@ -112,12 +120,20 @@ def register_profile(host: str, path: str):
         if not isinstance(user_id, str) and not user_id:
             _LOGGER.error("Invalid user id")
             sys.exit()
-        name = str(input("Enter a Name for profile:\n>> "))
+        name = ""
+        while not name:
+            name = str(input("Enter a Name for profile:\n>> "))
+            if not name:
+                print("Invalid Name")
         profile = {
             name: {
                 "id": user_id,
-                "type": None,
-                "data": {},
+                "hosts": {
+                    mac_address: {
+                        "type": None,
+                        "data": {},
+                    }
+                }
             }
         }
         profiles.update(profile)
@@ -141,10 +157,10 @@ def register_profile(host: str, path: str):
     data = register(host, user_id, pin)
     if not data:
         sys.exit()
-    profiles[name]["data"].update(data)
+    profiles[name]["hosts"][mac_address]["data"].update(data)
     for h_type in ["PS4", "PS5"]:
         if f"{h_type}-RegistKey" in list(data.keys()):
-            profiles[name]["type"] = h_type
+            profiles[name]["hosts"][mac_address]["type"] = h_type
             break
     write_profile(profiles, path)
 
@@ -153,8 +169,8 @@ def cli(host: str, path: str):
     profiles = get_profiles(path)
     if profiles:
         name = select_profile(profiles, True, True)
-        data = profiles[name]
-        ctrl = CTRL(host, data, AVFileReceiver)
+        profile = profiles[name]
+        ctrl = CTRL(host, profile)
         if not ctrl.start():
             return
         instance = CLIInstance(ctrl)

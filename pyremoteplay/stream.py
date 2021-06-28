@@ -71,8 +71,8 @@ class RPStream():
         """Connect socket to Host."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(0)
-        # a_rwnd = format_bytes(A_RWND)
-        # sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, a_rwnd)
+        a_rwnd = bytes(A_RWND)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, a_rwnd)
         self._protocol = sock
         self._state = RPStream.STATE_INIT
         self._worker = threading.Thread(
