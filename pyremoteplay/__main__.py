@@ -136,6 +136,7 @@ def cli(host: str, path: str):
         profile = profiles[name]
         ctrl = CTRL(host, profile)
         if not ctrl.start():
+            _LOGGER.error(ctrl.error)
             return
         instance = CLIInstance(ctrl)
         ctrl.controller_ready_event.wait(5)

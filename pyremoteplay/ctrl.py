@@ -141,6 +141,7 @@ class CTRL():
         self._cipher = None
         self._state = CTRL.STATE_INIT
         self._stream = None
+        self.error = ""
         self.controller_ready_event = threading.Event()
         self.controller = None
         self.av_receiver = av_receiver(self) if av_receiver is not None else None
@@ -191,10 +192,12 @@ class CTRL():
         if response.status_code != 200:
             reason = response.headers.get("RP-Application-Reason")
             reason = int.from_bytes(bytes.fromhex(reason), "big")
+            reason = RP_ERROR(reason)
             _LOGGER.error(
                 "Failed to Init CTRL; Reason: %s",
-                RP_ERROR(reason),
+                reason,
             )
+            self.error = reason
         nonce = response.headers.get("RP-Nonce")
         if nonce is not None:
             nonce = b64decode(nonce.encode())
@@ -316,7 +319,7 @@ class CTRL():
         """Set host to standby."""
         msg = self._build_msg(CTRL.MessageType.STANDBY)
         self.send(msg)
-        _LOGGER.info("Sending Standby.")
+        _LOGGER.info("Sending Standby")
         self.stop()
 
     def send(self, data: bytes):
@@ -332,19 +335,19 @@ class CTRL():
         """Start CTRL/RP Session."""
         status = self._check_host()
         if not status[0]:
-            _LOGGER.info("Aborting startup")
+            self.error = f"Host @ {self._host} is not reachable."
             return False
         if not status[1]:
             if wakeup:
                 self.wakeup()
                 _LOGGER.info("Sent Wakeup to host")
-            _LOGGER.info("Aborting startup")
+                self.error = "Host is in Standby. Attempting to wakeup."
             return False
         if not self._init_attrs(status[2]):
-            _LOGGER.error("Profile is not registered with host")
+            self.error = "Profile is not registered with host"
             return False
         if not self.connect():
-            _LOGGER.error("CTRL Failed Auth")
+            _LOGGER.error("CTRL Auth Failed")
             return False
         _LOGGER.info("CTRL Auth Success")
         self._state = CTRL.STATE_READY
