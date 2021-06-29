@@ -43,21 +43,30 @@ RESOLUTION_PRESETS = {
     '1080p': RESOLUTION_1080P,
 }
 
-FPS_PRESETS = {
-    'fps_30': 30,
-    'fps_60': 60,
-}
+
+class FPS(IntEnum):
+    """Enum for FPS."""
+    LOW = 30
+    HIGH = 60
+
+    def preset(fps) -> int:
+        """Return FPS Value."""
+        if isinstance(fps, str):
+            return FPS[fps.upper()].value
+        if isinstance(fps, int):
+            return FPS(fps).value
+
 
 class Resolution(IntEnum):
+    """Enum for resolution."""
     RESOLUTION_360P = 1
     RESOLUTION_540P = 2
     RESOLUTION_720P = 3
     RESOLUTION_1080P = 4
 
-    def preset(resolution=None, index=None) -> dict:
+    def preset(resolution) -> dict:
         """Return Resolution preset dict."""
-        if resolution:
+        if isinstance(resolution, str):
             return RESOLUTION_PRESETS[Resolution[f"RESOLUTION_{resolution}".upper()].name.replace("RESOLUTION_", "").lower()]
-        elif index:
+        if isinstance(resolution, int):
             return RESOLUTION_PRESETS[Resolution(index).name.replace("RESOLUTION_", "").lower()]
-        raise ValueError("No Resolution Specified")

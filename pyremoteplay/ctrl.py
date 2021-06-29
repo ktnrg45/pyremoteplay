@@ -12,8 +12,8 @@ from Cryptodome.Random import get_random_bytes
 from pyps4_2ndscreen.ddp import get_status, wakeup
 
 from .av import AVFileReceiver, AVHandler
-from .const import (OS_TYPE, RP_CRYPT_SIZE, RP_PORT, RP_VERSION, TYPE_PS4,
-                    TYPE_PS5, USER_AGENT)
+from .const import (FPS, OS_TYPE, RP_CRYPT_SIZE, RP_PORT, RP_VERSION, TYPE_PS4,
+                    TYPE_PS5, USER_AGENT, Resolution)
 from .crypt import RPCipher
 from .errors import RemotePlayError, RPErrorHandler
 from .feedback import Controller
@@ -124,7 +124,14 @@ class CTRL():
         KEYBOARD_TEXT_CHANGE_RES = 0x24
         KEYBOARD_CLOSE_REQ = 0x25
 
-    def __init__(self, host: str, profile: dict, resolution="720p", av_receiver=None):
+    def __repr__(self):
+        return (
+            f"<RP CTRL host={self._host} "
+            f"resolution={self.resolution} "
+            f"fps={self.fps}>"
+        )
+
+    def __init__(self, host: str, profile: dict, resolution="720p", fps="high", av_receiver=None):
         self._host = host
         self._profile = profile
         self._regist_data = {}
@@ -141,6 +148,8 @@ class CTRL():
         self._cipher = None
         self._state = CTRL.STATE_INIT
         self._stream = None
+        self.fps = FPS.preset(fps)
+        self.resolution = Resolution.preset(resolution)
         self.error = ""
         self.controller_ready_event = threading.Event()
         self.controller = None

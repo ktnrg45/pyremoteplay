@@ -1,10 +1,10 @@
 """AV for pyremoteplay."""
+import fractions
 import logging
 import queue
 import threading
 import time
 from io import BytesIO
-from pathlib import Path
 
 import av
 
@@ -108,6 +108,27 @@ class AVHandler():
 class AVReceiver():
     """Base Class for AV Receiver."""
 
+    def __init__(self, ctrl):
+        self._ctrl = ctrl
+        self.encoder = None
+
+    def get_encoder(self):
+        """Get Codec Context for encoder."""
+        codec = av.CodecContext.create("libx264", "w")
+        codec.width = self._ctrl.resolution["width"]
+        codec.height = self._ctrl.resolution["height"]
+        codec.bit_rate = self._ctrl.resolution["bitrate"]
+        codec.pix_fmt = "yuv420p"
+        codec.framerate = fractions.Fraction(self._ctrl.fps, 1)
+        codec.time_base = fractions.Fraction(1, self._ctrl.fps)
+        codec.options = {
+            "profile": "baseline",
+            "level": "31",
+            "tune": "zerolatency",
+        }
+        codec.open()
+        self.encoder = codec
+
     def handle_video(self, frame: bytes):
         """Handle video frame."""
         raise NotImplementedError
@@ -121,8 +142,10 @@ class AVFileReceiver(AVReceiver):
     """Writes AV to file."""
 
     def __init__(self, ctrl, av_file=None):
+        super().__init__(ctrl)
         self._ctrl = ctrl
         self._worker = None
+        self.codec = None
         self.file = av_file
         self.v_queue = queue.Queue()
         self.start()
@@ -133,7 +156,7 @@ class AVFileReceiver(AVReceiver):
         self._worker = threading.Thread(
             target=self.worker,
         )
-        self._worker.start()
+        #self._worker.start()
 
     def handle_video(self, buf):
         self.v_queue.put(buf)
