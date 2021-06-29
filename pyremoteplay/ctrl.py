@@ -124,7 +124,7 @@ class CTRL():
         KEYBOARD_TEXT_CHANGE_RES = 0x24
         KEYBOARD_CLOSE_REQ = 0x25
 
-    def __init__(self, host: str, profile: dict, av_receiver=None):
+    def __init__(self, host: str, profile: dict, resolution="720p", av_receiver=None):
         self._host = host
         self._profile = profile
         self._regist_data = {}

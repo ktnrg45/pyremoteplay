@@ -15,6 +15,7 @@ from .util import get_profiles, write_profiles
 
 NEW_PROFILE = "New Profile"
 CANCEL = "Cancel"
+RESOLUTIONS = ["360p", "540p", "720p", "1080p"]
 logging.basicConfig(level=logging.WARNING)
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,17 +24,19 @@ def main():
     """Main entrypoint."""
     parser = argparse.ArgumentParser(description='Start Remote Play.')
     parser.add_argument('host', type=str, help="IP address of Remote Play host")
-    parser.add_argument('-r', '--register', action="store_true", help='Register with Remote Play host.')
+    parser.add_argument('-r', '--resolution', default="720p", type=str, choices=RESOLUTIONS, help="Resolution to use")
+    parser.add_argument('--register', action="store_true", help='Register with Remote Play host.')
     parser.add_argument('-p', '--path', type=str, help='Path to PSN profile config.')
     args = parser.parse_args()
     host = args.host
     path = args.path
     should_register = args.register
+    resolution = args.resolution
 
     if should_register:
         register_profile(host, path)
         return
-    cli(host, path)
+    cli(host, path, resolution)
 
 
 def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
@@ -129,12 +132,12 @@ def register_profile(host: str, path: str):
     write_profiles(profiles, path)
 
 
-def cli(host: str, path: str):
+def cli(host: str, path: str, resolution: str):
     profiles = get_profiles(path)
     if profiles:
         name = select_profile(profiles, True, True)
         profile = profiles[name]
-        ctrl = CTRL(host, profile)
+        ctrl = CTRL(host, profile, resolution=resolution)
         if not ctrl.start():
             _LOGGER.error(ctrl.error)
             return

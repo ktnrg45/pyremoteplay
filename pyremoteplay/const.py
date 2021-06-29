@@ -1,4 +1,5 @@
 """Constants for pyremoteplay."""
+from enum import IntEnum
 
 PROFILE_DIR = ".pyremoteplay"
 PROFILE_FILE = ".profile.json"
@@ -39,10 +40,24 @@ RESOLUTION_PRESETS = {
     '360p': RESOLUTION_360P,
     '540p': RESOLUTION_540P,
     '720p': RESOLUTION_720P,
-    '1080p': RESOLUTION_1080P
+    '1080p': RESOLUTION_1080P,
 }
 
 FPS_PRESETS = {
     'fps_30': 30,
     'fps_60': 60,
 }
+
+class Resolution(IntEnum):
+    RESOLUTION_360P = 1
+    RESOLUTION_540P = 2
+    RESOLUTION_720P = 3
+    RESOLUTION_1080P = 4
+
+    def preset(resolution=None, index=None) -> dict:
+        """Return Resolution preset dict."""
+        if resolution:
+            return RESOLUTION_PRESETS[Resolution[f"RESOLUTION_{resolution}".upper()].name.replace("RESOLUTION_", "").lower()]
+        elif index:
+            return RESOLUTION_PRESETS[Resolution(index).name.replace("RESOLUTION_", "").lower()]
+        raise ValueError("No Resolution Specified")

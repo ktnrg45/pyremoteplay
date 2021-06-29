@@ -10,7 +10,7 @@ from struct import pack_into
 from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
 
-from .const import FPS_PRESETS, RESOLUTION_PRESETS
+from .const import FPS_PRESETS, Resolution
 from .crypt import StreamECDH
 from .stream_packets import (AVPacket, Chunk, FeedbackPacket, Header, Packet,
                              ProtoHandler, UnexpectedMessage, get_launch_spec)
@@ -39,7 +39,7 @@ class RPStream():
     STATE_INIT = "init"
     STATE_READY = "ready"
 
-    def __init__(self, host: str, stop_event, ctrl, resolution="1080p", rtt=None, mtu=None, is_test=False, cb_stop=None):
+    def __init__(self, host: str, stop_event, ctrl, resolution="720p", rtt=None, mtu=None, is_test=False, cb_stop=None):
         self._host = host
         self._port = STREAM_PORT if not is_test else TEST_STREAM_PORT
         self._ctrl = ctrl
@@ -60,8 +60,8 @@ class RPStream():
         self.cipher = None
         self.proto = ProtoHandler(self)
         self.av_handler = ctrl.av_handler
-        self.resolution = RESOLUTION_PRESETS.get(resolution)
-        self.max_fps = 60
+        self.resolution = Resolution.preset(resolution)
+        self.max_fps = FPS_PRESETS["fps_30"]
         self.rtt = rtt if rtt is not None else DEFAULT_RTT
         self.mtu = mtu if mtu is not None else DEFAULT_MTU
         self.stream_info = None
