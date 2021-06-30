@@ -400,6 +400,8 @@ class CTRL():
         """Stop Stream."""
         self._stop_event.set()
         self._state = CTRL.STATE_STOP
+        if self.av_receiver is not None:
+            self.av_receiver.close()
 
     def init_controller(self):
         self.controller = Controller(self._stream, self._stop_event)

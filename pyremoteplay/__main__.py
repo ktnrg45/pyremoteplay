@@ -8,6 +8,7 @@ from collections import OrderedDict
 
 from pyps4_2ndscreen.ddp import get_status
 
+from .av import AVFileReceiver
 from .ctrl import CTRL
 from .oauth import prompt as oauth_prompt
 from .register import register
@@ -29,19 +30,23 @@ def main():
     parser.add_argument('-f', '--fps', default="high", type=str, choices=FPS_CHOICES, help="Max FPS to use")
     parser.add_argument('--register', action="store_true", help='Register with Remote Play host.')
     parser.add_argument('-p', '--path', type=str, help='Path to PSN profile config.')
+    parser.add_argument('-o', '--output', action="store_true", help='Output stream to file')
     args = parser.parse_args()
     host = args.host
     path = args.path
     should_register = args.register
     resolution = args.resolution
+    output = args.output
     fps = args.fps
     if fps.isnumeric():
         fps = int(fps)
+    if output:
+        av_receiver = AVFileReceiver
 
     if should_register:
         register_profile(host, path)
         return
-    cli(host, path, resolution, fps)
+    cli(host, path, resolution, fps, av_receiver)
 
 
 def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
@@ -137,13 +142,13 @@ def register_profile(host: str, path: str):
     write_profiles(profiles, path)
 
 
-def cli(host: str, path: str, resolution: str, fps: str):
+def cli(host: str, path: str, resolution: str, fps: str, av_receiver=None):
     print(fps)
     profiles = get_profiles(path)
     if profiles:
         name = select_profile(profiles, True, True)
         profile = profiles[name]
-        ctrl = CTRL(host, profile, resolution=resolution, fps=fps)
+        ctrl = CTRL(host, profile, resolution=resolution, fps=fps, av_receiver=av_receiver)
         print(ctrl)
         if not ctrl.start():
             _LOGGER.error(ctrl.error)

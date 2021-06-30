@@ -1,4 +1,5 @@
 """AV for pyremoteplay."""
+import abc
 import fractions
 import logging
 import queue
@@ -31,6 +32,12 @@ class AVHandler():
         self._v_lock = threading.Lock()
         self._queue = queue.Queue()
         self._worker = None
+
+        self.start_receiver()
+
+    def start_receiver(self):
+        if self._receiver:
+            self._receiver.start()
 
     def set_cipher(self, cipher):
         self._cipher = cipher
@@ -105,29 +112,33 @@ class AVHandler():
         return self._a_frame
 
 
-class AVReceiver():
+class AVReceiver(abc.ABC):
     """Base Class for AV Receiver."""
 
     def __init__(self, ctrl):
         self._ctrl = ctrl
         self.encoder = None
+        self.decoder = None
 
-    def get_encoder(self):
-        """Get Codec Context for encoder."""
-        codec = av.CodecContext.create("libx264", "w")
-        codec.width = self._ctrl.resolution["width"]
-        codec.height = self._ctrl.resolution["height"]
-        codec.bit_rate = self._ctrl.resolution["bitrate"]
-        codec.pix_fmt = "yuv420p"
-        codec.framerate = fractions.Fraction(self._ctrl.fps, 1)
-        codec.time_base = fractions.Fraction(1, self._ctrl.fps)
-        codec.options = {
+    def get_codecs(self):
+        """Get Codec Contexts."""
+        dec_codec = av.CodecContext.create("h264", "r")
+        enc_codec = av.CodecContext.create("libx264", "w")
+        dec_codec.width = enc_codec.width = self._ctrl.resolution["width"]
+        enc_codec.height = enc_codec.height = self._ctrl.resolution["height"]
+        dec_codec.bit_rate = enc_codec.bit_rate = self._ctrl.resolution["bitrate"]
+        dec_codec.pix_fmt = enc_codec.pix_fmt = "yuv420p"
+        dec_codec.framerate = enc_codec.framerate = fractions.Fraction(self._ctrl.fps, 1)
+        dec_codec.time_base = enc_codec.time_base = fractions.Fraction(1, self._ctrl.fps)
+        enc_codec.options = {
             "profile": "baseline",
             "level": "31",
             "tune": "zerolatency",
         }
-        codec.open()
-        self.encoder = codec
+        enc_codec.open()
+        dec_codec.open()
+        self.encoder = enc_codec
+        self.decoder = dec_codec
 
     def handle_video(self, frame: bytes):
         """Handle video frame."""
@@ -145,32 +156,23 @@ class AVFileReceiver(AVReceiver):
         super().__init__(ctrl)
         self._ctrl = ctrl
         self._worker = None
-        self.codec = None
         self.file = av_file
         self.v_queue = queue.Queue()
-        self.start()
 
     def start(self):
         if self.file is None:
-            self.file = "rp_av.h264"
+            self.file = "rp_output.h264"
         self._worker = threading.Thread(
             target=self.worker,
         )
-        #self._worker.start()
+        self._worker.start()
 
     def handle_video(self, buf):
         self.v_queue.put(buf)
 
     def worker(self):
         _LOGGER.debug("File Receiver Started")
-        output = av.open(self.file, 'w')
-        stream = output.add_stream('h264')
-        # codec = av.codec.Codec("h264")
-        # ctx = codec.create()
-        # ctx.width = 1920
-        # ctx.height = 1080
-        # ctx.bit_rate = 10000
-        pts = -1
+        output = open(self.file, 'wb')
         while not self._ctrl._stop_event.is_set():
             try:
                 buf = self.v_queue.get(timeout=1)
@@ -178,18 +180,35 @@ class AVFileReceiver(AVReceiver):
                 time.sleep(0.01)
                 continue
             frame = buf.getvalue()
-            packet = av.packet.Packet(len(frame))
-            packet.update(frame)
-            packet.stream = stream
-            pts += 1
-            packet.pts = pts
-            _LOGGER.debug(packet)
-            output.mux(packet)
+            output.write(frame)
+            # packet = av.packet.Packet(len(frame))
+            # packet.update(frame)
+            # pts += 1
+            # packet.pts = pts
+            # packet.time_base = self.decoder.time_base
+            # frames = self.decoder.decode(packet)
+            # packets = []
+            # for frame in frames:
+            #     packets.extend(self.encoder.encode(frame))
+            #     _LOGGER.debug(frame)
+            # for packet in packets:
+            #     packet.pts = pts
+            #     packet.time_base = self.decoder.time_base
+            #     output.write(packet.to_bytes())
+            #     _LOGGER.debug(packet)
+
+            #output.mux(packet)
 
         # flush
-        packet = stream.encode(None)
-        output.mux(packet)
-
+        # packet = stream.encode(None)
+        # output.mux(packet)
+        while True:
+            try:
+                buf = self.v_queue.get(timeout=1)
+            except queue.Empty:
+                break
+            frame = buf.getvalue()
+            output.write(frame)
         output.close()
 
     def close(self):
