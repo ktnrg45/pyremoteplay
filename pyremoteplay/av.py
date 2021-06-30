@@ -1,7 +1,6 @@
 """AV for pyremoteplay."""
 import abc
 import errno
-import fractions
 import logging
 import multiprocessing
 import queue
@@ -9,7 +8,6 @@ import threading
 import time
 from io import BytesIO
 
-import av
 import ffmpeg
 
 from .stream_packets import AVPacket, Packet
@@ -24,15 +22,8 @@ class AVHandler():
     def __init__(self, ctrl):
         self._ctrl = ctrl
         self._receiver = None
-        self._v_header = b''
-        self._a_header = b''
-        self._v_buf = BytesIO()
-        self._a_buf = BytesIO()
-        self._v_frame = -1
-        self._a_frame = -1
-        self._last_v_unit = -1
-        self._last_a_unit = -1
-        self._v_lock = threading.Lock()
+        self._v_stream = None
+        self._a_stream = None
         self._queue = queue.Queue()
         self._worker = None
 
@@ -52,8 +43,9 @@ class AVHandler():
 
     def set_headers(self, v_header, a_header):
         """Set headers."""
-        self._v_header = v_header
-        self._a_header = a_header
+        if self._receiver:
+            self._v_stream = AVStream(v_header, self._receiver.handle)
+            self._a_stream = AVStream(a_header, self._receiver.handle)
 
     def add_packet(self, packet):
         """Add Packet."""
@@ -68,53 +60,68 @@ class AVHandler():
                 continue
             packet = Packet.parse(msg)
             packet.decrypt(self._cipher)
-            _LOGGER.debug(packet)
-            if packet.type == AVPacket.Type.VIDEO:
-                self._handle_video(packet)
-            else:
-                self._handle_audio(packet)
+            self._handle(packet)
         self._receiver.close()
 
-    def _handle_video(self, packet: AVPacket):
-        # New Frame
-        if packet.frame_index != self.v_frame:
-            # First packet of Frame
-            if packet.unit_index == 0:
-                self._v_frame = packet.frame_index
-                self._last_v_unit = -1
-                self._v_buf = BytesIO()
-                self._v_buf.write(self._v_header)
-                _LOGGER.debug("Started New Frame: %s", self._v_frame)
-        # Current Frame not FEC
-        if not packet.is_fec:
-            # Packet is in order
-            if packet.unit_index == self._last_v_unit + 1:
-                self._last_v_unit += 1
-                written = self._v_buf.write(packet.data)
-                _LOGGER.debug("Wrote: %s. Packet Size: %s", written, len(packet.data))
-            else:
-                _LOGGER.info("Received unit out of order: %s, expected: %s", packet.unit_index, self._last_v_unit)
-            if packet.is_last_src:
-                _LOGGER.debug("Frame: %s finished with length: %s", self._v_frame, self._v_buf.tell())
-                self._receiver.handle_video(self._v_buf)
-
-    def _handle_audio(self, packet: AVPacket):
-        pass
+    def _handle(self, packet: AVPacket):
+        _LOGGER.debug(packet)
+        if not self._receiver:
+            return
+        if packet.type == AVPacket.Type.VIDEO:
+            stream = self._v_stream
+        else:
+            return
+            #stream = self._a_stream
+        stream.handle(packet)
 
     @property
     def has_receiver(self) -> bool:
         """Return True if receiver is not None."""
         return self._receiver is not None
 
-    @property
-    def v_frame(self) -> int:
-        """Return current video frame index."""
-        return self._v_frame
+
+class AVStream():
+    """AV Stream."""
+
+    def __init__(self, header: bytes, callback: callable):
+        self._callback = callback
+        self._header = header
+        self._buf = BytesIO()
+        self._frame = -1
+        self._last_unit = -1
+
+    def handle(self, packet: AVPacket):
+        """Handle Packet."""
+        # New Frame
+        if packet.frame_index != self.frame:
+            # First packet of Frame
+            if packet.unit_index == 0:
+                self._frame = packet.frame_index
+                self._last_unit = -1
+                self._buf = BytesIO()
+                self._buf.write(self._header)
+                _LOGGER.debug("Started New Frame: %s", self.frame)
+        # Current Frame not FEC
+        if not packet.is_fec:
+            # Packet is in order
+            if packet.unit_index == self.last_unit + 1:
+                self._last_unit += 1
+                self._buf.write(packet.data)
+            else:
+                _LOGGER.debug("Received unit out of order: %s, expected: %s", packet.unit_index, self.last_unit + 1)
+            if packet.is_last_src:
+                _LOGGER.debug("Frame: %s finished with length: %s", self.frame, self._buf.tell())
+                self._callback(self._buf)
 
     @property
-    def a_frame(self) -> int:
-        """Return current video frame index."""
-        return self._a_frame
+    def frame(self) -> int:
+        """Return Current Frame Index."""
+        return self._frame
+
+    @property
+    def last_unit(self) -> int:
+        """Return last unit."""
+        return self._last_unit
 
 
 class AVReceiver(abc.ABC):
@@ -122,31 +129,16 @@ class AVReceiver(abc.ABC):
 
     def __init__(self, ctrl):
         self._ctrl = ctrl
-        self.encoder = None
-        self.decoder = None
 
-    def get_codecs(self):
-        """Get Codec Contexts."""
-        dec_codec = av.CodecContext.create("h264", "r")
-        enc_codec = av.CodecContext.create("libx264", "w")
-        dec_codec.width = enc_codec.width = self._ctrl.resolution["width"]
-        enc_codec.height = enc_codec.height = self._ctrl.resolution["height"]
-        dec_codec.bit_rate = enc_codec.bit_rate = self._ctrl.resolution["bitrate"]
-        dec_codec.pix_fmt = enc_codec.pix_fmt = "yuv420p"
-        dec_codec.framerate = enc_codec.framerate = fractions.Fraction(self._ctrl.fps, 1)
-        dec_codec.time_base = enc_codec.time_base = fractions.Fraction(1, self._ctrl.fps)
-        enc_codec.options = {
-            "profile": "baseline",
-            "level": "31",
-            "tune": "zerolatency",
-        }
-        enc_codec.open()
-        dec_codec.open()
-        self.encoder = enc_codec
-        self.decoder = dec_codec
+    def notify_started(self):
+        self._ctrl.receiver_started.set()
 
-    def handle_video(self, frame: bytes):
+    def handle_video(self, buf: BytesIO):
         """Handle video frame."""
+        raise NotImplementedError
+
+    def handle_audio(self, buf: BytesIO):
+        """Handle audio frame."""
         raise NotImplementedError
 
     def close(self):
@@ -159,51 +151,75 @@ class AVFileReceiver(AVReceiver):
     def process(pipe, av_file):
         log = open("avfr.log", "w")
         log.write("AV File Receiver started\n")
-        output = open(av_file, "wb")
+
+        video = ffmpeg.input('pipe:', format='h264')
+        # audio = ffmpeg.input('pipe:', format='ogg')
+        process = (
+            ffmpeg
+            .concat(video)
+            .output(av_file, format='mp4', pix_fmt='yuv420p')
+            .overwrite_output()
+            .run_async(pipe_stdin=True)
+        )
+
         frame = 0
+
+        if process.poll() is None:
+            _LOGGER.info("FFMPEG Started")
+            pipe.send(1)
         while True:
             try:
                 data = pipe.recv_bytes()
-                written = output.write(data)
+                written = process.stdin.write(data)
                 frame += 1
+                _LOGGER.debug(f"File Receiver wrote: Frame {frame} {written} bytes\n")
                 log.write(f"File Receiver wrote: Frame {frame} {written} bytes\n")
             except KeyboardInterrupt:
                 break
             except Exception as err:
                 log.write(f"{err}\n")
                 break
+        process.stdin.write(b'')
+        process.stdin.close()
+        process.terminate()
         pipe.close()
+        process.wait()
         log.write("AV File Receiver stopping\n")
         log.close()
 
-    def __init__(self, ctrl, av_file="rp_output.h264"):
+    def __init__(self, ctrl):
         super().__init__(ctrl)
         self._ctrl = ctrl
         self._worker = None
-        self.file = av_file
+        self.file = None
         self.v_queue = queue.Queue()
-        self._send_pipe = None
+        self._pipe = None
 
     def start(self):
         _LOGGER.debug("File Receiver Starting")
         if self.file is None:
-            self.file = "rp_output.h264"
-        recv_pipe, send_pipe = multiprocessing.Pipe(duplex=False)
-        self._send_pipe = send_pipe
+            self.file = "rp_output.mp4"
+        recv_pipe, self._pipe = multiprocessing.Pipe()
         self._worker = multiprocessing.Process(
             target=AVFileReceiver.process,
             args=(recv_pipe, self.file),
+            daemon=True,
         )
         self._worker.start()
+        status = self._pipe.recv()
+        if status == 1:
+            _LOGGER.info("File Receiver started")
+            self.notify_started()
 
-    def handle_video(self, buf):
+    def handle(self, buf: BytesIO):
+        """Handle frame."""
         try:
-            self._send_pipe.send_bytes(buf.getvalue())
+            self._pipe.send_bytes(buf.getvalue())
         except Exception as error:
             if error.errno != errno.EPIPE and self._ctrl.state != self._ctrl.STATE_STOP:
                 _LOGGER.error("File Receiver error: %s", error)
                 _LOGGER.info("File Receiver closing pipe")
-                self._send_pipe.close()
+                self._pipe.close()
                 self._ctrl.stop()
 
     def worker(self):
@@ -217,27 +233,7 @@ class AVFileReceiver(AVReceiver):
                 continue
             frame = buf.getvalue()
             output.write(frame)
-            # packet = av.packet.Packet(len(frame))
-            # packet.update(frame)
-            # pts += 1
-            # packet.pts = pts
-            # packet.time_base = self.decoder.time_base
-            # frames = self.decoder.decode(packet)
-            # packets = []
-            # for frame in frames:
-            #     packets.extend(self.encoder.encode(frame))
-            #     _LOGGER.debug(frame)
-            # for packet in packets:
-            #     packet.pts = pts
-            #     packet.time_base = self.decoder.time_base
-            #     output.write(packet.to_bytes())
-            #     _LOGGER.debug(packet)
 
-            #output.mux(packet)
-
-        # flush
-        # packet = stream.encode(None)
-        # output.mux(packet)
         while True:
             try:
                 buf = self.v_queue.get(timeout=1)
@@ -248,4 +244,6 @@ class AVFileReceiver(AVReceiver):
         output.close()
 
     def close(self):
-        pass
+        if self._worker:
+            self._worker.terminate()
+            self._worker.close()

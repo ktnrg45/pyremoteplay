@@ -144,6 +144,7 @@ class CTRL():
         self._rp_key = None
         self._sock = None
         self._stop_event = threading.Event()
+        self.receiver_started = threading.Event()
         self._hb_last = 0
         self._cipher = None
         self._state = CTRL.STATE_INIT
@@ -399,6 +400,8 @@ class CTRL():
         cb_stop = self._cb_stop_test if test else None
         if not test and self.av_receiver:
             self.av_handler.add_receiver(self.av_receiver)
+            _LOGGER.info("Waiting for Receiver...")
+            self.receiver_started.wait()
         self._stream = RPStream(self._host, stop_event, self, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
         self._stream.connect()
 
