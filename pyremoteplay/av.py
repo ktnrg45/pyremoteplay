@@ -1,13 +1,16 @@
 """AV for pyremoteplay."""
 import abc
+import errno
 import fractions
 import logging
+import multiprocessing
 import queue
 import threading
 import time
 from io import BytesIO
 
 import av
+import ffmpeg
 
 from .stream_packets import AVPacket, Packet
 from .util import from_b, log_bytes, to_b
@@ -20,7 +23,7 @@ class AVHandler():
 
     def __init__(self, ctrl):
         self._ctrl = ctrl
-        self._receiver = ctrl.av_receiver
+        self._receiver = None
         self._v_header = b''
         self._a_header = b''
         self._v_buf = BytesIO()
@@ -33,10 +36,11 @@ class AVHandler():
         self._queue = queue.Queue()
         self._worker = None
 
-        self.start_receiver()
-
-    def start_receiver(self):
+    def add_receiver(self, receiver):
         if self._receiver:
+            raise RuntimeError("Cannot add Receiver more than once")
+        if receiver is not None:
+            self._receiver = receiver
             self._receiver.start()
 
     def set_cipher(self, cipher):
@@ -69,6 +73,7 @@ class AVHandler():
                 self._handle_video(packet)
             else:
                 self._handle_audio(packet)
+        self._receiver.close()
 
     def _handle_video(self, packet: AVPacket):
         # New Frame
@@ -151,24 +156,55 @@ class AVReceiver(abc.ABC):
 
 class AVFileReceiver(AVReceiver):
     """Writes AV to file."""
+    def process(pipe, av_file):
+        log = open("avfr.log", "w")
+        log.write("AV File Receiver started\n")
+        output = open(av_file, "wb")
+        frame = 0
+        while True:
+            try:
+                data = pipe.recv_bytes()
+                written = output.write(data)
+                frame += 1
+                log.write(f"File Receiver wrote: Frame {frame} {written} bytes\n")
+            except KeyboardInterrupt:
+                break
+            except Exception as err:
+                log.write(f"{err}\n")
+                break
+        pipe.close()
+        log.write("AV File Receiver stopping\n")
+        log.close()
 
-    def __init__(self, ctrl, av_file=None):
+    def __init__(self, ctrl, av_file="rp_output.h264"):
         super().__init__(ctrl)
         self._ctrl = ctrl
         self._worker = None
         self.file = av_file
         self.v_queue = queue.Queue()
+        self._send_pipe = None
 
     def start(self):
+        _LOGGER.debug("File Receiver Starting")
         if self.file is None:
             self.file = "rp_output.h264"
-        self._worker = threading.Thread(
-            target=self.worker,
+        recv_pipe, send_pipe = multiprocessing.Pipe(duplex=False)
+        self._send_pipe = send_pipe
+        self._worker = multiprocessing.Process(
+            target=AVFileReceiver.process,
+            args=(recv_pipe, self.file),
         )
         self._worker.start()
 
     def handle_video(self, buf):
-        self.v_queue.put(buf)
+        try:
+            self._send_pipe.send_bytes(buf.getvalue())
+        except Exception as error:
+            if error.errno != errno.EPIPE and self._ctrl.state != self._ctrl.STATE_STOP:
+                _LOGGER.error("File Receiver error: %s", error)
+                _LOGGER.info("File Receiver closing pipe")
+                self._send_pipe.close()
+                self._ctrl.stop()
 
     def worker(self):
         _LOGGER.debug("File Receiver Started")

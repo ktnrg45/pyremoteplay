@@ -260,14 +260,19 @@ class CTRL():
     def _handle(self, data: bytes):
         """Handle Data."""
         def invalid_session_id(session_id: bytes) -> bytes:
-            """Return a valid session id."""
-            for index in range(1, len(session_id)):
-                try:
-                    new_id = session_id[index:]
-                    new_id.decode()
-                    break
-                except UnicodeDecodeError:
-                    continue
+            """Return a valid session id.
+
+            Expecting a session id that is utf-8 but sometimes will receive
+            a session id with some utf-16 bytes mixed in.
+            Converts the utf-16 bytes to utf-8.
+
+            """
+            new_id = []
+            session_id = bytearray(session_id)
+            for char in session_id:
+                new_id.append(chr(char).encode())
+            new_id = b''.join(new_id)
+            log_bytes("New Session ID", new_id)
             return new_id
 
         log_bytes("CTRL RECV Data", data)
@@ -292,7 +297,6 @@ class CTRL():
                 return
             session_id = payload[2:]
             log_bytes("Session ID", session_id)
-            _LOGGER.debug(session_id)
             try:
                 session_id.decode()
             except UnicodeDecodeError:
@@ -393,15 +397,17 @@ class CTRL():
             return
         stop_event = self._stop_event if not test else threading.Event()
         cb_stop = self._cb_stop_test if test else None
+        if not test and self.av_receiver:
+            self.av_handler.add_receiver(self.av_receiver)
         self._stream = RPStream(self._host, stop_event, self, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
         self._stream.connect()
 
     def stop(self):
         """Stop Stream."""
+        if self.state == CTRL.STATE_STOP:
+            _LOGGER.debug("CTRL already stopping")
+            return
         self._stop_event.set()
-        self._state = CTRL.STATE_STOP
-        if self.av_receiver is not None:
-            self.av_receiver.close()
 
     def init_controller(self):
         self.controller = Controller(self._stream, self._stop_event)
