@@ -1,7 +1,7 @@
 """Stream for pyremoteplay."""
+import asyncio
 import base64
 import logging
-import queue
 import socket
 import threading
 import time
@@ -38,6 +38,22 @@ class RPStream():
     STATE_INIT = "init"
     STATE_READY = "ready"
 
+    class Protocol(asyncio.Protocol):
+
+        def __init__(self, stream):
+            self.transport = None
+            self.stream = stream
+
+        def connection_made(self, transport):
+            _LOGGER.debug("Connected Stream")
+            self.transport = transport
+
+        def datagram_received(self, data, addr):
+            self.stream._handle(data)
+
+        def sendto(self, data, addr):
+            self.transport.sendto(data, addr)
+
     def __init__(self, host: str, stop_event, ctrl, rtt=None, mtu=None, is_test=False, cb_stop=None):
         self._host = host
         self._port = STREAM_PORT if not is_test else TEST_STREAM_PORT
@@ -51,7 +67,6 @@ class RPStream():
         self._protocol = None
         self._stop_event = stop_event
         self._worker = None
-        self._send_buf = queue.Queue()
         self._cb_stop = cb_stop
         self._cb_ack = None
         self._cb_ack_tsn = 0
@@ -79,6 +94,11 @@ class RPStream():
             args=("Stream", self._protocol, self._handle, self._stop_event),
         )
         self._worker.start()
+        self._send_init()
+
+    async def async_connect(self):
+        """Connect Async."""
+        _, self._protocol = await self._ctrl.loop.create_datagram_endpoint(lambda: RPStream.Protocol(self), local_addr=("0.0.0.0", 0))
         self._send_init()
 
     def ready(self):

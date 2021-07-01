@@ -49,18 +49,22 @@ class Controller():
     def worker(self):
         self._started = True
         _LOGGER.info("Controller Started")
-        last = 0
         while not self._stop_event.is_set():
-            if self.has_sticks:
-                self._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
-                self._sequence_state += 1
-            if self._event_queue:
-                self.add_event_buffer(self._event_queue.pop(0))
-                data = b"".join(self._event_buf)
-                self._stream.send_feedback(FeedbackHeader.Type.EVENT, self.sequence_event, data=data)
-                self._sequence_event += 1
+            _LOGGER.info("Controller Running")
+            self.send()
             time.sleep(self.STATE_INTERVAL_MIN_MS)
         _LOGGER.info("Controller Stopped")
+
+    def send(self):
+        if self.has_sticks:
+            self._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
+            self._sequence_state += 1
+        if self._event_queue:
+            self.add_event_buffer(self._event_queue.pop(0))
+            data = b"".join(self._event_buf)
+            self._stream.send_feedback(FeedbackHeader.Type.EVENT, self.sequence_event, data=data)
+            self._sequence_event += 1
+
 
     def add_event_buffer(self, event: FeedbackEvent):
         """Append event to end of byte buf."""
@@ -87,6 +91,7 @@ class Controller():
             elif action == self.ACTION_TAP:
                 self.add_event_queue(FeedbackEvent(button, is_active=True))
                 self.add_event_queue(FeedbackEvent(button, is_active=False))
+            self.send()
 
     @property
     def sequence_event(self) -> int:

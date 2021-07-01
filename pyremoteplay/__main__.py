@@ -1,15 +1,17 @@
 """Main methods for pyyremoteplay"""
 
 import argparse
+import asyncio
 import curses
 import logging
 import sys
+import threading
 from collections import OrderedDict
 
 from pyps4_2ndscreen.ddp import get_status
 
 from .av import AVFileReceiver
-from .ctrl import CTRL
+from .ctrl import CTRL, CTRLAsync
 from .oauth import prompt as oauth_prompt
 from .register import register
 from .util import get_profiles, write_profiles
@@ -42,6 +44,8 @@ def main():
         fps = int(fps)
     if output:
         av_receiver = AVFileReceiver
+    else:
+        av_receiver = None
 
     if should_register:
         register_profile(host, path)
@@ -148,16 +152,33 @@ def cli(host: str, path: str, resolution: str, fps: str, av_receiver=None):
     if profiles:
         name = select_profile(profiles, True, True)
         profile = profiles[name]
-        ctrl = CTRL(host, profile, resolution=resolution, fps=fps, av_receiver=av_receiver)
-        print(ctrl)
-        if not ctrl.start():
-            _LOGGER.error(ctrl.error)
-            return
+        #ctrl = CTRL(host, profile, resolution=resolution, fps=fps, av_receiver=av_receiver)
+        # if not ctrl.start():
+        #     _LOGGER.error(ctrl.error)
+        #     return
+        ctrl = CTRLAsync(host, profile, resolution=resolution, fps=fps, av_receiver=av_receiver)
+        worker = threading.Thread(
+            target=async_start,
+            args=(ctrl,)
+        )
+        worker.start()
         instance = CLIInstance(ctrl)
-        ctrl.controller_ready_event.wait(5)
         curses.wrapper(start, instance)
+        worker.join()
     else:
         _LOGGER.info("No Profiles")
+
+
+def async_start(ctrl):
+    loop = asyncio.new_event_loop()
+    ctrl.loop = loop
+    task = loop.create_task(ctrl.start())
+    try:
+        loop.run_until_complete(task)
+        loop.run_forever()
+    except KeyboardInterrupt:
+        ctrl.stop()
+        loop.stop()
 
 
 def start(stdscr, instance):
@@ -271,5 +292,7 @@ class CLIInstance():
             self._ctrl.controller.button(key, "press")
             if key == "QUIT":
                 self._ctrl.stop()
+                self._ctrl.loop.stop()
+                sys.exit()
             elif key == "STANDBY":
                 self._ctrl.standby()

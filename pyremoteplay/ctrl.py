@@ -1,9 +1,11 @@
+import asyncio
 import logging
 import socket
 import threading
 import time
 from base64 import b64decode, b64encode
 from enum import IntEnum
+from functools import partial
 from struct import pack_into
 
 import requests
@@ -143,8 +145,6 @@ class CTRL():
         self._regist_key = None
         self._rp_key = None
         self._sock = None
-        self._stop_event = threading.Event()
-        self.receiver_started = threading.Event()
         self._hb_last = 0
         self._cipher = None
         self._state = CTRL.STATE_INIT
@@ -152,10 +152,13 @@ class CTRL():
         self.fps = FPS.preset(fps)
         self.resolution = Resolution.preset(resolution)
         self.error = ""
-        self.controller_ready_event = threading.Event()
         self.controller = None
         self.av_receiver = av_receiver(self) if av_receiver is not None else None
         self.av_handler = AVHandler(self)
+
+        self._stop_event = threading.Event()
+        self.receiver_started = threading.Event()
+        self.controller_ready_event = threading.Event()
 
         self._get_creds()
         self.controller_ready_event.clear()
@@ -303,8 +306,6 @@ class CTRL():
             except UnicodeDecodeError:
                 _LOGGER.warning("CTRL RECV Malformed Session ID")
                 session_id = invalid_session_id(session_id)
-                # self.stop()
-                # return
             finally:
                 self._session_id = session_id
             self.start_stream()
@@ -448,3 +449,81 @@ class CTRL():
     def session_id(self) -> bytes:
         """Return Session ID."""
         return self._session_id
+
+
+class CTRLAsync(CTRL):
+
+    class Protocol(asyncio.Protocol):
+
+        def __init__(self, ctrl):
+            self.transport = None
+            self.ctrl = ctrl
+
+        def connection_made(self, transport):
+            _LOGGER.debug("Connected")
+            self.transport = transport
+
+        def data_received(self, data):
+            self.ctrl._handle(data)
+
+
+
+    def __init__(self, host: str, profile: dict, resolution="720p", fps="high", av_receiver=None, loop=None):
+        super().__init__(host, profile, resolution, fps, av_receiver)
+        self.loop = asyncio.get_event_loop() if loop is None else loop
+        self._protocol = None
+        self._transport = None
+
+        self._stop_event = asyncio.Event()
+        self.receiver_started = asyncio.Event()
+        self.controller_ready_event = asyncio.Event()
+
+    async def run_io(self, func, *args, **kwargs):
+        return await self.loop.run_in_executor(None, partial(func, *args, **kwargs))
+
+    async def start(self, wakeup=True) -> bool:
+        """Start CTRL/RP Session."""
+        _LOGGER.debug("Running Async")
+        status = await self.run_io(self._check_host)
+        if not status[0]:
+            self.error = f"Host @ {self._host} is not reachable."
+            return False
+        if not status[1]:
+            if wakeup:
+                await self.run_io(self.wakeup)
+                _LOGGER.info("Sent Wakeup to host")
+                self.error = "Host is in Standby. Attempting to wakeup."
+            return False
+        if not self._init_attrs(status[2]):
+            self.error = "Profile is not registered with host"
+            return False
+        if not await self.run_io(self.connect):
+            _LOGGER.error("CTRL Auth Failed")
+            return False
+        _LOGGER.info("CTRL Auth Success")
+        self._state = CTRL.STATE_READY
+        _, self._protocol = await self.loop.connect_accepted_socket(lambda: CTRLAsync.Protocol(self), self._sock)
+        return True
+
+    def send(self, data: bytes):
+        """Send Data."""
+        self._protocol.transport.write(data)
+        log_bytes(f"CTRL Send", data)
+
+    def start_stream(self, test=True, mtu=None, rtt=None):
+        """Start Stream."""
+        if not self.session_id:
+            _LOGGER.error("Session ID not received")
+            return
+        stop_event = self._stop_event if not test else asyncio.Event()
+        cb_stop = self._cb_stop_test if test else None
+        # if not test and self.av_receiver:
+        #     self.av_handler.add_receiver(self.av_receiver)
+        #     _LOGGER.info("Waiting for Receiver...")
+        #     self.receiver_started.wait()
+        self._stream = RPStream(self._host, stop_event, self, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
+        self.loop.create_task(self._stream.async_connect())
+
+    def init_controller(self):
+        self.controller = Controller(self._stream, self._stop_event)
+        self.controller_ready_event.set()
