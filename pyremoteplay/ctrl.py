@@ -517,10 +517,10 @@ class CTRLAsync(CTRL):
             return
         stop_event = self._stop_event if not test else asyncio.Event()
         cb_stop = self._cb_stop_test if test else None
-        # if not test and self.av_receiver:
-        #     self.av_handler.add_receiver(self.av_receiver)
-        #     _LOGGER.info("Waiting for Receiver...")
-        #     self.receiver_started.wait()
+        if not test and self.av_receiver:
+            self.av_handler.add_receiver(self.av_receiver)
+            _LOGGER.info("Waiting for Receiver...")
+            self.receiver_started.wait()
         self._stream = RPStream(self._host, stop_event, self, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
         self.loop.create_task(self._stream.async_connect())
 
