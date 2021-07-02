@@ -21,14 +21,12 @@ from .errors import RemotePlayError, RPErrorHandler
 from .feedback import Controller
 from .keys import CTRL_KEY_0, CTRL_KEY_1
 from .stream import RPStream
-from .util import from_b, listener, log_bytes
+from .util import listener, log_bytes
 
 _LOGGER = logging.getLogger(__name__)
 
 RP_INIT_URL = "/sie/ps4/rp/sess/init"
 RP_CTRL_URL = "/sie/ps4/rp/sess/ctrl"
-REGIST_IP = "0.0.0.0"
-BROADCAST_IP = "255.255.255.255"
 
 DID_PREFIX = b'\x00\x18\x00\x00\x00\x07\x00\x40\x00\x80'
 
@@ -164,13 +162,14 @@ class CTRL():
         self.controller_ready_event.clear()
 
     def _get_creds(self):
+        """Set creds for wakeup."""
         creds = self._profile["id"]
         self._creds = SHA256.new(
             str(int.from_bytes(b64decode(creds), "little")).encode()
         ).hexdigest()
 
-    def _init_attrs(self, mac_address):
-        """Init Class attrs."""
+    def _init_profile(self, mac_address):
+        """Init profile."""
         regist_data = self._profile["hosts"].get(mac_address)
         if not regist_data:
             return False
@@ -188,18 +187,41 @@ class CTRL():
         self._rp_key = bytes.fromhex(self._regist_data["RP-Key"])
         return True
 
-    def _init_ctrl(self) -> requests.models.Response:
-        """Init Connect."""
+    def _get_status(self) -> dict:
+        """Return dict of device status."""
+        return get_status(self._host)
+
+    def _check_host(self) -> tuple:
+        """Return True, True if host is available."""
+        device = self._get_status()
+        if not device:
+            _LOGGER.error("Could not detect host at: %s", self._host)
+            return (False, False, None)
+        mac_address = device.get("host-id")
+        if device.get("status_code") != 200:
+            _LOGGER.info("Host: %s is not on", self._host)
+            return (True, False, mac_address)
+        return (True, True, mac_address)
+
+    def _get_rp_url(self, request_type: str) -> str:
+        valid_types = ["init", "ctrl"]
+        if request_type not in valid_types:
+            raise ValueError("Unknown ")
+        url_slug = RP_INIT_URL if request_type == "init" else RP_CTRL_URL
+        url = f"http://{self.host}:{RP_PORT}{url_slug}"
+        return url
+
+    def _send_auth_request(self, request_type: str, headers: dict, stream: bool) -> requests.models.Response:
+        """Return response. Send Auth Request."""
         response = None
-        headers = _get_headers(self.host, self._regist_key)
-        url = f"http://{self.host}:{RP_PORT}{RP_INIT_URL}"
-        response = requests.get(url, headers=headers, timeout=3)
+        url = self._get_rp_url(request_type)
+        response = requests.get(url, headers=headers, stream=stream, timeout=3)
         if response is None:
             _LOGGER.error("Timeout: Auth")
         return response
 
     def _parse_init(self, response: requests.models.Response) -> bytes:
-        """Parse init response."""
+        """Return nonce. Parse init response."""
         nonce = None
         _LOGGER.debug(response.headers)
         if response.status_code != 200:
@@ -217,18 +239,6 @@ class CTRL():
             log_bytes("Nonce", nonce)
         return nonce
 
-    def _check_host(self) -> tuple:
-        """Return True, True if host is available."""
-        device = get_status(self._host)
-        if not device:
-            _LOGGER.error("Could not detect host at: %s", self._host)
-            return (False, False, None)
-        mac_address = device.get("host-id")
-        if device.get("status_code") != 200:
-            _LOGGER.info("Host: %s is not on", self._host)
-            return (True, False, mac_address)
-        return (True, True, mac_address)
-
     def _get_ctrl_headers(self, nonce: bytes) -> dict:
         """Return CTRL headers."""
         rp_nonce = _get_rp_nonce(nonce)
@@ -242,20 +252,17 @@ class CTRL():
         bitrate = b64encode(self._cipher.encrypt(bytes(4))).decode()
         return _get_ctrl_headers(self.host, auth, did, os_type, bitrate)
 
-    def _send_auth(self, headers: dict) -> bool:
-        """Send CTRL Auth."""
-        url = f"http://{self.host}:{RP_PORT}{RP_CTRL_URL}"
-        response = None
-        response = requests.get(url, headers=headers, stream=True, timeout=3)
+    def _authenticate(self, nonce: bytes) -> bool:
+        """Return True if successful. Send CTRL Auth."""
+        headers = self._get_ctrl_headers(nonce)
+        response = self._send_auth_request("ctrl", headers, stream=True)
         if response is None:
-            _LOGGER.error("Timeout: Auth")
             return False
         _LOGGER.debug("CTRL Auth Headers: %s", response.headers)
         server_type = response.headers.get("RP-Server-Type")
         if response.status_code != 200 or server_type is None:
             return False
-        self._server_type = from_b(
-            self._cipher.decrypt(b64decode(server_type)), 'little')
+        self._server_type = int.from_bytes(self._cipher.decrypt(b64decode(server_type)), 'little')
         _LOGGER.debug("Server Type: %s", self._server_type)
         self._sock = socket.fromfd(
             response.raw.fileno(), socket.AF_INET, socket.SOCK_STREAM)
@@ -358,7 +365,7 @@ class CTRL():
                 _LOGGER.info("Sent Wakeup to host")
                 self.error = "Host is in Standby. Attempting to wakeup."
             return False
-        if not self._init_attrs(status[2]):
+        if not self._init_profile(status[2]):
             self.error = "Profile is not registered with host"
             return False
         if not self.connect():
@@ -375,14 +382,14 @@ class CTRL():
 
     def connect(self) -> bool:
         """Connect to Host."""
-        response = self._init_ctrl()
+        headers = _get_headers(self.host, self._regist_key)
+        response = self._send_auth_request("init", headers, stream=False)
         if response is None:
             return False
         nonce = self._parse_init(response)
         if nonce is None:
             return False
-        headers = self._get_ctrl_headers(nonce)
-        return self._send_auth(headers)
+        return self._authenticate(nonce)
 
     def _cb_stop_test(self):
         """Stop test and get MTU and RTT and start stream."""
@@ -411,6 +418,7 @@ class CTRL():
         if self.state == CTRL.STATE_STOP:
             _LOGGER.debug("CTRL already stopping")
             return
+        _LOGGER.info("CTRL Received Stop Signal")
         self._stop_event.set()
 
     def init_controller(self):
@@ -466,8 +474,6 @@ class CTRLAsync(CTRL):
         def data_received(self, data):
             self.ctrl._handle(data)
 
-
-
     def __init__(self, host: str, profile: dict, resolution="720p", fps="high", av_receiver=None, loop=None):
         super().__init__(host, profile, resolution, fps, av_receiver)
         self.loop = asyncio.get_event_loop() if loop is None else loop
@@ -494,7 +500,7 @@ class CTRLAsync(CTRL):
                 _LOGGER.info("Sent Wakeup to host")
                 self.error = "Host is in Standby. Attempting to wakeup."
             return False
-        if not self._init_attrs(status[2]):
+        if not self._init_profile(status[2]):
             self.error = "Profile is not registered with host"
             return False
         if not await self.run_io(self.connect):
