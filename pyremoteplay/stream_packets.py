@@ -294,7 +294,13 @@ class Chunk(PacketSection):
 
     def cookie_ack(parse=False, **kwargs) -> bytes:
         """Return Cookie Ack PL."""
-        pass
+        if parse:
+            params = kwargs.get("params")
+            payload = params.get("payload")
+            if payload:
+                params.pop("payload")
+                params["data"] = payload
+                return None
 
     PAYLOADS = {
         0x00: data,
