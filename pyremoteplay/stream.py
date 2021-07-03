@@ -284,6 +284,8 @@ class RPStream():
         """Stop Stream."""
         _LOGGER.info("Stopping Stream")
         self._stop_event.set()
+        if self._protocol:
+            self._protocol.close()
 
     def recv_stream_info(self, info: dict):
         """Receive stream info."""

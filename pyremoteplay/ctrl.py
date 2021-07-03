@@ -4,6 +4,7 @@ import socket
 import threading
 import time
 from base64 import b64decode, b64encode
+from concurrent.futures import ThreadPoolExecutor
 from enum import IntEnum
 from functools import partial
 from struct import pack_into
@@ -150,7 +151,6 @@ class CTRL():
         self.fps = FPS.preset(fps)
         self.resolution = Resolution.preset(resolution)
         self.error = ""
-        self.controller = None
         self.av_receiver = av_receiver(self) if av_receiver is not None else None
         self.av_handler = AVHandler(self)
 
@@ -158,8 +158,10 @@ class CTRL():
         self.receiver_started = threading.Event()
         self.controller_ready_event = threading.Event()
 
-        self._get_creds()
+        self.controller = Controller(self)
         self.controller_ready_event.clear()
+
+        self._get_creds()
 
     def _get_creds(self):
         """Set creds for wakeup."""
@@ -422,7 +424,6 @@ class CTRL():
         self._stop_event.set()
 
     def init_controller(self):
-        self.controller = Controller(self._stream, self._stop_event)
         self.controller.start()
         self.controller_ready_event.set()
 
@@ -486,7 +487,8 @@ class CTRLAsync(CTRL):
         self._stop_event = asyncio.Event()
         self.receiver_started = asyncio.Event()
         self.controller_ready_event = asyncio.Event()
-        self.controller = Controller(self, self._stop_event)
+        self.controller = Controller(self)
+        self.controller_ready_event.clear()
 
     async def run_io(self, func, *args, **kwargs):
         return await self.loop.run_in_executor(None, partial(func, *args, **kwargs))
@@ -535,6 +537,14 @@ class CTRLAsync(CTRL):
         self.loop.create_task(self._stream.async_connect())
 
     def init_controller(self):
+        self.loop.create_task(self.async_run_controller())
+
+    async def async_run_controller(self):
+        executor = ThreadPoolExecutor(max_workers=3)
+        await self.loop.run_in_executor(
+            executor,
+            self.controller.start,
+        )
         self.controller_ready_event.set()
 
     def stop(self):
@@ -546,5 +556,3 @@ class CTRLAsync(CTRL):
         self._stop_event.set()
         if self._protocol:
             self._protocol.close()
-        if self._stream._protocol:
-            self._stream._protocol.close()

@@ -19,7 +19,7 @@ class Controller():
     STATE_INTERVAL_MAX_MS = 0.200
     STATE_INTERVAL_MIN_MS = 0.100
 
-    def __init__(self, ctrl, stop_event, **kwargs):
+    def __init__(self, ctrl, **kwargs):
         self._ctrl = ctrl
         self._left_x = 0
         self._left_y = 0
@@ -30,7 +30,6 @@ class Controller():
         self._event_buf = deque([], Controller.MAX_EVENTS)
         self._event_queue = []
         self._buttons = {}
-        self._stop_event = stop_event
         self._params = kwargs
         self._started = False
 
@@ -49,8 +48,7 @@ class Controller():
     def worker(self):
         self._started = True
         _LOGGER.info("Controller Started")
-        while not self._stop_event.is_set():
-            _LOGGER.info("Controller Running")
+        while not self._ctrl.state == self._ctrl.STATE_STOP:
             self.send()
             time.sleep(self.STATE_INTERVAL_MIN_MS)
         _LOGGER.info("Controller Stopped")

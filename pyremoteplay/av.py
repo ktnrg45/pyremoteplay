@@ -79,6 +79,16 @@ class AVHandler():
         """Return True if receiver is not None."""
         return self._receiver is not None
 
+    @property
+    def lost(self) -> int:
+        """Return Total AV packets lost."""
+        return self._v_stream.lost + self._a_stream.lost
+
+    @property
+    def received(self) -> int:
+        """Return Total AV packets received."""
+        return self._v_stream.received + self._a_stream.received
+
 
 class AVStream():
     """AV Stream."""
@@ -89,9 +99,13 @@ class AVStream():
         self._buf = BytesIO()
         self._frame = -1
         self._last_unit = -1
+        self._lost = 0
+        self._received = 0
+        self._last_index = -1
 
     def handle(self, packet: AVPacket):
         """Handle Packet."""
+        self._received += 1
         # New Frame
         if packet.frame_index != self.frame:
             # First packet of Frame
@@ -109,6 +123,7 @@ class AVStream():
                 self._buf.write(packet.data)
             else:
                 _LOGGER.debug("Received unit out of order: %s, expected: %s", packet.unit_index, self.last_unit + 1)
+                self._lost += (packet.index - self._last_index - 1)
             if packet.is_last_src:
                 _LOGGER.debug("Frame: %s finished with length: %s", self.frame, self._buf.tell())
                 self._callback(self._buf)
@@ -122,6 +137,16 @@ class AVStream():
     def last_unit(self) -> int:
         """Return last unit."""
         return self._last_unit
+
+    @property
+    def lost(self) -> int:
+        """Return Total AV packets lost."""
+        return self._lost
+
+    @property
+    def received(self) -> int:
+        """Return Total AV packets received."""
+        return self._received
 
 
 class AVReceiver(abc.ABC):
@@ -149,8 +174,6 @@ class AVReceiver(abc.ABC):
 class AVFileReceiver(AVReceiver):
     """Writes AV to file."""
     def process(pipe, av_file):
-        log = open("avfr.log", "w")
-        log.write("AV File Receiver started\n")
 
         video = ffmpeg.input('pipe:', format='h264')
         # audio = ffmpeg.input('pipe:', format='ogg')
@@ -174,29 +197,26 @@ class AVFileReceiver(AVReceiver):
                 written = process.stdin.write(data)
                 frame += 1
                 _LOGGER.debug(f"File Receiver wrote: Frame {frame} {written} bytes\n")
-                log.write(f"File Receiver wrote: Frame {frame} {written} bytes\n")
                 now = time.time()
                 _LOGGER.debug("Receiver FPS: %s", 1 / (now - last))
                 last = now
             except KeyboardInterrupt:
                 break
             except Exception as err:
-                log.write(f"{err}\n")
+                _LOGGER.error(err)
                 break
         process.stdin.write(b'')
         process.stdin.close()
         pipe.close()
         process.wait()
-        log.write("AV File Receiver stopping\n")
-        log.close()
 
     def __init__(self, ctrl):
         super().__init__(ctrl)
         self._ctrl = ctrl
         self._worker = None
+        self._pipe = None
         self.file = None
         self.v_queue = queue.Queue()
-        self._pipe = None
 
     def start(self):
         _LOGGER.debug("File Receiver Starting")
@@ -228,4 +248,5 @@ class AVFileReceiver(AVReceiver):
     def close(self):
         if self._worker:
             self._worker.terminate()
+            self._worker.join()
             self._worker.close()

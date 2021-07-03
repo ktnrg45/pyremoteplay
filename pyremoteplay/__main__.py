@@ -10,7 +10,6 @@ from collections import OrderedDict
 
 from pyps4_2ndscreen.ddp import get_status
 
-from .av import AVFileReceiver
 from .ctrl import CTRL, CTRLAsync
 from .oauth import prompt as oauth_prompt
 from .register import register
@@ -32,25 +31,19 @@ def main():
     parser.add_argument('-f', '--fps', default="high", type=str, choices=FPS_CHOICES, help="Max FPS to use")
     parser.add_argument('--register', action="store_true", help='Register with Remote Play host.')
     parser.add_argument('-p', '--path', type=str, help='Path to PSN profile config.')
-    parser.add_argument('-o', '--output', action="store_true", help='Output stream to file')
     args = parser.parse_args()
     host = args.host
     path = args.path
     should_register = args.register
     resolution = args.resolution
-    output = args.output
     fps = args.fps
     if fps.isnumeric():
         fps = int(fps)
-    if output:
-        av_receiver = AVFileReceiver
-    else:
-        av_receiver = None
 
     if should_register:
         register_profile(host, path)
         return
-    cli(host, path, resolution, fps, av_receiver)
+    cli(host, path, resolution, fps)
 
 
 def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
@@ -146,39 +139,44 @@ def register_profile(host: str, path: str):
     write_profiles(profiles, path)
 
 
-def cli(host: str, path: str, resolution: str, fps: str, av_receiver=None):
+def cli(host: str, path: str, resolution: str, fps: str):
     print(fps)
     profiles = get_profiles(path)
     if profiles:
         name = select_profile(profiles, True, True)
         profile = profiles[name]
-        #ctrl = CTRL(host, profile, resolution=resolution, fps=fps, av_receiver=av_receiver)
-        # if not ctrl.start():
-        #     _LOGGER.error(ctrl.error)
-        #     return
-        ctrl = CTRLAsync(host, profile, resolution=resolution, fps=fps, av_receiver=av_receiver)
-        worker = threading.Thread(
-            target=async_start,
-            args=(ctrl,)
-        )
-        worker.start()
-        instance = CLIInstance(ctrl)
-        curses.wrapper(start, instance)
-        worker.join()
+        ctrl = CTRLAsync(host, profile, resolution=resolution, fps=fps)
+        async_start(ctrl, cb_curses)
     else:
         _LOGGER.info("No Profiles")
 
 
-def async_start(ctrl):
-    loop = asyncio.new_event_loop()
+def cb_curses(ctrl, status: bool):
+    if status:
+        instance = CLIInstance(ctrl)
+        worker = threading.Thread(
+            target=curses.wrapper,
+            args=(start, instance)
+        )
+        worker.start()
+        worker.join()
+    else:
+        _LOGGER.error("CTRL Failed to Start: %s", ctrl.error)
+
+
+def async_start(ctrl, cb: callable):
+    loop = asyncio.get_event_loop()
     ctrl.loop = loop
-    task = loop.create_task(ctrl.start())
-    try:
-        loop.run_until_complete(task)
-        loop.run_forever()
-    except KeyboardInterrupt:
-        ctrl.stop()
-        loop.stop()
+    task = loop.create_task(async_start_ctrl(ctrl, cb))
+    loop.run_until_complete(task)
+    loop.run_forever()
+
+
+async def async_start_ctrl(ctrl, cb: callable):
+    status = await ctrl.start()
+    if status:
+        await ctrl.controller_ready_event.wait()
+    cb(ctrl, status)
 
 
 def start(stdscr, instance):
@@ -196,10 +194,12 @@ class CLIInstance():
         "KEY_DOWN": "DOWN",
         "KEY_LEFT": "LEFT",
         "KEY_RIGHT": "RIGHT",
-        "h": "L1",
-        "j": "R1",
-        "k": "L2",
-        "l": "R2",
+        "1": "L1",
+        "2": "L2",
+        "3": "L3",
+        "4": "R1",
+        "5": "R2",
+        "6": "R3",
         "\n": "CROSS",
         "c": "CIRCLE",
         "r": "SQUARE",
@@ -207,8 +207,6 @@ class CLIInstance():
         "KEY_BACKSPACE": "OPTIONS",
         "=": "SHARE",
         "p": "PS",
-        "n": "L3",
-        "m": "R3",
         "y": "TOUCHPAD",
     }
 
