@@ -541,5 +541,7 @@ class CTRLAsync(CTRL):
             return
         _LOGGER.info("CTRL Received Stop Signal")
         self._stop_event.set()
-        self._protocol.close()
-        self._stream._protocol.close()
+        if self._protocol:
+            self._protocol.close()
+        if self._stream._protocol:
+            self._stream._protocol.close()
