@@ -474,6 +474,9 @@ class CTRLAsync(CTRL):
         def data_received(self, data):
             self.ctrl._handle(data)
 
+        def close(self):
+            self.transport.close()
+
     def __init__(self, host: str, profile: dict, resolution="720p", fps="high", av_receiver=None, loop=None):
         super().__init__(host, profile, resolution, fps, av_receiver)
         self.loop = asyncio.get_event_loop() if loop is None else loop

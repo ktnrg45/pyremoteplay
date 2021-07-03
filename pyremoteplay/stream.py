@@ -54,6 +54,9 @@ class RPStream():
         def sendto(self, data, addr):
             self.transport.sendto(data, addr)
 
+        def close(self):
+            self.transport.close()
+
     def __init__(self, host: str, stop_event, ctrl, rtt=None, mtu=None, is_test=False, cb_stop=None):
         self._host = host
         self._port = STREAM_PORT if not is_test else TEST_STREAM_PORT
