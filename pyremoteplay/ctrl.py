@@ -12,7 +12,8 @@ from struct import pack_into
 import requests
 from Cryptodome.Hash import SHA256
 from Cryptodome.Random import get_random_bytes
-from pyps4_2ndscreen.ddp import get_status, wakeup
+from pyps4_2ndscreen.ddp import get_status
+from pyps4_2ndscreen.ddp import wakeup as ddp_wakeup
 
 from .av import AVFileReceiver, AVHandler
 from .const import (FPS, OS_TYPE, RP_CRYPT_SIZE, RP_PORT, RP_VERSION, TYPE_PS4,
@@ -353,7 +354,8 @@ class CTRL():
 
     def wakeup(self):
         """Wakeup Host."""
-        wakeup(self._host, self._creds)
+        _LOGGER.info("Sent Wakeup to host")
+        ddp_wakeup(self._host, self._creds)
 
     def start(self, wakeup=True) -> bool:
         """Start CTRL/RP Session."""
@@ -364,7 +366,6 @@ class CTRL():
         if not status[1]:
             if wakeup:
                 self.wakeup()
-                _LOGGER.info("Sent Wakeup to host")
                 self.error = "Host is in Standby. Attempting to wakeup."
             return False
         if not self._init_profile(status[2]):
@@ -503,7 +504,6 @@ class CTRLAsync(CTRL):
         if not status[1]:
             if wakeup:
                 await self.run_io(self.wakeup)
-                _LOGGER.info("Sent Wakeup to host")
                 self.error = "Host is in Standby. Attempting to wakeup."
             return False
         if not self._init_profile(status[2]):

@@ -18,6 +18,8 @@ class Controller():
     ACTIONS = (ACTION_TAP, ACTION_RELEASE, ACTION_PRESS)
     STATE_INTERVAL_MAX_MS = 0.200
     STATE_INTERVAL_MIN_MS = 0.100
+    STICK_STATE_MAX = 0x7fff
+    STICK_STATE_MIN = -0x7fff
 
     def __init__(self, ctrl, **kwargs):
         self._ctrl = ctrl
