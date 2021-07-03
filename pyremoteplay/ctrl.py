@@ -533,3 +533,13 @@ class CTRLAsync(CTRL):
 
     def init_controller(self):
         self.controller_ready_event.set()
+
+    def stop(self):
+        """Stop Stream."""
+        if self.state == CTRL.STATE_STOP:
+            _LOGGER.debug("CTRL already stopping")
+            return
+        _LOGGER.info("CTRL Received Stop Signal")
+        self._stop_event.set()
+        self._protocol.close()
+        self._stream._protocol.close()
