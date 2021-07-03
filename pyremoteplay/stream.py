@@ -85,8 +85,9 @@ class RPStream():
         """Connect socket to Host."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(0)
-        # a_rwnd = bytes(A_RWND)
-        # sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, a_rwnd)
+        # Could be set if we're dropping packets
+        # because they are overflowing the socket buffer
+        # sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, bytes(A_RWND))
         self._protocol = sock
         self._state = RPStream.STATE_INIT
         self._worker = threading.Thread(

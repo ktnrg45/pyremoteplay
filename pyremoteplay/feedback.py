@@ -19,8 +19,9 @@ class Controller():
     STATE_INTERVAL_MAX_MS = 0.200
     STATE_INTERVAL_MIN_MS = 0.100
 
-    def __init__(self, stream, stop_event, **kwargs):
-        self._stream = stream
+    def __init__(self, ctrl, stop_event, **kwargs):
+        self._ctrl = ctrl
+        self._stream = ctrl._stream
         self._left_x = 0
         self._left_y = 0
         self._right_x = 0

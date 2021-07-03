@@ -11,7 +11,7 @@ from io import BytesIO
 import ffmpeg
 
 from .stream_packets import AVPacket, Packet
-from .util import from_b, log_bytes, to_b
+from .util import log_bytes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -167,6 +167,7 @@ class AVFileReceiver(AVReceiver):
         if process.poll() is None:
             _LOGGER.info("FFMPEG Started")
             pipe.send(1)
+        last = time.time()
         while True:
             try:
                 data = pipe.recv_bytes()
@@ -174,6 +175,9 @@ class AVFileReceiver(AVReceiver):
                 frame += 1
                 _LOGGER.debug(f"File Receiver wrote: Frame {frame} {written} bytes\n")
                 log.write(f"File Receiver wrote: Frame {frame} {written} bytes\n")
+                now = time.time()
+                _LOGGER.debug("Receiver FPS: %s", 1 / (now - last))
+                last = now
             except KeyboardInterrupt:
                 break
             except Exception as err:
@@ -181,7 +185,6 @@ class AVFileReceiver(AVReceiver):
                 break
         process.stdin.write(b'')
         process.stdin.close()
-        process.terminate()
         pipe.close()
         process.wait()
         log.write("AV File Receiver stopping\n")
@@ -221,27 +224,6 @@ class AVFileReceiver(AVReceiver):
                 _LOGGER.info("File Receiver closing pipe")
                 self._pipe.close()
                 self._ctrl.stop()
-
-    def worker(self):
-        _LOGGER.debug("File Receiver Started")
-        output = open(self.file, 'wb')
-        while not self._ctrl._stop_event.is_set():
-            try:
-                buf = self.v_queue.get(timeout=1)
-            except queue.Empty:
-                time.sleep(0.01)
-                continue
-            frame = buf.getvalue()
-            output.write(frame)
-
-        while True:
-            try:
-                buf = self.v_queue.get(timeout=1)
-            except queue.Empty:
-                break
-            frame = buf.getvalue()
-            output.write(frame)
-        output.close()
 
     def close(self):
         if self._worker:
