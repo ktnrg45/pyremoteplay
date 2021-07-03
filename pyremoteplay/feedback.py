@@ -21,7 +21,6 @@ class Controller():
 
     def __init__(self, ctrl, stop_event, **kwargs):
         self._ctrl = ctrl
-        self._stream = ctrl._stream
         self._left_x = 0
         self._left_y = 0
         self._right_x = 0
@@ -40,7 +39,7 @@ class Controller():
         if self._started:
             _LOGGER.error("Controller already started")
             return
-        if not self._stream.cipher:
+        if not self.ctrl._stream.cipher:
             raise RuntimeError("Stream has no cipher")
         self._worker = threading.Thread(
             target=self.worker,
@@ -58,12 +57,12 @@ class Controller():
 
     def send(self):
         if self.has_sticks:
-            self._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
+            self.ctrl._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
             self._sequence_state += 1
         if self._event_queue:
             self.add_event_buffer(self._event_queue.pop(0))
             data = b"".join(self._event_buf)
-            self._stream.send_feedback(FeedbackHeader.Type.EVENT, self.sequence_event, data=data)
+            self.ctrl._stream.send_feedback(FeedbackHeader.Type.EVENT, self.sequence_event, data=data)
             self._sequence_event += 1
 
 
