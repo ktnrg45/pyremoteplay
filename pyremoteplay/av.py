@@ -26,6 +26,7 @@ class AVHandler():
         self._a_stream = None
         self._queue = queue.Queue()
         self._worker = None
+        self._last_congestion = 0
 
     def add_receiver(self, receiver):
         if self._receiver:
@@ -61,7 +62,14 @@ class AVHandler():
             packet = Packet.parse(msg)
             packet.decrypt(self._cipher)
             self._handle(packet)
+            self._send_congestion()
         self._receiver.close()
+
+    def _send_congestion(self):
+        now = time.time()
+        if now - self._last_congestion > 0.2:
+            self._ctrl._stream.send_congestion(self.received, self.lost)
+            self._last_congestion = now
 
     def _handle(self, packet: AVPacket):
         _LOGGER.debug(packet)

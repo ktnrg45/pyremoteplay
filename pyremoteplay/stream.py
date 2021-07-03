@@ -11,8 +11,9 @@ from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
 
 from .crypt import StreamECDH
-from .stream_packets import (AVPacket, Chunk, FeedbackPacket, Header, Packet,
-                             ProtoHandler, UnexpectedMessage, get_launch_spec)
+from .stream_packets import (AVPacket, Chunk, CongestionPacket, FeedbackPacket,
+                             Header, Packet, ProtoHandler, UnexpectedMessage,
+                             get_launch_spec)
 from .util import from_b, listener, log_bytes, to_b
 
 _LOGGER = logging.getLogger(__name__)
@@ -145,6 +146,12 @@ class RPStream():
         """Send feedback packet."""
         msg = FeedbackPacket(feedback_type, sequence=sequence, data=data, state=state)
         self.send(msg.bytes(self.cipher, True))
+
+    def send_congestion(self, received: int, lost: int):
+        """Send congestion Packet."""
+        msg = CongestionPacket(received=received, lost=lost)
+        _LOGGER.debug(msg)
+        self.send(msg.bytes(self.cipher))
 
     def send(self, msg: bytes):
         """Send Message."""
