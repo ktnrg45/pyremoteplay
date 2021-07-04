@@ -115,6 +115,7 @@ class Controller():
             value = Controller.STICK_STATE_MIN
 
         self._stick_state[stick][axis] = value
+        self.send()
 
     @property
     def sequence_event(self) -> int:
@@ -129,4 +130,4 @@ class Controller():
     @property
     def has_sticks(self) -> bool:
         """Return True if has sticks."""
-        self._has_sticks
+        return self._has_sticks

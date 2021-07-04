@@ -639,7 +639,7 @@ class FeedbackState(PacketSection):
     def pack(self, buf: bytearray):
         """Pack compiled bytes."""
         pack_into(
-            "!18sHHHH",
+            "!18shhhh",
             buf,
             FeedbackHeader.LENGTH,
             self.PREFIX,
