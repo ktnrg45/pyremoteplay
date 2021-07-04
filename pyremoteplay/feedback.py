@@ -23,10 +23,6 @@ class Controller():
 
     def __init__(self, ctrl, **kwargs):
         self._ctrl = ctrl
-        self._left_x = 0
-        self._left_y = 0
-        self._right_x = 0
-        self._right_y = 0
         self._sequence_event = 0
         self._sequence_state = 0
         self._event_buf = deque([], Controller.MAX_EVENTS)
@@ -34,6 +30,11 @@ class Controller():
         self._buttons = {}
         self._params = kwargs
         self._started = False
+
+        self._stick_state = {
+            "left": {"x": 0, "y": 0},
+            "right": {"x": 0, "y": 0},
+        }
 
     def start(self):
         """Start controller worker."""
@@ -93,6 +94,24 @@ class Controller():
                 self.add_event_queue(FeedbackEvent(button, is_active=False))
             self.send()
 
+    def stick(self, stick: str, axis: str, value: int):
+        """Set Stick Value."""
+        stick = stick.lower()
+        axis = axis.lower()
+
+        if stick not in ("left", "right"):
+            raise ValueError("Invalid stick: Expected 'left', 'right'")
+        if axis not in ("x", "y"):
+            raise ValueError("Invalid axis: Expected 'x', 'y'")
+        if not isinstance(value, int):
+            raise ValueError("Invalid value: Expected Int")
+        if value > Controller.STICK_STATE_MAX:
+            value = Controller.STICK_STATE_MAX
+        elif value < Controller.STICK_STATE_MIN:
+            value = Controller.STICK_STATE_MIN
+
+        self._stick_state[stick][axis] = value
+
     @property
     def sequence_event(self) -> int:
         """Return Sequence Number for events."""
@@ -101,10 +120,7 @@ class Controller():
     @property
     def stick_state(self) -> dict:
         """Return stick state as dict."""
-        return {
-            "left": {"x": self._left_x, "y": self._left_y},
-            "right": {"x": self._right_x, "y": self._right_y},
-        }
+        return self._stick_state
 
     @property
     def has_sticks(self) -> bool:
