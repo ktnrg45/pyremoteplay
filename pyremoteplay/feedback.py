@@ -28,6 +28,7 @@ class Controller():
         self._event_buf = deque([], Controller.MAX_EVENTS)
         self._event_queue = []
         self._buttons = {}
+        self._has_sticks = False
         self._params = kwargs
         self._started = False
 
@@ -56,6 +57,10 @@ class Controller():
             time.sleep(self.STATE_INTERVAL_MIN_MS)
         _LOGGER.info("Controller Stopped")
 
+    def enable_sticks(self):
+        """Enable sticks."""
+        self._has_sticks = True
+
     def send(self):
         if self.has_sticks:
             self._ctrl._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
@@ -65,7 +70,6 @@ class Controller():
             data = b"".join(self._event_buf)
             self._ctrl._stream.send_feedback(FeedbackHeader.Type.EVENT, self.sequence_event, data=data)
             self._sequence_event += 1
-
 
     def add_event_buffer(self, event: FeedbackEvent):
         """Append event to end of byte buf."""
@@ -125,7 +129,4 @@ class Controller():
     @property
     def has_sticks(self) -> bool:
         """Return True if has sticks."""
-        has_sticks = self._params.get("has_sticks")
-        if has_sticks:
-            return True
-        return False
+        self._has_sticks
