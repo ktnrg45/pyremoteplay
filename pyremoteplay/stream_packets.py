@@ -609,12 +609,12 @@ class FeedbackHeader(PacketSection):
 
 class FeedbackState(PacketSection):
     """Feedback Event."""
-    LENGTH = 26
+    LENGTH = 25
 
     PREFIX = bytes([
-        0xa0, 0xff, 0x7f, 0xff, 0x10, 0x7f, 0xff, 0x7f,
-        0xff, 0x7f, 0x99, 0x99, 0xff, 0x7f, 0xfe, 0xf7,
-        0xef, 0x1f,
+        0xa0, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff,
+        0x7f, 0x99, 0x99, 0xff, 0x7f, 0xfe, 0xf7, 0xef,
+        0x1f,
     ])
 
     DEFAULT = {
@@ -639,7 +639,7 @@ class FeedbackState(PacketSection):
     def pack(self, buf: bytearray):
         """Pack compiled bytes."""
         pack_into(
-            "!18shhhh",
+            "!17shhhh",
             buf,
             FeedbackHeader.LENGTH,
             self.PREFIX,
