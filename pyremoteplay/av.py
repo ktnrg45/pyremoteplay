@@ -201,11 +201,11 @@ class AVReceiver(abc.ABC):
             raise RuntimeError("Audio Config not set")
         packet_length = len(data)
         assert packet_length % frame_size == 0
-        buf = bytearray(frame_size * src_units)
+        buf = bytearray()
         for count in range(0, src_units):
             start = count * frame_size
             end = (count + 1) * frame_size
-            buf[start:end] = self._decoder.decode(data[start:end], self._audio_config['frame_size'])
+            buf.extend(self._decoder.decode(data[start:end], self._audio_config['frame_size']))
         return buf
 
     def handle_video(self, buf: BytesIO):
