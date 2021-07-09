@@ -413,7 +413,7 @@ class CTRL():
             self.av_handler.add_receiver(self.av_receiver)
             _LOGGER.info("Waiting for Receiver...")
             self.receiver_started.wait()
-        self._stream = RPStream(self._host, stop_event, self, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
+        self._stream = RPStream(self, stop_event, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
         self._stream.connect()
 
     def stop(self):
@@ -454,6 +454,11 @@ class CTRL():
         if self._stop_event.is_set():
             return CTRL.STATE_STOP
         return self._state
+
+    @property
+    def is_running(self) -> bool:
+        """Return True if running."""
+        return self.state != CTRL.STATE_STOP
 
     @property
     def session_id(self) -> bytes:
@@ -533,7 +538,7 @@ class CTRLAsync(CTRL):
             self.av_handler.add_receiver(self.av_receiver)
             _LOGGER.info("Waiting for Receiver...")
             self.loop.create_task(self.receiver_started.wait())
-        self._stream = RPStream(self._host, stop_event, self, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
+        self._stream = RPStream(self, stop_event, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
         self.loop.create_task(self._stream.async_connect())
 
     def init_controller(self):

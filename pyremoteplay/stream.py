@@ -58,8 +58,8 @@ class RPStream():
         def close(self):
             self.transport.close()
 
-    def __init__(self, host: str, stop_event, ctrl, rtt=None, mtu=None, is_test=False, cb_stop=None):
-        self._host = host
+    def __init__(self, ctrl, stop_event, rtt=None, mtu=None, is_test=False, cb_stop=None):
+        self._host = ctrl.host
         self._port = STREAM_PORT if not is_test else TEST_STREAM_PORT
         self._ctrl = ctrl
         self._is_test = is_test

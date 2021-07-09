@@ -419,8 +419,9 @@ class AVPacket(PacketSection):
         return (
             f"<RP AVPacket "
             f"type={self.type.name} "
-            f"key_pos={self.key_pos} "
             f"NALU={self.has_nalu} "
+            f"codec={self.codec} "
+            f"key_pos={self.key_pos} "
             f"is_fec={self.is_fec} "
             f"index={self.index} "
             f"frame={self.frame_index} "
@@ -448,11 +449,11 @@ class AVPacket(PacketSection):
             offset = 3
             self._unit_index = (self._dword2 >> 0x15) & 0x7ff
             self._adaptive_stream_index = unpack_from("!b", buf, 19)[0] >> 5
-            if self.has_nalu:
-                # Unknown ushort at 18
-                offset = 6
         else:
             self._unit_index = (self._dword2 >> 0x18) & 0xff
+        if self.has_nalu:
+            # Unknown ushort at 18
+            offset += 3
         self._data = buf[18 + offset:]
 
         self._get_frame_meta()
@@ -530,6 +531,16 @@ class AVPacket(PacketSection):
     def frame_length_src(self) -> int:
         """Return the length of src units."""
         return self._frame_meta['units']['src']
+
+    @property
+    def frame_length_fec(self) -> int:
+        """Return the length of fec units."""
+        return self._frame_meta['units']['fec']
+
+    @property
+    def frame_size_audio(self) -> int:
+        """Return frame size for audio packet."""
+        return self._frame_meta['units']['size']
 
     @property
     def codec(self) -> int:
