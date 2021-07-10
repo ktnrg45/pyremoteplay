@@ -116,12 +116,11 @@ class AVStream():
         self._received = 0
         self._last_index = -1
 
-        self._audio_config = {}
-        self._audio_decoder = None
-
         if self._type not in [AVStream.TYPE_VIDEO, AVStream.TYPE_AUDIO]:
             raise ValueError("Invalid Type")
         if self._type == AVStream.TYPE_AUDIO:
+            self._audio_config = {}
+            self._audio_decoder = None
             self.get_audio_config()
 
     def get_audio_config(self):
@@ -153,6 +152,8 @@ class AVStream():
     def handle(self, packet: AVPacket):
         """Handle Packet."""
         self._received += 1
+        if self._received > 65535:
+            self._received = 1
 
         if self._type == AVStream.TYPE_AUDIO:
             data = self.audio_decode(packet)
@@ -177,6 +178,8 @@ class AVStream():
             else:
                 _LOGGER.debug("Received unit out of order: %s, expected: %s", packet.unit_index, self.last_unit + 1)
                 self._lost += (packet.index - self._last_index - 1)
+                if self._lost > 65535:
+                    self._lost = 1
             if packet.is_last_src:
                 _LOGGER.debug("Frame: %s finished with length: %s", self.frame, self._buf.tell())
                 self._callback(self._buf.getvalue())
