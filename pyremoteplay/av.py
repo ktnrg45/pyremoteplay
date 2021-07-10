@@ -47,7 +47,6 @@ class AVHandler():
     def set_headers(self, v_header, a_header):
         """Set headers."""
         if self._receiver:
-            self._receiver.get_audio_config(a_header)
             self._v_stream = AVStream("video", v_header, self._receiver.handle_video)
             self._a_stream = AVStream("audio", a_header, self._receiver.handle_audio)
 
@@ -117,40 +116,70 @@ class AVStream():
         self._received = 0
         self._last_index = -1
 
+        self._audio_config = {}
+        self._audio_decoder = None
+
         if self._type not in [AVStream.TYPE_VIDEO, AVStream.TYPE_AUDIO]:
             raise ValueError("Invalid Type")
+        if self._type == AVStream.TYPE_AUDIO:
+            self.get_audio_config()
+
+    def get_audio_config(self):
+        """Get Audio config from header."""
+        if self._type != AVStream.TYPE_AUDIO:
+            raise RuntimeError("Type is not Audio")
+        self._audio_config = {
+            "channels": self._header[0],
+            "bits": self._header[1],
+            "rate": unpack_from("!I", self._header, 2)[0],
+            "frame_size": unpack_from("!I", self._header, 6)[0],
+            "unknown": unpack_from("!I", self._header, 10)[0],
+        }
+        _LOGGER.info("Audio Config: %s", self._audio_config)
+        self._audio_decoder = Decoder(self._audio_config['rate'], self._audio_config['channels'])
+
+    def audio_decode(self, packet: AVPacket):
+        if not self._audio_config:
+            raise RuntimeError("Audio Config not set")
+
+        assert len(packet.data) % packet.frame_size_audio == 0
+        buf = bytearray()
+        for count in range(0, packet.frame_length_src):
+            start = count * packet.frame_size_audio
+            end = (count + 1) * packet.frame_size_audio
+            buf.extend(self._audio_decoder.decode(packet.data[start:end], self._audio_config['frame_size']))
+        return buf
 
     def handle(self, packet: AVPacket):
         """Handle Packet."""
         self._received += 1
-        # New Frame
+
+        if self._type == AVStream.TYPE_AUDIO:
+            data = self.audio_decode(packet)
+            self._callback(data)
+            return
+        # New Video Frame
         if packet.frame_index != self.frame:
             # First packet of Frame
             if packet.unit_index == 0:
                 self._frame = packet.frame_index
                 self._last_unit = -1
-                if self._type == AVStream.TYPE_VIDEO:
-                    self._buf = BytesIO()
-                    self._buf.write(self._header)
-                    _LOGGER.debug("Started New Frame: %s", self.frame)
+                self._buf = BytesIO()
+                self._buf.write(self._header)
+                _LOGGER.debug("Started New Frame: %s", self.frame)
+
         # Current Frame not FEC
         if not packet.is_fec:
             # Packet is in order
             if packet.unit_index == self.last_unit + 1:
                 self._last_unit += 1
                 self._buf.write(packet.data)
-                if self._type == AVStream.TYPE_AUDIO:
-                    if packet.frame_index <= 1:
-                        return
-                    self._callback(self._buf, packet.frame_size_audio, packet.frame_length_src)
-                    self._buf = BytesIO()
             else:
                 _LOGGER.debug("Received unit out of order: %s, expected: %s", packet.unit_index, self.last_unit + 1)
                 self._lost += (packet.index - self._last_index - 1)
             if packet.is_last_src:
                 _LOGGER.debug("Frame: %s finished with length: %s", self.frame, self._buf.tell())
-                if self._type == AVStream.TYPE_VIDEO:
-                    self._callback(self._buf)
+                self._callback(self._buf.getvalue())
 
     @property
     def frame(self) -> int:
@@ -178,41 +207,15 @@ class AVReceiver(abc.ABC):
 
     def __init__(self, ctrl):
         self._ctrl = ctrl
-        self._audio_config = {}
-        self._decoder = None
 
     def notify_started(self):
         self._ctrl.receiver_started.set()
 
-    def get_audio_config(self, header):
-        """Get Audio config from header."""
-        self._audio_config = {
-            "channels": header[0],
-            "bits": header[1],
-            "rate": unpack_from("!I", header, 2)[0],
-            "frame_size": unpack_from("!I", header, 6)[0],
-            "unknown": unpack_from("!I", header, 10)[0],
-        }
-        _LOGGER.info("Audio Config: %s", self._audio_config)
-        self._decoder = Decoder(self._audio_config['rate'], self._audio_config['channels'])
-
-    def audio_decode(self, data, frame_size, src_units):
-        if not self._audio_config:
-            raise RuntimeError("Audio Config not set")
-        packet_length = len(data)
-        assert packet_length % frame_size == 0
-        buf = bytearray()
-        for count in range(0, src_units):
-            start = count * frame_size
-            end = (count + 1) * frame_size
-            buf.extend(self._decoder.decode(data[start:end], self._audio_config['frame_size']))
-        return buf
-
-    def handle_video(self, buf: BytesIO):
+    def handle_video(self, data: bytes):
         """Handle video frame."""
         raise NotImplementedError
 
-    def handle_audio(self, buf: BytesIO, frame_size: int, src_units: int):
+    def handle_audio(self, data: bytes):
         """Handle audio frame."""
         raise NotImplementedError
 
@@ -226,7 +229,8 @@ class AVFileReceiver(AVReceiver):
     def process(pipe, av_file):
         video = ffmpeg.input('pipe:', format='h264')
         audio = ffmpeg.input('pipe:', format='s16le', ac=2, ar=48000)
-        joined = ffmpeg.concat(video, audio, v=1, a=1).node
+        #joined = ffmpeg.concat(video, audio, v=1, a=1).node
+        #outputs = ffmpeg.merge_outputs(video, audio)
         process = (
             ffmpeg
             .output(video, audio, av_file, format='mp4', pix_fmt='yuv420p')
@@ -283,13 +287,11 @@ class AVFileReceiver(AVReceiver):
             _LOGGER.info("File Receiver started")
             self.notify_started()
 
-    def handle_video(self, buf: BytesIO):
+    def handle_video(self, data: bytes):
         """Handle Video frame."""
-        data = buf.getvalue()
         self.send_process(data)
 
-    def handle_audio(self, buf: BytesIO, frame_size: int, src_units: int):
-        data = self.audio_decode(buf.getvalue(), frame_size, src_units)
+    def handle_audio(self, data: bytes):
         self.send_process(data)
 
     def send_process(self, data):
