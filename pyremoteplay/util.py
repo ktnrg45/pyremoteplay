@@ -7,21 +7,51 @@ import select
 import time
 from binascii import hexlify
 
-from .const import PROFILE_DIR, PROFILE_FILE
+from .const import OPTIONS_FILE, PROFILE_DIR, PROFILE_FILE
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def check_dir() -> pathlib.Path:
+    """Return path. Check file dir and create dir if not exists."""
+    dir_path = pathlib.Path.home() / PROFILE_DIR
+    if not dir_path.is_dir():
+        dir_path.mkdir()
+    return dir_path
+
+
+def check_file(path: pathlib.Path):
+    """Check if file exists and create."""
+    if not path.is_file():
+        with open(path, "w") as _file:
+            json.dump({}, _file)
+
+
+def get_options() -> dict:
+    """Return dict of options."""
+    data = {}
+    dir_path = check_dir()
+    path = dir_path / OPTIONS_FILE
+    check_file(path)
+    with open(path, "r") as _file:
+        data = json.load(_file)
+    return data
+
+
+def write_options(options: dict):
+    """Write options."""
+    path = pathlib.Path.home() / PROFILE_DIR / OPTIONS_FILE
+    with open(path, "w") as _file:
+        json.dump(options, _file)
+
 
 def get_profiles(path=None) -> list:
     """Return Profiles."""
     data = []
     if not path:
-        dir_path = pathlib.Path.home() / PROFILE_DIR
-        if not dir_path.is_dir():
-            dir_path.mkdir()
+        dir_path = check_dir()
         path = dir_path / PROFILE_FILE
-        if not path.is_file():
-            with open(path, "w") as _file:
-                json.dump({}, _file)
+        check_file(path)
     else:
         path = pathlib.Path(path)
     if not path.is_file():
