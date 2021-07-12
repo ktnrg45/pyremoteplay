@@ -10,12 +10,13 @@ from Cryptodome.Hash import SHA256
 CLIENT_ID = "ba495a24-818c-472b-b12d-ff231c1b5745"
 CLIENT_SECRET = "mvaiZkRsAsI1IBkY"
 
+REDIRECT_URL = "https://remoteplay.dl.playstation.net/remoteplay/redirect"
 LOGIN_URL = (
     'https://auth.api.sonyentertainmentnetwork.com/'
     '2.0/oauth/authorize'
     '?service_entity=urn:service-entity:psn'
-    '&response_type=code&client_id={}'
-    '&redirect_uri=https://remoteplay.dl.playstation.net/remoteplay/redirect'
+    f'&response_type=code&client_id={CLIENT_ID}'
+    f'&redirect_uri={REDIRECT_URL}'
     '&scope=psn:clientapp'
     '&request_locale=en_US&ui=pr'
     '&service_logo=ps'
@@ -23,14 +24,14 @@ LOGIN_URL = (
     '&smcid=remoteplay'
     '&prompt=always'
     '&PlatformPrivacyWs1=minimal'
-    '&no_captcha=true&'.format(CLIENT_ID)
+    '&no_captcha=true&'
 )
 
 TOKEN_URL = "https://auth.api.sonyentertainmentnetwork.com/2.0/oauth/token"
 TOKEN_BODY = (
     'grant_type=authorization_code'
     '&code={}'
-    '&redirect_uri=https://remoteplay.dl.playstation.net/remoteplay/redirect&'
+    f'&redirect_uri={REDIRECT_URL}&'
 )
 HEADERS = {
     "Content-Type": "application/x-www-form-urlencoded"
@@ -103,6 +104,9 @@ async def _fetch_account_info(token):
 
 
 def _parse_redirect_url(redirect_url):
+    if not redirect_url.startswith(REDIRECT_URL):
+        _LOGGER.error("Redirect URL does not start with %s", REDIRECT_URL)
+        return None
     code_url = urlparse(redirect_url)
     query = parse_qs(code_url.query)
     code = query.get('code')

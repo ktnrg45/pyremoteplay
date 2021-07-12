@@ -13,7 +13,7 @@ from pyps4_2ndscreen.ddp import get_status
 from .ctrl import CTRL, CTRLAsync
 from .oauth import prompt as oauth_prompt
 from .register import register
-from .util import get_profiles, write_profiles
+from .util import add_profile, get_profiles, write_profiles
 
 NEW_PROFILE = "New Profile"
 CANCEL = "Cancel"
@@ -90,27 +90,10 @@ def register_profile(host: str, path: str):
         user_data = oauth_prompt()
         if user_data is None:
             sys.exit()
-        user_id = user_data.get("user_rpid")
-        if not isinstance(user_id, str) and not user_id:
-            _LOGGER.error("Invalid user id")
-            sys.exit()
-        name = ""
-        while not name:
-            name = str(input("Enter a Name for profile:\n>> "))
-            if not name:
-                print("Invalid Name")
-        profile = {
-            name: {
-                "id": user_id,
-                "hosts": {
-                    mac_address: {
-                        "type": None,
-                        "data": {},
-                    }
-                }
-            }
-        }
-        profiles.update(profile)
+        profiles = add_profile(profiles, user_data)
+        if not profiles:
+            print("Could not parse user data")
+            return
         write_profiles(profiles, path)
 
     user_id = profiles[name]["id"]

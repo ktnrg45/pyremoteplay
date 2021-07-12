@@ -73,6 +73,23 @@ def write_profiles(profiles: dict, path: str):
         json.dump(profiles, _file)
 
 
+def add_profile(profiles: dict, user_data: dict) -> dict:
+    """Add profile to profiles and return profiles."""
+    user_id = user_data.get("user_rpid")
+    if not isinstance(user_id, str) and not user_id:
+        _LOGGER.error("Invalid user id or user id not found")
+        return dict()
+    name = user_data["online_id"]
+    profile = {
+        name: {
+            "id": user_id,
+            "hosts": {},
+        }
+    }
+    profiles.update(profile)
+    return profiles
+
+
 def log_bytes(name: str, data: bytes):
     """Log bytes."""
     mod = inspect.getmodulename(inspect.stack()[1].filename)
