@@ -103,7 +103,8 @@ def register_profile(host: str, path: str):
     pin = ""
     while True:
         pin = input(
-            "On Remote Play host, go to Settings -> "
+            f"On Remote Play host, Login to your PSN Account: {name}"
+            "Then go to Settings -> "
             "Remote Play Connection Settings -> "
             "Add Device and enter the PIN shown\n>> "
         )
@@ -114,7 +115,7 @@ def register_profile(host: str, path: str):
     data = register(host, user_id, pin)
     if not data:
         sys.exit()
-    profiles[name]["hosts"][mac_address]["data"].update(data)
+    profiles[name]["hosts"][mac_address] = {"data": data, "type": ""}
     for h_type in ["PS4", "PS5"]:
         if f"{h_type}-RegistKey" in list(data.keys()):
             profiles[name]["hosts"][mac_address]["type"] = h_type
