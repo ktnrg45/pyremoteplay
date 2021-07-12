@@ -62,7 +62,7 @@ def get_profiles(path=None) -> list:
     return data
 
 
-def write_profiles(profiles: dict, path: str):
+def write_profiles(profiles: dict, path=""):
     """Write profile data."""
     if not path:
         path = pathlib.Path.home() / PROFILE_DIR / PROFILE_FILE
