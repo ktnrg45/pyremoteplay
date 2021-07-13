@@ -150,7 +150,7 @@ class RPStream():
     def send_congestion(self, received: int, lost: int):
         """Send congestion Packet."""
         msg = CongestionPacket(received=received, lost=lost)
-        _LOGGER.debug(msg)
+        _LOGGER.info(msg)
         self.send(msg.bytes(self.cipher))
 
     def send(self, msg: bytes):

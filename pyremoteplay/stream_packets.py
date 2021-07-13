@@ -971,6 +971,9 @@ class ProtoHandler():
                 self._recv_bang = True
             self._stream.recv_bang(accepted, ecdh_pub_key, ecdh_sig)
 
+        elif p_type == "BIG":
+            return
+
         elif p_type == 'HEARTBEAT':
             channel = 1
             msg = ProtoHandler.message()

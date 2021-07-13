@@ -8,6 +8,7 @@ import threading
 import time
 from io import BytesIO
 from struct import unpack_from
+import socket
 
 import ffmpeg
 from opuslib import Decoder
@@ -64,7 +65,7 @@ class AVHandler():
             packet = Packet.parse(msg)
             packet.decrypt(self._cipher)
             self._handle(packet)
-            self._send_congestion()
+            #self._send_congestion()
         self._receiver.close()
 
     def _send_congestion(self):
@@ -151,6 +152,8 @@ class AVStream():
 
     def handle(self, packet: AVPacket):
         """Handle Packet."""
+        if self._received > 65535:
+            self._received = 0
         self._received += 1
         if self._received > 65535:
             self._received = 1
@@ -177,6 +180,8 @@ class AVStream():
                 self._buf.write(packet.data)
             else:
                 _LOGGER.debug("Received unit out of order: %s, expected: %s", packet.unit_index, self.last_unit + 1)
+                if self._lost > 65535:
+                    self._lost = 0
                 self._lost += (packet.index - self._last_index - 1)
                 if self._lost > 65535:
                     self._lost = 1
@@ -225,6 +230,30 @@ class AVReceiver(abc.ABC):
     def close(self):
         """Close Receiver."""
         raise NotImplementedError
+
+
+class QueueReceiver(AVReceiver):
+    def __init__(self, ctrl):
+        super().__init__(ctrl)
+        self.a_cb = None
+        self.v_queue = queue.Queue()
+        
+    def add_audio_cb(self, cb):
+    	self.a_cb = cb
+
+    def start(self):
+    	self.notify_started()
+    	
+    def close(self):
+    	pass
+    	
+    def handle_video(self, buf):
+        self.v_queue.put(buf)
+
+    def handle_audio(self, buf):
+        if self.a_cb is not None:
+            self.a_cb(buf)
+        
 
 
 class AVFileReceiver(AVReceiver):
