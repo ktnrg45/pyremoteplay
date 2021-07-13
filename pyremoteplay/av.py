@@ -8,7 +8,6 @@ import threading
 import time
 from io import BytesIO
 from struct import unpack_from
-import socket
 
 import ffmpeg
 from opuslib import Decoder
@@ -237,23 +236,22 @@ class QueueReceiver(AVReceiver):
         super().__init__(ctrl)
         self.a_cb = None
         self.v_queue = queue.Queue()
-        
+
     def add_audio_cb(self, cb):
-    	self.a_cb = cb
+        self.a_cb = cb
 
     def start(self):
-    	self.notify_started()
-    	
+        self.notify_started()
+
     def close(self):
-    	pass
-    	
+        pass
+
     def handle_video(self, buf):
         self.v_queue.put(buf)
 
     def handle_audio(self, buf):
         if self.a_cb is not None:
             self.a_cb(buf)
-        
 
 
 class AVFileReceiver(AVReceiver):

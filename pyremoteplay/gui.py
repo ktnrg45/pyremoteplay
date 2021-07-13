@@ -3,10 +3,7 @@ import queue
 import sys
 import threading
 
-import av
-import cv2
 from pyps4_2ndscreen.ddp import search
-from PySide6 import QtCore, QtGui, QtWidgets
 
 from .av import QueueReceiver
 from .const import RESOLUTION_PRESETS
@@ -16,7 +13,13 @@ from .register import register
 from .util import (add_profile, get_options, get_profiles, write_options,
                    write_profiles)
 
-QtKey = QtCore.Qt.Key
+try:
+    import av
+    import cv2
+    from PySide6 import QtCore, QtGui, QtWidgets
+    from PySide6.QtCore.Qt import Key as QtKey
+except ModuleNotFoundError:
+    pass
 
 
 class CTRLWorker(QtCore.QObject):
