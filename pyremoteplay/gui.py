@@ -1,5 +1,4 @@
 import asyncio
-import queue
 import sys
 import threading
 
@@ -62,27 +61,24 @@ class AVProcessor(QtCore.QObject):
         self.video_output = self.window.video_output
         self.v_queue = self.window.v_queue
         self.codec = av.codec.Codec("h264", "r").create()
+        #self.codec.flags = av.codec.context.Flags.LOW_DELAY
         self.frame_mutex = QtCore.QMutex()
 
     def next_frame(self):
         self.frame_mutex.lock()
         try:
-            packet = self.v_queue.get_nowait()
-        except queue.Empty:
+            packet = self.v_queue.popleft()
+        except IndexError:
             self.frame_mutex.unlock()
             return
-        packets = self.codec.parse(packet)
-        if not packets:
-            self.frame_mutex.unlock()
-            return
-        frames = self.codec.decode(packets[0])
+        packet = av.packet.Packet(packet)
+        frames = self.codec.decode(packet)
         if not frames:
             self.frame_mutex.unlock()
             return
         frame = frames[0]
         frame = frame.to_ndarray()
         frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
-
         img = QtGui.QImage(frame, frame.shape[1], frame.shape[0], QtGui.QImage.Format_RGB888)
         pix = QtGui.QPixmap.fromImage(img)
         self.video_output.setPixmap(pix)
@@ -247,6 +243,7 @@ class CTRLWindow(QtWidgets.QWidget):
     def start_timer(self):
         print("AV Processor Started")
         self.timer = QtCore.QTimer()
+        self.timer.setTimerType(QtCore.Qt.PreciseTimer)
         self.timer.timeout.connect(self.av_worker.next_frame)
         self.timer.start(1000.0/self.fps)
 

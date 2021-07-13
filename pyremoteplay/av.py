@@ -3,9 +3,9 @@ import abc
 import errno
 import logging
 import multiprocessing
-import queue
 import threading
 import time
+from collections import deque
 from io import BytesIO
 from struct import unpack_from
 
@@ -26,7 +26,7 @@ class AVHandler():
         self._receiver = None
         self._v_stream = None
         self._a_stream = None
-        self._queue = queue.Queue()
+        self._queue = deque()
         self._worker = None
         self._last_congestion = 0
 
@@ -52,13 +52,13 @@ class AVHandler():
 
     def add_packet(self, packet):
         """Add Packet."""
-        self._queue.put(packet)
+        self._queue.append(packet)
 
     def worker(self):
         while not self._ctrl._stop_event.is_set():
             try:
-                msg = self._queue.get(timeout=1)
-            except queue.Empty:
+                msg = self._queue.popleft()
+            except IndexError:
                 time.sleep(0.01)
                 continue
             packet = Packet.parse(msg)
@@ -235,7 +235,7 @@ class QueueReceiver(AVReceiver):
     def __init__(self, ctrl):
         super().__init__(ctrl)
         self.a_cb = None
-        self.v_queue = queue.Queue()
+        self.v_queue = deque()
 
     def add_audio_cb(self, cb):
         self.a_cb = cb
@@ -247,7 +247,7 @@ class QueueReceiver(AVReceiver):
         pass
 
     def handle_video(self, buf):
-        self.v_queue.put(buf)
+        self.v_queue.append(buf)
 
     def handle_audio(self, buf):
         if self.a_cb is not None:
@@ -299,7 +299,7 @@ class AVFileReceiver(AVReceiver):
         self._worker = None
         self._pipe = None
         self.file = None
-        self.v_queue = queue.Queue()
+        self.v_queue = deque()
 
     def start(self):
         _LOGGER.debug("File Receiver Starting")
