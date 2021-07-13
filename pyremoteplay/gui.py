@@ -16,7 +16,7 @@ try:
     import av
     import cv2
     from PySide6 import QtCore, QtGui, QtWidgets
-    from PySide6.QtCore.Qt import Key as QtKey
+    from PySide6.QtCore import Qt
 except ModuleNotFoundError:
     pass
 
@@ -185,7 +185,7 @@ class CTRLWindow(QtWidgets.QWidget):
         return stick, axis, value
 
     def keyPressEvent(self, event):
-        key = QtKey(event.key()).name.decode()
+        key = Qt.Key(event.key()).name.decode()
         button = self.map.get(key)
         if button is None:
             print(f"Button Invalid: {key}")
@@ -207,7 +207,7 @@ class CTRLWindow(QtWidgets.QWidget):
     def keyReleaseEvent(self, event):
         if event.isAutoRepeat():
             return
-        key = QtKey(event.key()).name.decode()
+        key = Qt.Key(event.key()).name.decode()
         button = self.map.get(key)
         if button is None:
             print(f"Button Invalid: {key}")
