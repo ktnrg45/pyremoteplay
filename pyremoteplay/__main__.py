@@ -14,7 +14,6 @@ from .ctrl import CTRL, CTRLAsync
 from .oauth import prompt as oauth_prompt
 from .register import register
 from .util import add_profile, get_profiles, write_profiles
-from .gui import gui
 
 NEW_PROFILE = "New Profile"
 CANCEL = "Cancel"
@@ -35,11 +34,7 @@ def main():
     args = parser.parse_args()
     host = args.host
     path = args.path
-    
-    if host == "gui":
-        gui()
-        return
-    
+
     should_register = args.register
     resolution = args.resolution
     fps = args.fps
