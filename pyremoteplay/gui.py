@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import threading
+import time
 
 from pyps4_2ndscreen.ddp import search
 
@@ -54,6 +55,7 @@ class CTRLWorker(QtCore.QObject):
 
 
 class AVProcessor(QtCore.QObject):
+    frame = QtCore.Signal()
 
     def __init__(self, window):
         super().__init__()
@@ -82,6 +84,7 @@ class AVProcessor(QtCore.QObject):
         img = QtGui.QImage(frame, frame.shape[1], frame.shape[0], QtGui.QImage.Format_RGB888)
         pix = QtGui.QPixmap.fromImage(img)
         self.video_output.setPixmap(pix)
+        self.frame.emit()
         self.frame_mutex.unlock()
 
 
@@ -114,7 +117,7 @@ class CTRLWindow(QtWidgets.QWidget):
         "Key_0": "TOUCHPAD",
     }
 
-    def __init__(self, main_window, host, profile, resolution='720p', fps=60, input_map=None):
+    def __init__(self, main_window, host, name, profile, resolution='720p', fps=60, show_fps=False, input_map=None):
         super().__init__()
         self._main_window = main_window
         self.map = CTRLWindow.MAP if input_map is None else input_map
@@ -129,7 +132,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.controller = self.ctrl.controller
         self.controller.enable_sticks()
 
-        self.setWindowTitle(f"Session @ {host}")
+        self.setWindowTitle(f"Session {name} @ {host}")
         self.setStyleSheet("background-color: black")
         self.resize(self.width, self.height)
         self.video_output = QtWidgets.QLabel(alignment=QtCore.Qt.AlignCenter)
@@ -148,6 +151,12 @@ class CTRLWindow(QtWidgets.QWidget):
         self.av_thread = QtCore.QThread()
         self.av_worker.moveToThread(self.av_thread)
         self.av_thread.started.connect(self.start_timer)
+        self.av_worker.frame.connect(self.set_fps)
+
+        self.fps_label = None
+        if show_fps:
+            self.init_fps()
+        self.showMaximized()
 
 
 # Waiting on pyside6.2
@@ -162,6 +171,24 @@ class CTRLWindow(QtWidgets.QWidget):
 #        format.setSampleType(QtMultimedia.QAudioFormat.SignedInt)
 #        output = QtMultimedia.QAudioOutput(format)
 #        self.audio_output = output.start()
+
+    def init_fps(self):
+        self.last_time = time.time()
+        self.fps_label = get_label("FPS: ", self)
+        self.fps_label.move(20, 20)
+        self.fps_label.setStyleSheet("background-color:#33333333;color:white;")
+        self.fps_sample = 0
+
+    def set_fps(self):
+        if self.fps_label is not None:
+            self.fps_sample += 1
+            if self.fps_sample < self.fps:
+                return
+            now = time.time()
+            delta = now - self.last_time
+            self.last_time = now
+            self.fps_label.setText(f"FPS: {int(self.fps/delta)}")
+            self.fps_sample = 0
 
     def handle_audio(self, data):
         if self.audio_output is None:
@@ -319,6 +346,8 @@ class OptionsWidget(QtWidgets.QWidget):
         self.fps = QtWidgets.QComboBox(self)
         self.fps.addItems(["30", "60"])
         self.fps.currentTextChanged.connect(self.change_fps)
+        self.fps_show = QtWidgets.QCheckBox("Show FPS", self)
+        self.fps_show.stateChanged.connect(self.change_fps_show)
         self.resolution = QtWidgets.QComboBox(self)
         self.resolution.addItems(list(RESOLUTION_PRESETS.keys()))
         self.resolution.currentTextChanged.connect(self.change_resolution)
@@ -332,6 +361,7 @@ class OptionsWidget(QtWidgets.QWidget):
         del_account.clicked.connect(self.delete_profile)
 
         self.add(self.fps, 0, 1, label=get_label("FPS:", self))
+        self.add(self.fps_show, 0, 2)
         self.add(self.resolution, 1, 1, label=get_label("Resolution:", self))
         self.layout.addItem(spacer(), 2, 0)
         self.add(set_account, 3, 0)
@@ -342,6 +372,7 @@ class OptionsWidget(QtWidgets.QWidget):
     def set_options(self) -> bool:
         try:
             self.fps.setCurrentText(str(self.options["fps"]))
+            self.fps_show.setChecked(self.options["show_fps"])
             self.resolution.setCurrentText(self.options["resolution"])
             self.profile = self.options["profile"]
         except KeyError:
@@ -352,6 +383,7 @@ class OptionsWidget(QtWidgets.QWidget):
     def default_options(self) -> dict:
         options = {
             "fps": 60,
+            "show_fps": False,
             "resolution": "720p",
             "profile": "",
         }
@@ -398,6 +430,10 @@ class OptionsWidget(QtWidgets.QWidget):
 
     def change_fps(self, text):
         self.options["fps"] = int(text)
+        write_options(self.options)
+
+    def change_fps_show(self):
+        self.options["show_fps"] = self.fps_show.isChecked()
         write_options(self.options)
 
     def change_resolution(self, text):
@@ -580,8 +616,8 @@ class DeviceWidget(QtWidgets.QWidget):
                 button.clicked.connect(lambda: self.main_window.connect(host))
                 self.add(button, row, col)
             if not self.main_window.toolbar.options.isChecked():
-                self.main_window.center_text.hide()
                 self.show()
+            self.main_window.center_text.hide()
 
         else:
             self.main_window.set_center_text("No Devices Found.")
@@ -657,7 +693,8 @@ class MainWidget(QtWidgets.QWidget):
 
         resolution = options['resolution']
         fps = options['fps']
-        self.ctrl_window = CTRLWindow(self, ip_address, profile, fps=fps, resolution=resolution)
+        show_fps = options['show_fps']
+        self.ctrl_window = CTRLWindow(self, ip_address, name, profile, fps=fps, resolution=resolution, show_fps=show_fps)
         self.ctrl_window.show()
         self._app.setActiveWindow(self.ctrl_window)
         self.ctrl_window.start()
