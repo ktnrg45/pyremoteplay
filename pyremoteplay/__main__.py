@@ -30,10 +30,9 @@ def main():
     parser.add_argument('-r', '--resolution', default="720p", type=str, choices=RESOLUTIONS, help="Resolution to use")
     parser.add_argument('-f', '--fps', default="high", type=str, choices=FPS_CHOICES, help="Max FPS to use")
     parser.add_argument('--register', action="store_true", help='Register with Remote Play host.')
-    parser.add_argument('-p', '--path', type=str, help='Path to PSN profile config.')
+
     args = parser.parse_args()
     host = args.host
-    path = args.path
 
     should_register = args.register
     resolution = args.resolution
@@ -42,9 +41,9 @@ def main():
         fps = int(fps)
 
     if should_register:
-        register_profile(host, path)
+        register_profile(host)
         return
-    cli(host, path, resolution, fps)
+    cli(host, resolution, fps)
 
 
 def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
@@ -74,7 +73,7 @@ def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
     return name
 
 
-def register_profile(host: str, path: str):
+def register_profile(host: str):
     """Register with host."""
     status = get_status(host)
     if not status:
@@ -84,7 +83,7 @@ def register_profile(host: str, path: str):
         return
     mac_address = status.get("host-id")
 
-    profiles = get_profiles(path)
+    profiles = get_profiles()
     if profiles:
         name = select_profile(profiles, False, True)
     if name == NEW_PROFILE or not profiles:
@@ -95,7 +94,7 @@ def register_profile(host: str, path: str):
         if not profiles:
             print("Could not parse user data")
             return
-        write_profiles(profiles, path)
+        write_profiles(profiles)
 
     user_id = profiles[name]["id"]
     if not user_id:
@@ -121,12 +120,12 @@ def register_profile(host: str, path: str):
         if f"{h_type}-RegistKey" in list(data.keys()):
             profiles[name]["hosts"][mac_address]["type"] = h_type
             break
-    write_profiles(profiles, path)
+    write_profiles(profiles)
 
 
-def cli(host: str, path: str, resolution: str, fps: str):
+def cli(host: str, resolution: str, fps: str):
     print(fps)
-    profiles = get_profiles(path)
+    profiles = get_profiles()
     if profiles:
         name = select_profile(profiles, True, True)
         profile = profiles[name]

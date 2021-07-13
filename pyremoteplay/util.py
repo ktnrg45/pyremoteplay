@@ -45,15 +45,13 @@ def write_options(options: dict):
         json.dump(options, _file)
 
 
-def get_profiles(path=None) -> list:
+def get_profiles() -> list:
     """Return Profiles."""
     data = []
-    if not path:
-        dir_path = check_dir()
-        path = dir_path / PROFILE_FILE
-        check_file(path)
-    else:
-        path = pathlib.Path(path)
+    dir_path = check_dir()
+    path = dir_path / PROFILE_FILE
+    check_file(path)
+
     if not path.is_file():
         print("File not found")
         return data
@@ -62,12 +60,9 @@ def get_profiles(path=None) -> list:
     return data
 
 
-def write_profiles(profiles: dict, path=""):
+def write_profiles(profiles: dict):
     """Write profile data."""
-    if not path:
-        path = pathlib.Path.home() / PROFILE_DIR / PROFILE_FILE
-    else:
-        path = pathlib.Path(path)
+    path = pathlib.Path.home() / PROFILE_DIR / PROFILE_FILE
 
     with open(path, "w") as _file:
         json.dump(profiles, _file)
