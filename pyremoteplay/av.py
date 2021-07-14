@@ -8,6 +8,7 @@ import time
 from collections import deque
 from io import BytesIO
 from struct import unpack_from
+import sys
 
 from .stream_packets import AVPacket, Packet
 from .util import log_bytes
@@ -137,6 +138,9 @@ class AVStream():
         """Get Audio config from header."""
         if self._type != AVStream.TYPE_AUDIO:
             raise RuntimeError("Type is not Audio")
+        if sys.modules.get("opuslib") is None:
+            _LOGGER.info("Opuslib not found. Ignoring audio.")
+            return
         self._audio_config = {
             "channels": self._header[0],
             "bits": self._header[1],
@@ -149,7 +153,7 @@ class AVStream():
 
     def audio_decode(self, packet: AVPacket):
         if not self._audio_config:
-            raise RuntimeError("Audio Config not set")
+            return
 
         assert len(packet.data) % packet.frame_size_audio == 0
         buf = bytearray()
