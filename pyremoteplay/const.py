@@ -4,6 +4,7 @@ from enum import IntEnum
 PROFILE_DIR = ".pyremoteplay"
 PROFILE_FILE = ".profile.json"
 OPTIONS_FILE = ".options.json"
+MAPPING_FILE = ".mapping.json"
 RP_PORT = 9295
 USER_AGENT = "remoteplay Windows"
 RP_VERSION = "10.0"

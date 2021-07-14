@@ -7,7 +7,7 @@ import select
 import time
 from binascii import hexlify
 
-from .const import OPTIONS_FILE, PROFILE_DIR, PROFILE_FILE
+from .const import OPTIONS_FILE, PROFILE_DIR, PROFILE_FILE, MAPPING_FILE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +25,23 @@ def check_file(path: pathlib.Path):
     if not path.is_file():
         with open(path, "w") as _file:
             json.dump({}, _file)
+
+def get_mapping() -> dict:
+    """Return dict of key mapping."""
+    data = {}
+    dir_path = check_dir()
+    path = dir_path / MAPPING_FILE
+    check_file(path)
+    with open(path, "r") as _file:
+        data = json.load(_file)
+    return data
+
+
+def write_mapping(mapping: dict):
+    """Write mapping."""
+    path = pathlib.Path.home() / PROFILE_DIR / MAPPING_FILE
+    with open(path, "w") as _file:
+        json.dump(mapping, _file)
 
 
 def get_options() -> dict:

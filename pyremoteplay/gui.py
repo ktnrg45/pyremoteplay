@@ -11,7 +11,7 @@ from .ctrl import CTRLAsync
 from .oauth import LOGIN_URL, get_user_account
 from .register import register
 from .util import (add_profile, get_options, get_profiles, write_options,
-                   write_profiles)
+                   write_profiles, get_mapping, write_mapping)
 
 try:
     from PySide6 import QtCore, QtGui, QtWidgets
@@ -79,38 +79,10 @@ class AVProcessor(QtCore.QObject):
 
 
 class CTRLWindow(QtWidgets.QWidget):
-
-    MAP = {
-        "Key_Escape": "STANDBY",
-        "Key_Q": "QUIT",
-        "Key_Up": "STICK_RIGHT_UP",
-        "Key_Down": "STICK_RIGHT_DOWN",
-        "Key_Left": "STICK_RIGHT_LEFT",
-        "Key_Right": "STICK_RIGHT_RIGHT",
-        "Key_W": "STICK_LEFT_UP",
-        "Key_S": "STICK_LEFT_DOWN",
-        "Key_A": "STICK_LEFT_LEFT",
-        "Key_D": "STICK_LEFT_RIGHT",
-        "Key_1": "L1",
-        "Key_2": "L2",
-        "Key_3": "L3",
-        "Key_4": "R1",
-        "Key_5": "R2",
-        "Key_6": "R3",
-        "Key_Return": "CROSS",
-        "Key_C": "CIRCLE",
-        "Key_R": "SQUARE",
-        "Key_T": "TRIANGLE",
-        "Key_Backspace": "OPTIONS",
-        "Key_Equal": "SHARE",
-        "Key_P": "PS",
-        "Key_0": "TOUCHPAD",
-    }
-
     def __init__(self, main_window, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None):
         super().__init__()
         self._main_window = main_window
-        self.map = CTRLWindow.MAP if input_map is None else input_map
+        self.mapping = ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
         self.host = host
         self.profile = profile
         self.fps = fps
@@ -204,7 +176,7 @@ class CTRLWindow(QtWidgets.QWidget):
 
     def keyPressEvent(self, event):
         key = Qt.Key(event.key()).name.decode()
-        button = self.map.get(key)
+        button = self.mapping.get(key)
         if button is None:
             print(f"Button Invalid: {key}")
             return
@@ -226,7 +198,7 @@ class CTRLWindow(QtWidgets.QWidget):
         if event.isAutoRepeat():
             return
         key = Qt.Key(event.key()).name.decode()
-        button = self.map.get(key)
+        button = self.mapping.get(key)
         if button is None:
             print(f"Button Invalid: {key}")
             return
@@ -272,36 +244,79 @@ class ToolbarWidget(QtWidgets.QWidget):
         self.main_window = main_window
         self.setStyleSheet("QPushButton {padding: 5px}")
         self.layout = QtWidgets.QHBoxLayout(self)
+        self.layout.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignTop)
         self.refresh = QtWidgets.QPushButton("Refresh")
+        self.controls = QtWidgets.QPushButton("Controls")
         self.options = QtWidgets.QPushButton("Options")
-        self.buttons = [self.refresh, self.options]
-        self.refresh.setCheckable(True)
-        self.options.setCheckable(True)
+        self.home = QtWidgets.QPushButton("Home")
+        self.home.hide()
+        self.buttons = [self.home, self.refresh, self.controls, self.options]
         self.options.clicked.connect(self.options_click)
         self.refresh.clicked.connect(self.refresh_click)
+        self.controls.clicked.connect(self.controls_click)
+        self.home.clicked.connect(self.home_click)
 
         for button in self.buttons:
             button.setMaximumWidth(200)
+            button.setCheckable(True)
             self.layout.addWidget(button)
-            self.layout.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignTop)
 
         self.search = QtWidgets.QLineEdit(self)
-        self.search.setPlaceholderText("Enter IP Address")
+        self.search.setPlaceholderText("Search by IP Address")
         self.search.setAlignment(QtCore.Qt.AlignLeft)
         self.search.setMinimumWidth(200)
 
+    def main_hide(self):
+        self.main_window.device_grid.hide()
+        self.refresh.hide()
+        self.search.hide()
+        self.home.show()
+        self.main_window.center_text.hide()
+
+    def main_show(self):
+        self.main_window.device_grid.show()
+        self.refresh.show()
+        self.search.show()
+
+    def home_click(self):
+        self.main_show()
+        self.options_hide()
+        self.controls_hide()
+        self.home.hide()
+
     def options_click(self):
         if self.options.isChecked():
-            self.options.setStyleSheet("background-color:#0D6EFD;color:white;")
-            self.main_window.device_grid.hide()
-            self.refresh.hide()
-            self.main_window.options.show()
-            self.main_window.center_text.hide()
+            self.main_hide()
+            self.options_show()
+            self.controls_hide()
         else:
-            self.options.setStyleSheet("")
-            self.main_window.device_grid.show()
-            self.refresh.show()
-            self.main_window.options.hide()
+            self.home_click()
+
+    def options_show(self):
+        self.options.setStyleSheet("background-color:#0D6EFD;color:white;")
+        self.main_window.options.show()
+
+    def options_hide(self):
+        self.options.setChecked(False)
+        self.options.setStyleSheet("")
+        self.main_window.options.hide()
+
+    def controls_click(self):
+        if self.controls.isChecked():
+            self.main_hide()
+            self.controls_show()
+            self.options_hide()
+        else:
+            self.home_click()
+
+    def controls_show(self):
+        self.controls.setStyleSheet("background-color:#0D6EFD;color:white;")
+        self.main_window.controls.show()
+
+    def controls_hide(self):
+        self.controls.setChecked(False)
+        self.controls.setStyleSheet("")
+        self.main_window.controls.hide()
 
     def refresh_click(self):
         if self.refresh.isChecked():
@@ -312,6 +327,213 @@ class ToolbarWidget(QtWidgets.QWidget):
     def refresh_reset(self):
         self.refresh.setChecked(False)
         self.refresh.setStyleSheet("")
+
+
+class ControlsWidget(QtWidgets.QWidget):
+    KEYS = (
+        'STANDBY',
+        'QUIT',
+        'STICK_RIGHT_UP',
+        'STICK_RIGHT_DOWN',
+        'STICK_RIGHT_LEFT',
+        'STICK_RIGHT_RIGHT',
+        'STICK_LEFT_UP',
+        'STICK_LEFT_DOWN',
+        'STICK_LEFT_LEFT',
+        'STICK_LEFT_RIGHT',
+        'UP',
+        'DOWN',
+        'LEFT',
+        'RIGHT',
+        'L1',
+        'L2',
+        'L3',
+        'R1',
+        'R2',
+        'R3',
+        'CROSS',
+        'CIRCLE',
+        'SQUARE',
+        'TRIANGLE',
+        'OPTIONS',
+        'SHARE',
+        'PS',
+        'TOUCHPAD'
+    )
+
+    DEFAULT_MAPPING = {
+        "Key_Escape": "STANDBY",
+        "Key_Q": "QUIT",
+        "Key_Up": "STICK_RIGHT_UP",
+        "Key_Down": "STICK_RIGHT_DOWN",
+        "Key_Left": "STICK_RIGHT_LEFT",
+        "Key_Right": "STICK_RIGHT_RIGHT",
+        "Key_W": "STICK_LEFT_UP",
+        "Key_S": "STICK_LEFT_DOWN",
+        "Key_A": "STICK_LEFT_LEFT",
+        "Key_D": "STICK_LEFT_RIGHT",
+        "Key_1": "L1",
+        "Key_2": "L2",
+        "Key_3": "L3",
+        "Key_4": "R1",
+        "Key_5": "R2",
+        "Key_6": "R3",
+        "Key_Return": "CROSS",
+        "Key_C": "CIRCLE",
+        "Key_R": "SQUARE",
+        "Key_T": "TRIANGLE",
+        "Key_Backspace": "OPTIONS",
+        "Key_Equal": "SHARE",
+        "Key_P": "PS",
+        "Key_0": "TOUCHPAD",
+    }
+    def __init__(self, main_window):
+        super().__init__(main_window)
+        self.main_window = main_window
+        self.mapping = None
+        self.selected_map = ""
+        self.layout = QtWidgets.QGridLayout(self, alignment=QtCore.Qt.AlignTop)
+        self.layout.setColumnMinimumWidth(0, 30)
+        self.layout.setColumnStretch(0, 1)
+        self.layout.setColumnStretch(1, 1)
+        self.layout.setColumnStretch(2, 1)
+        self.layout.setColumnStretch(3, 1)
+        self.layout.setRowStretch(1, 1)
+        self.table = QtWidgets.QTableWidget(self)
+        self.table.setRowCount(len(ControlsWidget.KEYS))
+        self.table.setColumnCount(2)
+        self.table.setHorizontalHeaderLabels(["Control", "Remote Play Control"])
+        self.input = None
+        header = self.table.horizontalHeader()       
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        self.reset = QtWidgets.QPushButton("Reset to Default")
+        self.clear = QtWidgets.QPushButton("Clear")
+        self.cancel = QtWidgets.QPushButton("Cancel")
+        self.set_table()
+        self.instructions()
+        self.layout.addWidget(self.table, 1, 0, 1, 3)
+        self.layout.addWidget(self.reset, 0, 0)
+        self.layout.addWidget(self.clear, 0, 1)
+        self.layout.addWidget(self.cancel, 0, 2)
+        self.layout.addWidget(self.label, 1, 3)
+        self.cancel.hide()
+        self.clear.hide()
+        self.cancel.clicked.connect(self.click_cancel)
+        self.reset.clicked.connect(self.click_reset)
+        self.clear.clicked.connect(self.click_clear)
+        self.table.clicked.connect(self.click_table)
+        self.table.keyPressEvent = self.table_keypress
+
+    def hide(self):
+        self.click_cancel()
+        super().hide()
+
+    def default_mapping(self):
+        self.mapping = {
+            "selected" : "keyboard",
+            "maps": {
+                "keyboard": ControlsWidget.DEFAULT_MAPPING,
+            }
+        }
+        write_mapping(self.mapping)
+
+    def set_table(self):
+        self.table.clearContents()
+        self.click_cancel()
+        self.mapping = get_mapping()
+        if not self.mapping:
+            self.default_mapping()
+        self.selected_map = self.mapping['selected']
+        self.map = self.mapping['maps'][self.selected_map]
+        if self.selected_map == "keyboard":
+            self.set_keyboard()
+
+    def set_map(self):
+        self.input = None
+        self.mapping['maps'][self.selected_map] = self.map
+        write_mapping(self.mapping)
+
+    def set_keyboard(self):
+        remove_keys = []
+        for index, rp_key in enumerate(ControlsWidget.KEYS):
+            item = QtWidgets.QTableWidgetItem(rp_key)
+            item.setFlags(QtCore.Qt.ItemIsEnabled)
+            blank = QtWidgets.QTableWidgetItem()
+            blank.setFlags(QtCore.Qt.ItemIsEnabled)
+            self.table.setItem(index, 1, item)
+            self.table.setItem(index, 0, blank)
+        for key, rp_key in self.map.items():
+            if rp_key not in ControlsWidget.KEYS:
+                remove_keys.append(key)
+                continue
+            item = QtWidgets.QTableWidgetItem(key.replace("Key_", ""))
+            item.setFlags(Qt.ItemIsEnabled)
+            self.table.setItem(ControlsWidget.KEYS.index(rp_key), 0, item)
+        if remove_keys:
+            for key in remove_keys:
+                self.map.pop(key)
+        self.set_map()
+
+    def instructions(self):
+        text = (
+            "To set a Control, click on the corresponding row "
+            "and then press the key that you would like to map "
+            "to the Remote Play Control."
+        )
+        self.label = QtWidgets.QLabel(text)
+        self.label.setWordWrap(True)
+
+    def click_table(self, item):
+        self.input = item.row()
+        self.cancel.show()
+        self.clear.show()
+
+    def click_cancel(self):
+        self.input = None
+        self.cancel.hide()
+        self.clear.hide()
+
+    def click_clear(self):
+        if self.input is None:
+            return
+        item = self.table.item(self.input, 0).text()
+        key = f"Key_{item}"
+        if key in self.map:
+            self.map.pop(key)
+        self.set_map()
+        self.set_table()
+
+    def click_reset(self):
+        text = "Reset input mapping to default?"
+        msg = message(self, "Reset Mapping" , text, "warning", self.default_mapping, escape=True)
+        self.set_table()
+
+    def get_current_map_key(self, rp_key):
+        rp_keys = list(self.map.values())
+        if rp_key not in rp_keys:
+            return None 
+        index = rp_keys.index(rp_key)
+        key = list(self.map.keys())[index]
+        return key
+
+    def table_keypress(self, event):
+        if self.input is not None:
+            _map = self.mapping['maps']['keyboard'] 
+            key = Qt.Key(event.key()).name.decode()
+            item = self.table.item(self.input, 0)
+            rp_key = self.table.item(self.input, 1).text()
+            current = self.get_current_map_key(rp_key)
+
+            # Delete the current key
+            if current is not None:
+                assert self.map.get(current) == rp_key
+                self.map.pop(current)
+
+            self.map[key] = rp_key
+            item.setText(key.replace("Key_", ""))
+            self.set_map()
+            self.set_table()
 
 
 class OptionsWidget(QtWidgets.QWidget):
@@ -628,13 +850,14 @@ class DeviceWidget(QtWidgets.QWidget):
                 # button.setIcon(QtGui.QIcon.fromTheme("computer"))
                 button.clicked.connect(lambda: self.main_window.connect(host))
                 self.add(button, row, col)
-            if not self.main_window.toolbar.options.isChecked():
+            if not self.main_window.toolbar.options.isChecked() \
+                    and not self.main_window.toolbar.controls.isChecked():
                 self.show()
             self.main_window.center_text.hide()
 
         else:
             self.main_window.set_center_text(
-                "No Devices Found.\n"
+                "No Devices Found. "
                 "Try searching manually by entering the host IP Address "
                 "in the box above and click refresh."
             )
@@ -669,14 +892,18 @@ class MainWidget(QtWidgets.QWidget):
         self.device_grid = DeviceWidget(self)
         self.toolbar = ToolbarWidget(self)
         self.options = OptionsWidget(self)
+        self.controls = ControlsWidget(self)
         self.options.hide()
+        self.controls.hide()
         self.center_text = QtWidgets.QLabel("", alignment=QtCore.Qt.AlignCenter)
+        self.center_text.setWordWrap(True)
         self.center_text.setObjectName("center-text")
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.addWidget(self.toolbar)
         self.layout.addWidget(self.options)
         self.layout.addWidget(self.center_text)
         self.layout.addWidget(self.device_grid)
+        self.layout.addWidget(self.controls)
         self.layout.setAlignment(self.toolbar, QtCore.Qt.AlignTop)
         self.set_style()
         self.toolbar.refresh.setChecked(True)
@@ -712,7 +939,17 @@ class MainWidget(QtWidgets.QWidget):
         fps = options['fps']
         show_fps = options['show_fps']
         fullscreen = options['fullscreen']
-        self.ctrl_window = CTRLWindow(self, ip_address, name, profile, fps=fps, resolution=resolution, show_fps=show_fps, fullscreen=fullscreen)
+        self.ctrl_window = CTRLWindow(
+            self,
+            ip_address,
+            name,
+            profile,
+            fps=fps,
+            resolution=resolution,
+            show_fps=show_fps,
+            fullscreen=fullscreen,
+            input_map=self.controls.map,
+        )
         self.ctrl_window.show()
         self._app.setActiveWindow(self.ctrl_window)
         self.ctrl_window.start()
