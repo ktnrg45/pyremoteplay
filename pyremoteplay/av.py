@@ -50,10 +50,11 @@ class AVHandler():
 
     def set_cipher(self, cipher):
         self._cipher = cipher
-        self._worker = threading.Thread(
-            target=self.worker,
-        )
-        self._worker.start()
+        self._ctrl.init_av_handler()
+        # self._worker = threading.Thread(
+        #     target=self.worker,
+        # )
+        # self._worker.start()
 
     def set_headers(self, v_header, a_header):
         """Set headers."""

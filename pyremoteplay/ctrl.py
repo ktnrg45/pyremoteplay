@@ -545,12 +545,22 @@ class CTRLAsync(CTRL):
         self.loop.create_task(self.async_run_controller())
 
     async def async_run_controller(self):
-        executor = ThreadPoolExecutor(max_workers=3)
+        executor = ThreadPoolExecutor(max_workers=8)
         await self.loop.run_in_executor(
             executor,
             self.controller.start,
         )
         self.controller_ready_event.set()
+
+    def init_av_handler(self):
+        self.loop.create_task(self.async_run_av_handler())
+
+    async def async_run_av_handler(self):
+        executor = ThreadPoolExecutor(max_workers=8)
+        await self.loop.run_in_executor(
+            executor,
+            self.av_handler.worker,
+        )
 
     def stop(self):
         """Stop Stream."""
