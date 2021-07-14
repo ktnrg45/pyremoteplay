@@ -455,9 +455,9 @@ class OptionsWidget(QtWidgets.QWidget):
             return
         name = item.text(0)
         text = f"Are you sure you want to delete account: {name}"
-        msg = message(self, "Delete Account" , text, "warning", escape=True, should_exec=False)
-        if not msg.exec():
-            return
+        msg = message(self, "Delete Account" , text, "warning", lambda: self.remove_profile(name), escape=True)
+
+    def remove_profile(self, name):
         self.profiles.pop(name)
         write_profiles(self.profiles)
         self.options['profile'] = list(self.profiles.keys())[0] if self.profiles else ""
@@ -468,10 +468,11 @@ class OptionsWidget(QtWidgets.QWidget):
     def new_profile(self):
         title = "Add PSN Account"
         text = "To Add a New PSN Account you will have to sign in to your PSN Account. Continue?"
-        self.options_message = message(self.main_window, title, text, "info", escape=True, should_exec=False)
-        self.options_message.exec()
-        self.options_message.hide()
+        new_message = message(self.main_window, title, text, "info", self.new_account, escape=True)
+        new_message.hide()
 
+    def new_account(self):
+        title = "Add PSN Account"
         dialog = QtWidgets.QInputDialog(self)
         dialog.setWindowTitle(title)
         dialog.setInputMode(QtWidgets.QInputDialog.TextInput)
