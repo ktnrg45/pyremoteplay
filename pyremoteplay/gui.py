@@ -107,7 +107,7 @@ class CTRLWindow(QtWidgets.QWidget):
         "Key_0": "TOUCHPAD",
     }
 
-    def __init__(self, main_window, host, name, profile, resolution='720p', fps=60, show_fps=False, input_map=None):
+    def __init__(self, main_window, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None):
         super().__init__()
         self._main_window = main_window
         self.map = CTRLWindow.MAP if input_map is None else input_map
@@ -146,7 +146,8 @@ class CTRLWindow(QtWidgets.QWidget):
         self.fps_label = None
         if show_fps:
             self.init_fps()
-        self.showMaximized()
+        if fullscreen:
+            self.showMaximized()
 
 
 # Waiting on pyside6.2
@@ -166,7 +167,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.last_time = time.time()
         self.fps_label = get_label("FPS: ", self)
         self.fps_label.move(20, 20)
-        self.fps_label.setStyleSheet("background-color:#33333333;color:white;")
+        self.fps_label.setStyleSheet("background-color:#33333333;color:white;padding-left:5px;")
         self.fps_sample = 0
 
     def set_fps(self):
@@ -290,6 +291,7 @@ class ToolbarWidget(QtWidgets.QWidget):
             self.main_window.device_grid.hide()
             self.refresh.hide()
             self.main_window.options.show()
+            self.main_window.center_text.hide()
         else:
             self.options.setStyleSheet("")
             self.main_window.device_grid.show()
@@ -338,6 +340,8 @@ class OptionsWidget(QtWidgets.QWidget):
         self.fps.currentTextChanged.connect(self.change_fps)
         self.fps_show = QtWidgets.QCheckBox("Show FPS", self)
         self.fps_show.stateChanged.connect(self.change_fps_show)
+        self.fullscreen = QtWidgets.QCheckBox("Show Fullscreen", self)
+        self.fullscreen.stateChanged.connect(self.change_fullscreen)
         self.resolution = QtWidgets.QComboBox(self)
         self.resolution.addItems(list(RESOLUTION_PRESETS.keys()))
         self.resolution.currentTextChanged.connect(self.change_resolution)
@@ -353,6 +357,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.add(self.fps, 0, 1, label=get_label("FPS:", self))
         self.add(self.fps_show, 0, 2)
         self.add(self.resolution, 1, 1, label=get_label("Resolution:", self))
+        self.add(self.fullscreen, 1, 2)
         self.layout.addItem(spacer(), 2, 0)
         self.add(set_account, 3, 0)
         self.add(add_account, 3, 1)
@@ -364,6 +369,7 @@ class OptionsWidget(QtWidgets.QWidget):
             self.fps.setCurrentText(str(self.options["fps"]))
             self.fps_show.setChecked(self.options["show_fps"])
             self.resolution.setCurrentText(self.options["resolution"])
+            self.fullscreen.setChecked(self.options["fullscreen"])
             self.profile = self.options["profile"]
         except KeyError:
             self.options = self.default_options()
@@ -375,6 +381,7 @@ class OptionsWidget(QtWidgets.QWidget):
             "fps": 60,
             "show_fps": False,
             "resolution": "720p",
+            "fullscreen": False,
             "profile": "",
         }
         write_options(options)
@@ -428,6 +435,10 @@ class OptionsWidget(QtWidgets.QWidget):
 
     def change_resolution(self, text):
         self.options["resolution"] = text
+        write_options(self.options)
+
+    def change_fullscreen(self):
+        self.options["fullscreen"] = self.fullscreen.isChecked()
         write_options(self.options)
 
     def change_profile(self):
@@ -684,7 +695,8 @@ class MainWidget(QtWidgets.QWidget):
         resolution = options['resolution']
         fps = options['fps']
         show_fps = options['show_fps']
-        self.ctrl_window = CTRLWindow(self, ip_address, name, profile, fps=fps, resolution=resolution, show_fps=show_fps)
+        fullscreen = options['fullscreen']
+        self.ctrl_window = CTRLWindow(self, ip_address, name, profile, fps=fps, resolution=resolution, show_fps=show_fps, fullscreen=fullscreen)
         self.ctrl_window.show()
         self._app.setActiveWindow(self.ctrl_window)
         self.ctrl_window.start()
