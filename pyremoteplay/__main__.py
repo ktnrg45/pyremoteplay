@@ -103,7 +103,7 @@ def register_profile(host: str):
     pin = ""
     while True:
         pin = input(
-            f"On Remote Play host, Login to your PSN Account: {name}"
+            f"On Remote Play host, Login to your PSN Account: {name}\n"
             "Then go to Settings -> "
             "Remote Play Connection Settings -> "
             "Add Device and enter the PIN shown\n>> "
