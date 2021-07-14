@@ -5,7 +5,7 @@ import time
 
 from pyps4_2ndscreen.ddp import search
 
-from .av import QueueReceiver
+from .av import QueueReceiver, GUIReceiver
 from .const import RESOLUTION_PRESETS
 from .ctrl import CTRLAsync
 from .oauth import LOGIN_URL, get_user_account
@@ -14,8 +14,6 @@ from .util import (add_profile, get_options, get_profiles, write_options,
                    write_profiles)
 
 try:
-    import av
-    import cv2
     from PySide6 import QtCore, QtGui, QtWidgets
     from PySide6.QtCore import Qt
 except ModuleNotFoundError:
@@ -62,25 +60,17 @@ class AVProcessor(QtCore.QObject):
         self.window = window
         self.video_output = self.window.video_output
         self.v_queue = self.window.v_queue
-        self.codec = av.codec.Codec("h264", "r").create()
+        #self.codec = av.codec.Codec("h264", "r").create()
         #self.codec.flags = av.codec.context.Flags.LOW_DELAY
         self.frame_mutex = QtCore.QMutex()
 
     def next_frame(self):
         self.frame_mutex.lock()
         try:
-            packet = self.v_queue.popleft()
+            frame = self.v_queue.popleft()
         except IndexError:
             self.frame_mutex.unlock()
             return
-        packet = av.packet.Packet(packet)
-        frames = self.codec.decode(packet)
-        if not frames:
-            self.frame_mutex.unlock()
-            return
-        frame = frames[0]
-        frame = frame.to_ndarray()
-        frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
         img = QtGui.QImage(frame, frame.shape[1], frame.shape[0], QtGui.QImage.Format_RGB888)
         pix = QtGui.QPixmap.fromImage(img)
         self.video_output.setPixmap(pix)
@@ -124,7 +114,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.host = host
         self.profile = profile
         self.fps = fps
-        self.ctrl = CTRLAsync(self.host, self.profile, resolution=resolution, fps=fps, av_receiver=QueueReceiver)
+        self.ctrl = CTRLAsync(self.host, self.profile, resolution=resolution, fps=fps, av_receiver=GUIReceiver)
         self.width = self.ctrl.resolution["width"]
         self.height = self.ctrl.resolution["height"]
         self.v_queue = self.ctrl.av_receiver.v_queue

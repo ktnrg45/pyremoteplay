@@ -15,6 +15,12 @@ from opuslib import Decoder
 from .stream_packets import AVPacket, Packet
 from .util import log_bytes
 
+try:
+    import av
+    import cv2
+except ModuleNotFound:
+    pass
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -248,6 +254,27 @@ class QueueReceiver(AVReceiver):
 
     def handle_video(self, buf):
         self.v_queue.append(buf)
+
+    def handle_audio(self, buf):
+        if self.a_cb is not None:
+            self.a_cb(buf)
+
+
+class GUIReceiver(QueueReceiver):
+    def __init__(self, ctrl):
+        super().__init__(ctrl)
+        self.codec = av.codec.Codec("h264", "r").create()
+        self.codec.flags = av.codec.context.Flags.LOW_DELAY
+
+    def handle_video(self, buf):
+        packet = av.packet.Packet(buf)
+        frames = self.codec.decode(packet)
+        if not frames:
+            return
+        frame = frames[0]
+        frame = frame.to_ndarray()
+        frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
+        self.v_queue.append(frame)
 
     def handle_audio(self, buf):
         if self.a_cb is not None:
