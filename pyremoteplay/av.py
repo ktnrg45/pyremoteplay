@@ -9,17 +9,21 @@ from collections import deque
 from io import BytesIO
 from struct import unpack_from
 
-import ffmpeg
-from opuslib import Decoder
-
 from .stream_packets import AVPacket, Packet
 from .util import log_bytes
 
 try:
     import av
     import cv2
-except ModuleNotFound:
-    pass
+    import ffmpeg
+except ModuleNotFound as err:
+    _LOGGER.error("Package not installed: %s", err)
+
+try:
+    from opuslib import Decoder
+except Exception as err:
+    _LOGGER.error("Error importing opuslib: %s", err)
+
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -1,6 +1,5 @@
-pyps4-2ndscreen==1.2.1
-cryptography==3.4.6
-protobuf==3.15.3
-protobuf3==0.2.1
-requests==2.25.1
-numpy==1.20.1
+pyps4-2ndscreen>=1.2.1
+cryptography>=3.4.6
+protobuf>=3.15.3
+protobuf3>=0.2.1
+requests>=2.25.1
