@@ -541,16 +541,6 @@ class CTRLAsync(CTRL):
         self._stream = RPStream(self, stop_event, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
         self.loop.create_task(self._stream.async_connect())
 
-    def init_controller(self):
-        self.loop.create_task(self.async_run_controller())
-
-    async def async_run_controller(self):
-        executor = ThreadPoolExecutor(max_workers=8)
-        await self.loop.run_in_executor(
-            executor,
-            self.controller.start,
-        )
-        self.controller_ready_event.set()
 
     def init_av_handler(self):
         self.loop.create_task(self.async_run_av_handler())

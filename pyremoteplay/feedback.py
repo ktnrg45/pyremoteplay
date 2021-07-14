@@ -37,25 +37,6 @@ class Controller():
             "right": {"x": 0, "y": 0},
         }
 
-    def start(self):
-        """Start controller worker."""
-        if self._started:
-            _LOGGER.error("Controller already started")
-            return
-        if not self._ctrl._stream.cipher:
-            raise RuntimeError("Stream has no cipher")
-        self._worker = threading.Thread(
-            target=self.worker,
-        )
-        self._worker.start()
-
-    def worker(self):
-        self._started = True
-        _LOGGER.info("Controller Started")
-        while not self._ctrl.state == self._ctrl.STATE_STOP:
-            self.send()
-            time.sleep(self.STATE_INTERVAL_MIN_MS)
-        _LOGGER.info("Controller Stopped")
 
     def enable_sticks(self):
         """Enable sticks."""

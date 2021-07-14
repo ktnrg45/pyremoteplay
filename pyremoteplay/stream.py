@@ -272,7 +272,6 @@ class RPStream():
             self._stop_event.set()
         self.cipher = self._ecdh.init_ciphers()
         self.ready()
-        self._ctrl.init_controller()
         if self.av_handler.has_receiver:
             self.av_handler.set_cipher(self.cipher)
 
