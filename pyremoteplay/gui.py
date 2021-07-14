@@ -5,7 +5,7 @@ import time
 
 from pyps4_2ndscreen.ddp import search
 
-from .av import QueueReceiver, GUIReceiver
+from .av import GUIReceiver, QueueReceiver
 from .const import RESOLUTION_PRESETS
 from .ctrl import CTRLAsync
 from .oauth import LOGIN_URL, get_user_account

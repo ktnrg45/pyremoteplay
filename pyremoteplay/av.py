@@ -16,13 +16,13 @@ try:
     import av
     import cv2
     import ffmpeg
-except ModuleNotFound as err:
-    _LOGGER.error("Package not installed: %s", err)
+except ModuleNotFoundError as err:
+    print(err)
 
 try:
     from opuslib import Decoder
 except Exception as err:
-    _LOGGER.error("Error importing opuslib: %s", err)
+    print(err)
 
 
 _LOGGER = logging.getLogger(__name__)
