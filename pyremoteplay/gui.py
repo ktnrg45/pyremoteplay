@@ -3,7 +3,7 @@ import sys
 import threading
 import time
 
-from pyps4_2ndscreen.ddp import search
+from pyps4_2ndscreen.ddp import search, get_status
 
 from .av import GUIReceiver, QueueReceiver
 from .const import RESOLUTION_PRESETS
@@ -285,6 +285,11 @@ class ToolbarWidget(QtWidgets.QWidget):
             self.layout.addWidget(button)
             self.layout.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignTop)
 
+        self.search = QtWidgets.QLineEdit(self)
+        self.search.setPlaceholderText("Enter IP Address")
+        self.search.setAlignment(QtCore.Qt.AlignLeft)
+        self.search.setMinimumWidth(200)
+
     def options_click(self):
         if self.options.isChecked():
             self.options.setStyleSheet("background-color:#0D6EFD;color:white;")
@@ -301,7 +306,8 @@ class ToolbarWidget(QtWidgets.QWidget):
     def refresh_click(self):
         if self.refresh.isChecked():
             self.refresh.setStyleSheet("background-color:#0D6EFD;color:white;")
-            self.main_window.device_grid.discover()
+            self.search.text()
+            self.main_window.device_grid.discover(self.search.text())
 
     def refresh_reset(self):
         self.refresh.setChecked(False)
@@ -573,12 +579,17 @@ class DeviceWidget(QtWidgets.QWidget):
     class DeviceSearch(QtCore.QObject):
         finished = QtCore.Signal()
 
-        def __init__(self):
+        def __init__(self, host=""):
             super().__init__()
             self.hosts = []
+            self.host = host
 
         def get_hosts(self):
             self.hosts = search()
+            if self.host:
+                host = get_status(self.host)
+                if host and host not in self.hosts:
+                    self.hosts.append(host)
             self.finished.emit()
 
     def __init__(self, main_window):
@@ -622,13 +633,17 @@ class DeviceWidget(QtWidgets.QWidget):
             self.main_window.center_text.hide()
 
         else:
-            self.main_window.set_center_text("No Devices Found.")
+            self.main_window.set_center_text(
+                "No Devices Found.\n"
+                "Try searching manually by entering the host IP Address "
+                "in the box above and click refresh."
+            )
 
-    def discover(self):
+    def discover(self, host=""):
         self.hide()
         self.main_window.set_center_text("Refreshing...")
         thread = QtCore.QThread(self)
-        worker = DeviceWidget.DeviceSearch()
+        worker = DeviceWidget.DeviceSearch(host)
         worker.moveToThread(thread)
         thread.started.connect(worker.get_hosts)
         worker.finished.connect(lambda: self.create_grid(worker.hosts))
