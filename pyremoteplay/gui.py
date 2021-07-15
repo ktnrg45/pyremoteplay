@@ -60,8 +60,6 @@ class AVProcessor(QtCore.QObject):
         self.window = window
         self.video_output = self.window.video_output
         self.v_queue = self.window.v_queue
-        #self.codec = av.codec.Codec("h264", "r").create()
-        #self.codec.flags = av.codec.context.Flags.LOW_DELAY
         self.frame_mutex = QtCore.QMutex()
 
     def next_frame(self):
@@ -798,6 +796,56 @@ class OptionsWidget(QtWidgets.QWidget):
 
 class DeviceWidget(QtWidgets.QWidget):
 
+    class DeviceButton(QtWidgets.QPushButton):
+        def __init__(self, main_window, host):
+            super().__init__()
+            self.info = ""
+            self.main_window = main_window
+            self.host = host
+            self.get_info()
+            self.get_text()
+            self.info_show = False
+            self.menu = QtWidgets.QMenu(self)
+            self.action = QtGui.QAction(self)
+            self.action.triggered.connect(self.toggle_info)
+            self.menu.addAction(self.action)
+            #self.setIcon(QtGui.QIcon.fromTheme("computer"))
+            self.clicked.connect(lambda: self.main_window.connect(self.host))
+
+        def get_text(self):
+            device_type = self.host['host-type']
+            if self.host['host-type'] == "PS4":
+                device_type = "PlayStation 4"
+            elif self.host['host-type'] == "PS5":
+                device_type = "PlayStation 5"
+            self.main_text = (
+                f"{self.host['host-name']}\n"
+                f"{device_type}\n"
+                f"{self.host.get('running-app-name')}"
+            )
+            self.setText(self.main_text)
+
+        def get_info(self):
+            self.info = (
+                f"Type: {self.host['host-type']}\n"
+                f"Name: {self.host['host-name']}\n"
+                f"IP Address: {self.host['host-ip']}\n"
+                f"Mac Address: {self.host['host-id']}\n\n"
+                f"Status: {self.host['status']}\n"
+                f"Playing: {self.host.get('running-app-name')}"
+            )
+
+        def contextMenuEvent(self, event):
+            text = "View Info" if not self.info_show else "Hide Info"
+            self.action.setText(text)
+            self.menu.popup(QtGui.QCursor.pos())
+
+        def toggle_info(self):
+            text = self.info if not self.info_show else self.main_text
+            self.setText(text)
+            self.info_show = not self.info_show
+
+
     class DeviceSearch(QtCore.QObject):
         finished = QtCore.Signal()
 
@@ -839,16 +887,7 @@ class DeviceWidget(QtWidgets.QWidget):
             for index, host in enumerate(hosts):
                 col = index % max_cols
                 row = index // max_cols
-                button = QtWidgets.QPushButton(
-                    f"Type: {host['host-type']}\n"
-                    f"Name: {host['host-name']}\n"
-                    f"IP Address: {host['host-ip']}\n"
-                    f"Mac Address: {host['host-id']}\n\n"
-                    f"Status: {host['status']}\n"
-                    f"Playing: {host['running-app-name']}"
-                )
-                # button.setIcon(QtGui.QIcon.fromTheme("computer"))
-                button.clicked.connect(lambda: self.main_window.connect(host))
+                button = DeviceWidget.DeviceButton(self, host)
                 self.add(button, row, col)
             if not self.main_window.toolbar.options.isChecked() \
                     and not self.main_window.toolbar.controls.isChecked():
