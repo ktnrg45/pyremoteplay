@@ -3,7 +3,9 @@ import sys
 import threading
 import time
 
+import aiohttp
 from pyps4_2ndscreen.ddp import search, get_status
+from pyps4_2ndscreen.media_art import async_search_ps_store
 
 from .av import GUIReceiver, QueueReceiver
 from .const import RESOLUTION_PRESETS
@@ -44,12 +46,15 @@ class CTRLWorker(QtCore.QObject):
         self.loop.run_until_complete(task)
         self.loop.run_forever()
         self.loop.close()
+        print("CTRL Finished")
+        self.finished.emit()
 
     async def start(self):
         status = await self.ctrl.start()
         if not status:
             print("CTRL Failed to Start")
-            message(self.window, "Error", self.ctrl.error, cb=self.window.close)
+            message(None, "Error", self.ctrl.error)
+            self.loop.stop()
 
 
 class AVProcessor(QtCore.QObject):
@@ -222,6 +227,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.stop()
 
     def stop(self):
+        self.timer.stop()
         self.ctrl.stop()
         print(f"Stopping Session @ {self.host}")
         self.thread.quit()
@@ -797,20 +803,103 @@ class OptionsWidget(QtWidgets.QWidget):
 class DeviceWidget(QtWidgets.QWidget):
 
     class DeviceButton(QtWidgets.QPushButton):
+        COLOR_DARK = "#000000"
+        COLOR_LIGHT = "#FFFFFF"
         def __init__(self, main_window, host):
             super().__init__()
             self.info = ""
             self.main_window = main_window
             self.host = host
-            self.get_info()
-            self.get_text()
             self.info_show = False
             self.menu = QtWidgets.QMenu(self)
             self.action = QtGui.QAction(self)
             self.action.triggered.connect(self.toggle_info)
             self.menu.addAction(self.action)
-            #self.setIcon(QtGui.QIcon.fromTheme("computer"))
-            self.clicked.connect(lambda: self.main_window.connect(self.host))
+            self.clicked.connect(lambda: self.main_window.connect_host(self.host))
+            self.clicked.connect(lambda: self.setEnabled(False))
+            self.text_color = self.COLOR_DARK
+            self.bg_color = "#E9ECEF"
+            self.border_color =  ("#A3A3A3", "#A3A3A3")
+            if self.host["status_code"] == 200:
+                self.border_color = ("#6EA8FE", "#0D6EFD")
+            else:
+                self.border_color =  ("#FEB272", "#FFC107")
+            self.get_info()
+            self.get_text()
+            self.set_image()
+            self.set_style()
+
+        def set_style(self):
+            self.setStyleSheet("".join(
+                [
+                    "QPushButton {border-radius:25%;",
+                    f"color: {self.text_color};",
+                    f"background-color: {self.bg_color};",
+                    f"border: 5px solid {self.border_color[0]};",
+                    "}",
+                    "QPushButton:hover {",
+                    f"color: {self.text_color};",
+                    f"border: 5px solid {self.border_color[1]};",
+                    "}",
+                ]
+            ))
+
+        def set_image(self):
+            async def get_image(title_id):
+                image = None
+                item = await async_search_ps_store(title_id, "United States")
+                if item is None:
+                    return None
+                if item.cover_art is None:
+                    return None
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(item.cover_art) as response:
+                        image = await response.read()
+                return image
+
+            title_id = self.host.get("running-app-titleid")
+            if title_id:
+                image = asyncio.run(get_image(title_id))
+                asyncio.set_event_loop(asyncio.new_event_loop())
+                if image is not None:
+                    pix = QtGui.QPixmap()
+                    pix.loadFromData(image)
+                    icon = QtGui.QIcon(pix)
+                    self.setIcon(pix)
+                    self.setIconSize(QtCore.QSize(100, 100))
+                    img = pix.toImage()
+                    self.bg_color = img.pixelColor(25, 25).name()
+                    contrast = self.calc_contrast(self.bg_color)
+                    if contrast >= 1 / 4.5:
+                        self.text_color = self.COLOR_LIGHT
+
+        def calc_contrast(self, hex_color):
+            colors = (self.text_color, hex_color)
+            lum = []
+            for color in colors:
+                lum.append(self.calc_luminance(color))
+            lum = sorted(lum)
+            contrast = (lum[0] + 0.05) / lum[1] + 0.05
+            return contrast
+
+        def calc_luminance(self, hex_color):
+            assert len(hex_color) == 7
+            hex_color = hex_color.replace("#", "")
+            assert len(hex_color) == 6
+            color = []
+            for index in range(0, 3):
+                start = 2 * index
+                rgb = int.from_bytes(
+                    bytes.fromhex(hex_color[start: start + 2]),
+                    'little',
+                )
+                rgb /= 255
+                rgb = rgb / 12.92 if rgb <= 0.04045 else ((rgb + 0.055) / 1.055) ** 2.4
+                color.append(rgb)
+            luminance = (
+                (0.2126 * color[0]) + (0.7152 * color[1]) + (0.0722 * color[2])
+            )
+            return luminance
 
         def get_text(self):
             device_type = self.host['host-type']
@@ -887,7 +976,7 @@ class DeviceWidget(QtWidgets.QWidget):
             for index, host in enumerate(hosts):
                 col = index % max_cols
                 row = index // max_cols
-                button = DeviceWidget.DeviceButton(self, host)
+                button = DeviceWidget.DeviceButton(self.main_window, host)
                 self.add(button, row, col)
             if not self.main_window.toolbar.options.isChecked() \
                     and not self.main_window.toolbar.controls.isChecked():
@@ -913,13 +1002,19 @@ class DeviceWidget(QtWidgets.QWidget):
         worker.finished.connect(self.main_window.toolbar.refresh_reset)
         thread.start()
 
+    def session_stop(self):
+        QtCore.QTimer.singleShot(5000, self.enable_buttons)
+
+    def enable_buttons(self):
+        for button in self.widgets:
+            button.setDisabled(False)
+
 
 class MainWidget(QtWidgets.QWidget):
     def __init__(self, app):
         super().__init__()
         self._app = app
         self.idle = True
-        self.hosts = []
         self.thread = None
         self.ctrl_window = None
         self.toolbar = None
@@ -961,7 +1056,7 @@ class MainWidget(QtWidgets.QWidget):
         self.popup.setGeometry(QtCore.QRect(100, 100, 400, 200))
         self.popup.show()
 
-    def connect(self, host):
+    def connect_host(self, host):
         ip_address = host["host-ip"]
         options = self.options.options
         name = options.get("profile")
@@ -998,6 +1093,7 @@ class MainWidget(QtWidgets.QWidget):
         self.ctrl_window.deleteLater()
         self.ctrl_window = None
         self._app.setActiveWindow(self)
+        self.device_grid.session_stop()
 
     def set_center_text(self, text):
         self.center_text.setText(text)
