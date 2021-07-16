@@ -175,11 +175,12 @@ class CTRL():
         self.error = ""
         self.av_receiver = av_receiver(self) if av_receiver is not None else None
         self.av_handler = AVHandler(self)
+        self.controller = Controller(self)
 
+        self._ready_event = None
         self._stop_event = None
         self.receiver_started = None
         self.controller_ready_event = None
-        self.controller = Controller(self)
 
 
     # TODO: Refactor this
@@ -370,10 +371,10 @@ class CTRL():
 
     def start(self, wakeup=True, autostart=True) -> bool:
         """Start CTRL/RP Session."""
+        self._ready_event = threading.Event()
         self._stop_event = threading.Event()
         self.receiver_started = threading.Event()
         self.controller_ready_event = threading.Event()
-
         status = self._check_host()
         if not status[0]:
             self.error = f"Host @ {self._host} is not reachable."
@@ -396,6 +397,7 @@ class CTRL():
             args=("CTRL", self._sock, self._handle, self._stop_event),
         )
         self._worker.start()
+        self._ready_event.wait()
         if autostart:
             self.start_stream()
         return True
@@ -514,11 +516,10 @@ class CTRLAsync(CTRL):
 
     async def start(self, wakeup=True, autostart=True) -> bool:
         """Start CTRL/RP Session."""
+        self._ready_event = asyncio.Event()
         self._stop_event = asyncio.Event()
         self.receiver_started = asyncio.Event()
         self.controller_ready_event = asyncio.Event()
-        self.controller_ready_event.clear()
-
         _LOGGER.debug("Running Async")
         status = await self.run_io(self._check_host)
         if not status[0]:
@@ -538,6 +539,7 @@ class CTRLAsync(CTRL):
         _LOGGER.info("CTRL Auth Success")
         self._state = CTRL.STATE_READY
         _, self._protocol = await self.loop.connect_accepted_socket(lambda: CTRLAsync.Protocol(self), self._sock)
+        await self._ready_event.wait()
         if autostart:
             self.start_stream()
         return True

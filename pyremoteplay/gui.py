@@ -25,13 +25,12 @@ except ModuleNotFoundError:
 class CTRLWorker(QtCore.QObject):
     finished = QtCore.Signal()
 
-    def __init__(self, window, ctrl, standby_only=False):
+    def __init__(self, window, ctrl):
         super().__init__()
         self.window = window
         self.ctrl = ctrl
         self.worker = None
         self.loop = None
-        self._standby_only = standby_only
 
     def run(self):
         self.worker = threading.Thread(
@@ -51,13 +50,10 @@ class CTRLWorker(QtCore.QObject):
         self.finished.emit()
 
     async def start(self):
-        status = await self.ctrl.start(autostart=False)
+        status = await self.ctrl.start()
         if not status:
             print("CTRL Failed to Start")
             message(None, "Error", self.ctrl.error)
-            self.loop.stop()
-        if self._standby_only:
-            self.ctrl.standby()
             self.loop.stop()
 
 
