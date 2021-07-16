@@ -9,7 +9,7 @@ from pyps4_2ndscreen.media_art import async_search_ps_store
 
 from .av import GUIReceiver, QueueReceiver
 from .const import RESOLUTION_PRESETS
-from .ctrl import CTRLAsync
+from .ctrl import CTRLAsync, CTRL, send_wakeup
 from .oauth import LOGIN_URL, get_user_account
 from .register import register
 from .util import (add_profile, get_options, get_profiles, write_options,
@@ -25,12 +25,13 @@ except ModuleNotFoundError:
 class CTRLWorker(QtCore.QObject):
     finished = QtCore.Signal()
 
-    def __init__(self, window, ctrl):
+    def __init__(self, window, ctrl, standby_only=False):
         super().__init__()
         self.window = window
         self.ctrl = ctrl
         self.worker = None
         self.loop = None
+        self._standby_only = standby_only
 
     def run(self):
         self.worker = threading.Thread(
@@ -50,10 +51,13 @@ class CTRLWorker(QtCore.QObject):
         self.finished.emit()
 
     async def start(self):
-        status = await self.ctrl.start()
+        status = await self.ctrl.start(autostart=False)
         if not status:
             print("CTRL Failed to Start")
             message(None, "Error", self.ctrl.error)
+            self.loop.stop()
+        if self._standby_only:
+            self.ctrl.standby()
             self.loop.stop()
 
 
@@ -95,7 +99,6 @@ class CTRLWindow(QtWidgets.QWidget):
         self.v_queue = self.ctrl.av_receiver.v_queue
         # self.ctrl.av_receiver.add_audio_cb(self.handle_audio)
         self.controller = self.ctrl.controller
-        self.controller.enable_sticks()
 
         self.setWindowTitle(f"Session {name} @ {host}")
         self.setStyleSheet("background-color: black")
@@ -812,9 +815,6 @@ class DeviceWidget(QtWidgets.QWidget):
             self.host = host
             self.info_show = False
             self.menu = QtWidgets.QMenu(self)
-            self.action = QtGui.QAction(self)
-            self.action.triggered.connect(self.toggle_info)
-            self.menu.addAction(self.action)
             self.clicked.connect(lambda: self.main_window.connect_host(self.host))
             self.clicked.connect(lambda: self.setEnabled(False))
             self.text_color = self.COLOR_DARK
@@ -824,10 +824,19 @@ class DeviceWidget(QtWidgets.QWidget):
                 self.border_color = ("#6EA8FE", "#0D6EFD")
             else:
                 self.border_color =  ("#FEB272", "#FFC107")
+            self.init_actions()
             self.get_info()
             self.get_text()
             self.set_image()
             self.set_style()
+
+        def init_actions(self):
+            self.action_info = QtGui.QAction(self)
+            self.action_info.triggered.connect(self.toggle_info)
+            self.menu.addAction(self.action_info)
+            self.action_power = QtGui.QAction(self)
+            self.menu.addAction(self.action_power)
+            self.action_power.triggered.connect(self.toggle_power)
 
         def set_style(self):
             self.setStyleSheet("".join(
@@ -907,10 +916,12 @@ class DeviceWidget(QtWidgets.QWidget):
                 device_type = "PlayStation 4"
             elif self.host['host-type'] == "PS5":
                 device_type = "PlayStation 5"
+            app = self.host.get('running-app-name')
+            label = app if app else ""
             self.main_text = (
                 f"{self.host['host-name']}\n"
                 f"{device_type}\n"
-                f"{self.host.get('running-app-name')}"
+                f"{label}"
             )
             self.setText(self.main_text)
 
@@ -926,13 +937,23 @@ class DeviceWidget(QtWidgets.QWidget):
 
         def contextMenuEvent(self, event):
             text = "View Info" if not self.info_show else "Hide Info"
-            self.action.setText(text)
+            self.action_info.setText(text)
+            if self.host['status_code'] == 200:
+                self.action_power.setText("Standby")
+            else:
+                self.action_power.setText("Wakeup")
             self.menu.popup(QtGui.QCursor.pos())
 
         def toggle_info(self):
             text = self.info if not self.info_show else self.main_text
             self.setText(text)
             self.info_show = not self.info_show
+
+        def toggle_power(self):
+            if self.host['status_code'] == 200:
+                self.main_window.standby_host(self.host)
+            else:
+                self.main_window.wakeup_host(self.host)
 
 
     class DeviceSearch(QtCore.QObject):
@@ -1056,19 +1077,52 @@ class MainWidget(QtWidgets.QWidget):
         self.popup.setGeometry(QtCore.QRect(100, 100, 400, 200))
         self.popup.show()
 
-    def connect_host(self, host):
-        ip_address = host["host-ip"]
-        options = self.options.options
-        name = options.get("profile")
+    def check_profile(self, name, host):
         profile = self.options.profiles.get(name)
         if not profile:
             message(self, "Error: No PSN Accounts found", "Click 'Options' -> 'Add Account' to add PSN Account.")
-            return
+            return None
         if host["host-id"] not in profile["hosts"]:
             text = f"PSN account: {name} has not been registered with this device. Click 'Ok' to register."
             message(self, "Needs Registration", text, "info", cb=lambda:self.options.register(host, name), escape=True)
-            return
+            return None
+        return profile
 
+    def standby_host(self, host):
+        name = self.options.options.get("profile")
+        profile = self.check_profile(name, host)
+        if not profile:
+            return
+        ip_address = host["host-ip"]
+        ctrl = CTRL(ip_address, profile)
+        status = ctrl.start(autostart=False)
+        if status:
+            ctrl.standby()
+        ctrl.stop()
+        if not status:
+            message(self, "Standby Error", ctrl.error)
+        else:
+            message(self, "Standby Success", f"Set device at {ip_address} to Standby", "info")
+
+    def wakeup_host(self, host):
+        name = self.options.options.get("profile")
+        profile = self.check_profile(name, host)
+        if not profile:
+            return
+        ip_address = host["host-ip"]
+        host_type = host["host-type"]
+        mac_address = host["host-id"]
+        regist_key = profile["hosts"][mac_address]["data"][f"{host_type}-RegistKey"]
+        send_wakeup(ip_address, regist_key)
+        message(self, "Wakeup Sent", f"Sent Wakeup command to device at {ip_address}", "info")
+
+    def connect_host(self, host):
+        options = self.options.options
+        name = options.get("profile")
+        profile = self.check_profile(name, host)
+        if not profile:
+            return
+        ip_address = host["host-ip"]
         resolution = options['resolution']
         fps = options['fps']
         show_fps = options['show_fps']

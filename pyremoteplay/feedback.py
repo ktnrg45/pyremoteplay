@@ -28,7 +28,6 @@ class Controller():
         self._event_buf = deque([], Controller.MAX_EVENTS)
         self._event_queue = []
         self._buttons = {}
-        self._has_sticks = False
         self._params = kwargs
         self._started = False
 
@@ -37,15 +36,9 @@ class Controller():
             "right": {"x": 0, "y": 0},
         }
 
-
-    def enable_sticks(self):
-        """Enable sticks."""
-        self._has_sticks = True
-
     def send(self):
-        if self.has_sticks:
-            self._ctrl._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
-            self._sequence_state += 1
+        self._ctrl._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
+        self._sequence_state += 1
         if self._event_queue:
             self.add_event_buffer(self._event_queue.pop(0))
             data = b"".join(self._event_buf)

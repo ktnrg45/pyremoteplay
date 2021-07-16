@@ -26,61 +26,74 @@ def check_file(path: pathlib.Path):
         with open(path, "w") as _file:
             json.dump({}, _file)
 
-def get_mapping() -> dict:
+def get_mapping(path=None) -> dict:
     """Return dict of key mapping."""
     data = {}
-    dir_path = check_dir()
-    path = dir_path / MAPPING_FILE
+    if not path:
+        dir_path = check_dir()
+        path = dir_path / MAPPING_FILE
+    else:
+        path = pathlib.Path(path)
     check_file(path)
     with open(path, "r") as _file:
         data = json.load(_file)
     return data
 
 
-def write_mapping(mapping: dict):
+def write_mapping(mapping: dict, path=None):
     """Write mapping."""
-    path = pathlib.Path.home() / PROFILE_DIR / MAPPING_FILE
+    if not path:
+        path = pathlib.Path.home() / PROFILE_DIR / MAPPING_FILE
+    else:
+        path = pathlib.Path(path)
     with open(path, "w") as _file:
         json.dump(mapping, _file)
 
 
-def get_options() -> dict:
+def get_options(path=None) -> dict:
     """Return dict of options."""
     data = {}
-    dir_path = check_dir()
-    path = dir_path / OPTIONS_FILE
+    if not path:
+        dir_path = check_dir()
+        path = dir_path / OPTIONS_FILE
+    else:
+        path = pathlib.Path(path)
     check_file(path)
     with open(path, "r") as _file:
         data = json.load(_file)
     return data
 
 
-def write_options(options: dict):
+def write_options(options: dict, path=None):
     """Write options."""
-    path = pathlib.Path.home() / PROFILE_DIR / OPTIONS_FILE
+    if not path:
+        path = pathlib.Path.home() / PROFILE_DIR / OPTIONS_FILE
+    else:
+        path = pathlib.Path(path)
     with open(path, "w") as _file:
         json.dump(options, _file)
 
 
-def get_profiles() -> list:
+def get_profiles(path=None) -> list:
     """Return Profiles."""
     data = []
-    dir_path = check_dir()
-    path = dir_path / PROFILE_FILE
+    if not path:
+        dir_path = check_dir()
+        path = dir_path / PROFILE_FILE
+    else:
+        path = pathlib.Path(path)
     check_file(path)
-
-    if not path.is_file():
-        print("File not found")
-        return data
     with open(path, "r") as _file:
         data = json.load(_file)
     return data
 
 
-def write_profiles(profiles: dict):
+def write_profiles(profiles: dict, path=None):
     """Write profile data."""
-    path = pathlib.Path.home() / PROFILE_DIR / PROFILE_FILE
-
+    if not path:
+        path = pathlib.Path.home() / PROFILE_DIR / PROFILE_FILE
+    else:
+        path = pathlib.Path(path)
     with open(path, "w") as _file:
         json.dump(profiles, _file)
 

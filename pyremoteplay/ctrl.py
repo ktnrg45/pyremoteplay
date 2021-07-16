@@ -13,11 +13,10 @@ import requests
 from Cryptodome.Hash import SHA256
 from Cryptodome.Random import get_random_bytes
 from pyps4_2ndscreen.ddp import get_status
-from pyps4_2ndscreen.ddp import wakeup as ddp_wakeup
 
 from .av import AVFileReceiver, AVHandler
 from .const import (FPS, OS_TYPE, RP_CRYPT_SIZE, RP_PORT, RP_VERSION, TYPE_PS4,
-                    TYPE_PS5, USER_AGENT, Resolution)
+                    TYPE_PS5, USER_AGENT, Resolution, DDP_PORT, DDP_VERSION)
 from .crypt import RPCipher
 from .errors import RemotePlayError, RPErrorHandler
 from .feedback import Controller
@@ -102,6 +101,28 @@ def _gen_did() -> bytes:
     log_bytes("Device ID", did)
     return did
 
+def get_wakeup_packet(regist_key: str) -> bytes:
+    regist_key = int.from_bytes(bytes.fromhex(bytes.fromhex(regist_key).decode()), "big")
+
+    data = (
+        "WAKEUP * HTTP/1.1\n"
+        "client-type:vr\n"
+        "auth-type:R\n"
+        "model:w\n"
+        "app-type:r\n"
+        f"user-credential:{regist_key}\n"
+        f"device-discovery-protocol-version:{DDP_VERSION}\n"
+    )
+    return data.encode()
+
+def send_wakeup(host: str, regist_key: str):
+    """Send Wakeup Packet."""
+    _LOGGER.info("Sent Wakeup to host")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(0)
+    sock.sendto(get_wakeup_packet(regist_key), (host, DDP_PORT))
+    sock.close()
+
 
 class CTRL():
     """Controller for RP Session."""
@@ -155,22 +176,13 @@ class CTRL():
         self.av_receiver = av_receiver(self) if av_receiver is not None else None
         self.av_handler = AVHandler(self)
 
-        self._stop_event = threading.Event()
-        self.receiver_started = threading.Event()
-        self.controller_ready_event = threading.Event()
-
+        self._stop_event = None
+        self.receiver_started = None
+        self.controller_ready_event = None
         self.controller = Controller(self)
-        self.controller_ready_event.clear()
 
-        self._get_creds()
 
-    def _get_creds(self):
-        """Set creds for wakeup."""
-        creds = self._profile["id"]
-        self._creds = SHA256.new(
-            str(int.from_bytes(b64decode(creds), "little")).encode()
-        ).hexdigest()
-
+    # TODO: Refactor this
     def _init_profile(self, mac_address):
         """Init profile."""
         regist_data = self._profile["hosts"].get(mac_address)
@@ -318,7 +330,7 @@ class CTRL():
                 session_id = invalid_session_id(session_id)
             finally:
                 self._session_id = session_id
-            self.start_stream()
+            self._ready_event.set()
 
         if time.time() - self._hb_last > 5:
             _LOGGER.info("CTRL HB Timeout. Sending HB")
@@ -354,11 +366,14 @@ class CTRL():
 
     def wakeup(self):
         """Wakeup Host."""
-        _LOGGER.info("Sent Wakeup to host")
-        ddp_wakeup(self._host, self._creds)
+        send_wakeup(self._host, self._regist_key)
 
-    def start(self, wakeup=True) -> bool:
+    def start(self, wakeup=True, autostart=True) -> bool:
         """Start CTRL/RP Session."""
+        self._stop_event = threading.Event()
+        self.receiver_started = threading.Event()
+        self.controller_ready_event = threading.Event()
+
         status = self._check_host()
         if not status[0]:
             self.error = f"Host @ {self._host} is not reachable."
@@ -381,6 +396,8 @@ class CTRL():
             args=("CTRL", self._sock, self._handle, self._stop_event),
         )
         self._worker.start()
+        if autostart:
+            self.start_stream()
         return True
 
     def connect(self) -> bool:
@@ -451,6 +468,8 @@ class CTRL():
     @property
     def state(self) -> str:
         """Return State."""
+        if self._stop_event is None:
+            return self._state
         if self._stop_event.is_set():
             return CTRL.STATE_STOP
         return self._state
@@ -490,17 +509,16 @@ class CTRLAsync(CTRL):
         self._protocol = None
         self._transport = None
 
-        self._stop_event = asyncio.Event()
-        self.receiver_started = asyncio.Event()
-        self.controller_ready_event = asyncio.Event()
-        self.controller = Controller(self)
-        self.controller_ready_event.clear()
-
     async def run_io(self, func, *args, **kwargs):
         return await self.loop.run_in_executor(None, partial(func, *args, **kwargs))
 
-    async def start(self, wakeup=True) -> bool:
+    async def start(self, wakeup=True, autostart=True) -> bool:
         """Start CTRL/RP Session."""
+        self._stop_event = asyncio.Event()
+        self.receiver_started = asyncio.Event()
+        self.controller_ready_event = asyncio.Event()
+        self.controller_ready_event.clear()
+
         _LOGGER.debug("Running Async")
         status = await self.run_io(self._check_host)
         if not status[0]:
@@ -520,6 +538,8 @@ class CTRLAsync(CTRL):
         _LOGGER.info("CTRL Auth Success")
         self._state = CTRL.STATE_READY
         _, self._protocol = await self.loop.connect_accepted_socket(lambda: CTRLAsync.Protocol(self), self._sock)
+        if autostart:
+            self.start_stream()
         return True
 
     def send(self, data: bytes):
