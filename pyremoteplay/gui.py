@@ -245,10 +245,9 @@ class ToolbarWidget(QtWidgets.QWidget):
     def __init__(self, main_window):
         super().__init__(main_window)
         self.main_window = main_window
-        self.setStyleSheet("QPushButton {padding: 5px}")
         self.layout = QtWidgets.QHBoxLayout(self)
         self.layout.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignTop)
-        self.refresh = QtWidgets.QPushButton("Refresh")
+        self.refresh = QtWidgets.QPushButton("Auto Refresh")
         self.controls = QtWidgets.QPushButton("Controls")
         self.options = QtWidgets.QPushButton("Options")
         self.home = QtWidgets.QPushButton("Home")
@@ -264,22 +263,15 @@ class ToolbarWidget(QtWidgets.QWidget):
             button.setCheckable(True)
             self.layout.addWidget(button)
 
-        self.search = QtWidgets.QLineEdit(self)
-        self.search.setPlaceholderText("Search by IP Address")
-        self.search.setAlignment(QtCore.Qt.AlignLeft)
-        self.search.setMinimumWidth(200)
-
     def main_hide(self):
         self.main_window.device_grid.hide()
         self.refresh.hide()
-        self.search.hide()
         self.home.show()
         self.main_window.center_text.hide()
 
     def main_show(self):
         self.main_window.device_grid.show()
         self.refresh.show()
-        self.search.show()
 
     def home_click(self):
         self.main_show()
@@ -323,13 +315,15 @@ class ToolbarWidget(QtWidgets.QWidget):
 
     def refresh_click(self):
         if self.refresh.isChecked():
-            self.refresh.setStyleSheet("background-color:#0D6EFD;color:white;")
-            self.search.text()
-            self.main_window.device_grid.discover(self.search.text())
+            self.refresh.setStyleSheet("QPushButton {background-color:#0D6EFD;color:white;}")
+            self.main_window.device_grid.start_timer()
+        else:
+            self.refresh_reset()
 
     def refresh_reset(self):
         self.refresh.setChecked(False)
         self.refresh.setStyleSheet("")
+        self.main_window.device_grid.timer.stop()
 
 
 class ControlsWidget(QtWidgets.QWidget):
@@ -545,7 +539,6 @@ class OptionsWidget(QtWidgets.QWidget):
         self.main_window = main_window
         self.options = {}
         self.profiles = {}
-        self.setStyleSheet("QPushButton {padding: 5px}")
         self.layout = QtWidgets.QGridLayout(self, alignment=QtCore.Qt.AlignTop)
         self.layout.setColumnMinimumWidth(0, 30)
         self.layout.setColumnStretch(0, 1)
@@ -564,8 +557,19 @@ class OptionsWidget(QtWidgets.QWidget):
             if not self.set_options():
                 raise RuntimeError("Failed to set options")
         self.set_profiles()
+        self.set_devices()
 
     def init_options(self):
+        set_account = QtWidgets.QPushButton("Select Account")
+        add_account = QtWidgets.QPushButton("Add Account")
+        del_account = QtWidgets.QPushButton("Delete Account")
+        add_device = QtWidgets.QPushButton("Add Device")
+        del_device = QtWidgets.QPushButton("Remove Device")
+        add_device.clicked.connect(self.new_device)
+        del_device.clicked.connect(self.delete_device)
+        set_account.clicked.connect(self.change_profile)
+        add_account.clicked.connect(self.new_profile)
+        del_account.clicked.connect(self.delete_profile)
         self.fps = QtWidgets.QComboBox(self)
         self.fps.addItems(["30", "60"])
         self.fps.currentTextChanged.connect(self.change_fps)
@@ -578,12 +582,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.resolution.currentTextChanged.connect(self.change_resolution)
         self.accounts = QtWidgets.QTreeWidget()
         self.accounts.itemDoubleClicked.connect(self.change_profile)
-        set_account = QtWidgets.QPushButton("Select Account")
-        add_account = QtWidgets.QPushButton("Add Account")
-        del_account = QtWidgets.QPushButton("Delete Account")
-        set_account.clicked.connect(self.change_profile)
-        add_account.clicked.connect(self.new_profile)
-        del_account.clicked.connect(self.delete_profile)
+        self.devices = QtWidgets.QTreeWidget()
 
         self.add(self.fps, 0, 1, label=get_label("FPS:", self))
         self.add(self.fps_show, 0, 2)
@@ -594,6 +593,10 @@ class OptionsWidget(QtWidgets.QWidget):
         self.add(add_account, 3, 1)
         self.add(del_account, 3, 2)
         self.layout.addWidget(self.accounts, 4, 0, 3, 3)
+        self.layout.addItem(spacer(), 4, 3)
+        self.add(add_device, 3, 4)
+        self.add(del_device, 3, 5)
+        self.layout.addWidget(self.devices, 4, 4, 3, 2)
 
     def set_options(self) -> bool:
         try:
@@ -614,6 +617,7 @@ class OptionsWidget(QtWidgets.QWidget):
             "resolution": "720p",
             "fullscreen": False,
             "profile": "",
+            "devices": [],
         }
         write_options(options)
         return options
@@ -623,6 +627,15 @@ class OptionsWidget(QtWidgets.QWidget):
         if not options:
             options = self.default_options()
         self.options = options
+
+    def set_devices(self):
+        if not self.options.get("devices"):
+            self.options["devices"] = []
+        self.devices.clear()
+        self.devices.setHeaderLabels(["Devices"])
+        for host in self.options["devices"]:
+            item = QtWidgets.QTreeWidgetItem(self.devices)
+            item.setText(0, host)
 
     def set_profiles(self):
         self.profiles = get_profiles()
@@ -680,6 +693,39 @@ class OptionsWidget(QtWidgets.QWidget):
         write_options(self.options)
         self.set_profiles()
 
+    def new_device(self):
+        title = "Add Device"
+        dialog = QtWidgets.QInputDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setInputMode(QtWidgets.QInputDialog.TextInput)
+        dialog.setLabelText("Enter IP Address of device to manually search for.")
+        if not dialog.exec():
+            return
+        host = dialog.textValue()
+        if not host:
+            return
+        if host in self.options["devices"]:
+            text = "Device is already added."
+            message(self.main_window, "Device Already Added", text, "warning")
+            return
+        status = get_status(host)
+        if not status:
+            text = f"Could not find device at: {host}."
+            message(self.main_window, "Device not found", text, "warning")
+            return
+        self.options["devices"].append(host)
+        write_options(self.options)
+        self.set_devices()
+
+    def delete_device(self):
+        item = self.devices.selectedItems()[0]
+        if not item:
+            return
+        host = item.text(0)
+        self.options["devices"].remove(host)
+        write_options(self.options)
+        self.set_devices()
+
     def delete_profile(self):
         item = self.accounts.selectedItems()[0]
         if not item:
@@ -733,7 +779,10 @@ class OptionsWidget(QtWidgets.QWidget):
         dialog.setLabelText("Copy and Paste the URL of the page that says 'Redirect' below:")
         if not dialog.exec():
             return
-        account = get_user_account(dialog.textValue())
+        url = dialog.textValue()
+        if not url:
+            return
+        account = get_user_account(url)
         profiles = add_profile(self.main_window.profiles, account)
         if not profiles:
             text = "Error getting account data"
@@ -799,7 +848,7 @@ class OptionsWidget(QtWidgets.QWidget):
         message(self, title, text, level)
 
 
-class DeviceWidget(QtWidgets.QWidget):
+class DeviceGrid(QtWidgets.QWidget):
 
     class DeviceButton(QtWidgets.QPushButton):
         COLOR_DARK = "#000000"
@@ -838,13 +887,13 @@ class DeviceWidget(QtWidgets.QWidget):
             self.setStyleSheet("".join(
                 [
                     "QPushButton {border-radius:25%;",
+                    f"border: 5px solid {self.border_color[0]};",
                     f"color: {self.text_color};",
                     f"background-color: {self.bg_color};",
-                    f"border: 5px solid {self.border_color[0]};",
                     "}",
                     "QPushButton:hover {",
-                    f"color: {self.text_color};",
                     f"border: 5px solid {self.border_color[1]};",
+                    f"color: {self.text_color};",
                     "}",
                 ]
             ))
@@ -913,11 +962,12 @@ class DeviceWidget(QtWidgets.QWidget):
             elif self.host['host-type'] == "PS5":
                 device_type = "PlayStation 5"
             app = self.host.get('running-app-name')
-            label = app if app else ""
+            if not app:
+                app = "Idle" if self.host["status_code"] == 200 else "Standby" 
             self.main_text = (
                 f"{self.host['host-name']}\n"
-                f"{device_type}\n"
-                f"{label}"
+                f"{device_type}\n\n"
+                f"{app}"
             )
             self.setText(self.main_text)
 
@@ -951,21 +1001,27 @@ class DeviceWidget(QtWidgets.QWidget):
             else:
                 self.main_window.wakeup_host(self.host)
 
-
     class DeviceSearch(QtCore.QObject):
         finished = QtCore.Signal()
 
-        def __init__(self, host=""):
+        def __init__(self, hosts=[]):
             super().__init__()
             self.hosts = []
-            self.host = host
+            self.manual_hosts = hosts
 
         def get_hosts(self):
             self.hosts = search()
-            if self.host:
-                host = get_status(self.host)
-                if host and host not in self.hosts:
-                    self.hosts.append(host)
+            if self.manual_hosts:
+                found = []
+                if self.hosts:
+                    for item in self.hosts:
+                        found.append(item.get("host-ip"))
+                for _host in self.manual_hosts:
+                    if _host in found:
+                        continue
+                    host = get_status(_host)
+                    if host:
+                        self.hosts.append(host)
             self.finished.emit()
 
     def __init__(self, main_window):
@@ -975,6 +1031,8 @@ class DeviceWidget(QtWidgets.QWidget):
         self.layout.setColumnMinimumWidth(0, 100)
         self.widgets = []
         self.setStyleSheet("QPushButton {padding: 50px 25px;}")
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.discover)
 
     def add(self, button, row, col):
         self.layout.setRowStretch(0, 6)
@@ -993,33 +1051,29 @@ class DeviceWidget(QtWidgets.QWidget):
             for index, host in enumerate(hosts):
                 col = index % max_cols
                 row = index // max_cols
-                button = DeviceWidget.DeviceButton(self.main_window, host)
+                button = DeviceGrid.DeviceButton(self.main_window, host)
                 self.add(button, row, col)
             if not self.main_window.toolbar.options.isChecked() \
                     and not self.main_window.toolbar.controls.isChecked():
                 self.show()
             self.main_window.center_text.hide()
 
-        else:
-            self.main_window.set_center_text(
-                "No Devices Found. "
-                "Try searching manually by entering the host IP Address "
-                "in the box above and click refresh."
-            )
-
-    def discover(self, host=""):
-        self.hide()
-        self.main_window.set_center_text("Refreshing...")
+    def discover(self):
         thread = QtCore.QThread(self)
-        worker = DeviceWidget.DeviceSearch(host)
+        worker = DeviceGrid.DeviceSearch(
+            self.main_window.options.options.get("devices")
+        )
         worker.moveToThread(thread)
         thread.started.connect(worker.get_hosts)
         worker.finished.connect(lambda: self.create_grid(worker.hosts))
         worker.finished.connect(thread.quit)
-        worker.finished.connect(self.main_window.toolbar.refresh_reset)
         thread.start()
 
+    def start_timer(self):
+        self.timer.start(5000)
+
     def session_stop(self):
+        self.start_timer()
         QtCore.QTimer.singleShot(5000, self.enable_buttons)
 
     def enable_buttons(self):
@@ -1040,7 +1094,7 @@ class MainWidget(QtWidgets.QWidget):
 
     def _init_window(self):
         self.setWindowTitle("PyRemotePlay")
-        self.device_grid = DeviceWidget(self)
+        self.device_grid = DeviceGrid(self)
         self.toolbar = ToolbarWidget(self)
         self.options = OptionsWidget(self)
         self.controls = ControlsWidget(self)
@@ -1057,13 +1111,22 @@ class MainWidget(QtWidgets.QWidget):
         self.layout.addWidget(self.controls)
         self.layout.setAlignment(self.toolbar, QtCore.Qt.AlignTop)
         self.set_style()
-        self.toolbar.refresh.setChecked(True)
+        self.device_grid.discover()
         self.toolbar.refresh_click()
+        self.toolbar.refresh.setChecked(True)
+
+    def startup_check_grid(self):
+        if not self.device_grid.widgets:
+            self.main_window.set_center_text(
+                "No Devices Found.\n"
+                "Try adding a device in options."
+            )
 
     def set_style(self):
         style = (
-            "QPushButton {padding: 10px 0px;}"
+            "QPushButton {border: 1px solid #0a58ca;border-radius: 10px;padding: 10px;}"
             "QPushButton:hover {background-color:#0D6EFD;color:white;}"
+            "QPushButton:pressed {background-color:#0a58ca;}"
             "#center-text {font-size: 24px;}"
         )
         self.setStyleSheet(style)
@@ -1113,6 +1176,7 @@ class MainWidget(QtWidgets.QWidget):
         message(self, "Wakeup Sent", f"Sent Wakeup command to device at {ip_address}", "info")
 
     def connect_host(self, host):
+        self.device_grid.timer.stop()
         options = self.options.options
         name = options.get("profile")
         profile = self.check_profile(name, host)

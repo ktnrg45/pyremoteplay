@@ -117,10 +117,10 @@ def get_wakeup_packet(regist_key: str) -> bytes:
 
 def send_wakeup(host: str, regist_key: str):
     """Send Wakeup Packet."""
-    _LOGGER.info("Sent Wakeup to host")
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(0)
     sock.sendto(get_wakeup_packet(regist_key), (host, DDP_PORT))
+    _LOGGER.info("Sent Wakeup to host")
     sock.close()
 
 
@@ -379,13 +379,13 @@ class CTRL():
         if not status[0]:
             self.error = f"Host @ {self._host} is not reachable."
             return False
+        if not self._init_profile(status[2]):
+            self.error = "Profile is not registered with host"
+            return False
         if not status[1]:
             if wakeup:
                 self.wakeup()
                 self.error = "Host is in Standby. Attempting to wakeup."
-            return False
-        if not self._init_profile(status[2]):
-            self.error = "Profile is not registered with host"
             return False
         if not self.connect():
             _LOGGER.error("CTRL Auth Failed")
@@ -525,13 +525,13 @@ class CTRLAsync(CTRL):
         if not status[0]:
             self.error = f"Host @ {self._host} is not reachable."
             return False
+        if not self._init_profile(status[2]):
+            self.error = "Profile is not registered with host"
+            return False
         if not status[1]:
             if wakeup:
                 await self.run_io(self.wakeup)
                 self.error = "Host is in Standby. Attempting to wakeup."
-            return False
-        if not self._init_profile(status[2]):
-            self.error = "Profile is not registered with host"
             return False
         if not await self.run_io(self.connect):
             _LOGGER.error("CTRL Auth Failed")
