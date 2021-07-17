@@ -246,7 +246,7 @@ class ToolbarWidget(QtWidgets.QWidget):
         super().__init__(main_window)
         self.main_window = main_window
         self.layout = QtWidgets.QHBoxLayout(self)
-        self.layout.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignTop)
+        self.layout.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignRight)
         self.refresh = QtWidgets.QPushButton("Auto Refresh")
         self.controls = QtWidgets.QPushButton("Controls")
         self.options = QtWidgets.QPushButton("Options")
@@ -262,6 +262,7 @@ class ToolbarWidget(QtWidgets.QWidget):
             button.setMaximumWidth(200)
             button.setCheckable(True)
             self.layout.addWidget(button)
+        self.home.setCheckable(False)
 
     def main_hide(self):
         self.main_window.device_grid.hide()
@@ -288,12 +289,10 @@ class ToolbarWidget(QtWidgets.QWidget):
             self.home_click()
 
     def options_show(self):
-        self.options.setStyleSheet("background-color:#0D6EFD;color:white;")
         self.main_window.options.show()
 
     def options_hide(self):
         self.options.setChecked(False)
-        self.options.setStyleSheet("")
         self.main_window.options.hide()
 
     def controls_click(self):
@@ -305,24 +304,20 @@ class ToolbarWidget(QtWidgets.QWidget):
             self.home_click()
 
     def controls_show(self):
-        self.controls.setStyleSheet("background-color:#0D6EFD;color:white;")
         self.main_window.controls.show()
 
     def controls_hide(self):
         self.controls.setChecked(False)
-        self.controls.setStyleSheet("")
         self.main_window.controls.hide()
 
     def refresh_click(self):
         if self.refresh.isChecked():
-            self.refresh.setStyleSheet("QPushButton {background-color:#0D6EFD;color:white;}")
             self.main_window.device_grid.start_timer()
         else:
             self.refresh_reset()
 
     def refresh_reset(self):
         self.refresh.setChecked(False)
-        self.refresh.setStyleSheet("")
         self.main_window.device_grid.timer.stop()
 
 
@@ -853,6 +848,7 @@ class DeviceGrid(QtWidgets.QWidget):
     class DeviceButton(QtWidgets.QPushButton):
         COLOR_DARK = "#000000"
         COLOR_LIGHT = "#FFFFFF"
+        COLOR_BG = "#E9ECEF"
         def __init__(self, main_window, host):
             super().__init__()
             self.info = ""
@@ -863,12 +859,9 @@ class DeviceGrid(QtWidgets.QWidget):
             self.clicked.connect(lambda: self.main_window.connect_host(self.host))
             self.clicked.connect(lambda: self.setEnabled(False))
             self.text_color = self.COLOR_DARK
-            self.bg_color = "#E9ECEF"
+            self.bg_color = self.COLOR_BG
             self.border_color =  ("#A3A3A3", "#A3A3A3")
-            if self.host["status_code"] == 200:
-                self.border_color = ("#6EA8FE", "#0D6EFD")
-            else:
-                self.border_color =  ("#FEB272", "#FFC107")
+
             self.init_actions()
             self.get_info()
             self.get_text()
@@ -884,6 +877,10 @@ class DeviceGrid(QtWidgets.QWidget):
             self.action_power.triggered.connect(self.toggle_power)
 
         def set_style(self):
+            if self.host["status_code"] == 200:
+                self.border_color = ("#6EA8FE", "#0D6EFD")
+            else:
+                self.border_color =  ("#FEB272", "#FFC107")
             self.setStyleSheet("".join(
                 [
                     "QPushButton {border-radius:25%;",
@@ -898,6 +895,16 @@ class DeviceGrid(QtWidgets.QWidget):
                 ]
             ))
 
+        def update_state(self, state):
+            cur_id = self.host.get("running-app-titleid")
+            new_id = state.get("running-app-titleid")
+            self.host = state
+            self.get_info()
+            self.get_text()
+            if cur_id != new_id:
+                self.set_image()
+            self.set_style()
+
         def set_image(self):
             async def get_image(title_id):
                 image = None
@@ -911,6 +918,7 @@ class DeviceGrid(QtWidgets.QWidget):
                         image = await response.read()
                 return image
 
+            self.bg_color = self.COLOR_BG
             title_id = self.host.get("running-app-titleid")
             if title_id:
                 image = asyncio.run(get_image(title_id))
@@ -926,6 +934,8 @@ class DeviceGrid(QtWidgets.QWidget):
                     contrast = self.calc_contrast(self.bg_color)
                     if contrast >= 1 / 4.5:
                         self.text_color = self.COLOR_LIGHT
+                    else:
+                        self.text_color = self.COLOR_DARK
 
         def calc_contrast(self, hex_color):
             colors = (self.text_color, hex_color)
@@ -969,7 +979,8 @@ class DeviceGrid(QtWidgets.QWidget):
                 f"{device_type}\n\n"
                 f"{app}"
             )
-            self.setText(self.main_text)
+            if not self.info_show:
+                self.setText(self.main_text)
 
         def get_info(self):
             self.info = (
@@ -1035,23 +1046,37 @@ class DeviceGrid(QtWidgets.QWidget):
         self.timer.timeout.connect(self.discover)
 
     def add(self, button, row, col):
-        self.layout.setRowStretch(0, 6)
+        self.layout.setRowStretch(row, 6)
         self.layout.addWidget(button, row, col, QtCore.Qt.AlignCenter)
         self.widgets.append(button)
 
     def create_grid(self, hosts):
         if self.widgets:
+            ip_addresses = {}
+            if hosts:
+                for item in hosts:
+                    ip_address = item["host-ip"]
+                    ip_addresses[ip_address] = item
+                    hosts.remove(item)
             for widget in self.widgets:
                 self.layout.removeWidget(widget)
-                widget.setParent(None)
-                widget.deleteLater()
+                new_state = ip_addresses.get(widget.host["host-ip"])
+                if not new_state:
+                    widget.setParent(None)
+                    widget.deleteLater()
+                else:
+                    widget.update_state(new_state)
+                    hosts.append(widget)
             self.widgets = []
         max_cols = 3
         if hosts:
             for index, host in enumerate(hosts):
                 col = index % max_cols
                 row = index // max_cols
-                button = DeviceGrid.DeviceButton(self.main_window, host)
+                if isinstance(host, dict):
+                    button = DeviceGrid.DeviceButton(self.main_window, host)
+                else:
+                    button = host
                 self.add(button, row, col)
             if not self.main_window.toolbar.options.isChecked() \
                     and not self.main_window.toolbar.controls.isChecked():
@@ -1112,8 +1137,8 @@ class MainWidget(QtWidgets.QWidget):
         self.layout.setAlignment(self.toolbar, QtCore.Qt.AlignTop)
         self.set_style()
         self.device_grid.discover()
-        self.toolbar.refresh_click()
         self.toolbar.refresh.setChecked(True)
+        self.toolbar.refresh_click()
 
     def startup_check_grid(self):
         if not self.device_grid.widgets:
@@ -1125,8 +1150,9 @@ class MainWidget(QtWidgets.QWidget):
     def set_style(self):
         style = (
             "QPushButton {border: 1px solid #0a58ca;border-radius: 10px;padding: 10px;}"
-            "QPushButton:hover {background-color:#0D6EFD;color:white;}"
-            "QPushButton:pressed {background-color:#0a58ca;}"
+            "QPushButton:hover {background-color:#6ea8fe;color:black;}"
+            "QPushButton:pressed {background-color:#0a58ca;color:white;}"
+            "QPushButton:checked {background-color:#0D6EFD;color:white;}"
             "#center-text {font-size: 24px;}"
         )
         self.setStyleSheet(style)
