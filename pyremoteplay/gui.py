@@ -24,41 +24,39 @@ except ModuleNotFoundError:
 
 class CTRLWorker(QtCore.QObject):
     finished = QtCore.Signal()
+    started = QtCore.Signal()
 
-    def __init__(self, window, ctrl):
+    def __init__(self, window):
         super().__init__()
         self.window = window
-        self.ctrl = ctrl
-        self.worker = None
-        self.loop = None
 
     def run(self):
-        self.worker = threading.Thread(
-            target=self.worker_target,
+        worker = threading.Thread(
+            target=self.worker,
         )
-        self.worker.start()
+        worker.start()
 
-    def worker_target(self):
-        self.ctrl.loop = asyncio.new_event_loop()
-        task = self.ctrl.loop.create_task(self.start())
+    def worker(self):
+        self.window.ctrl.loop = asyncio.new_event_loop()
+        task = self.window.ctrl.loop.create_task(self.start())
         print("CTRL Start")
-        self.ctrl.loop.run_until_complete(task)
+        self.window.ctrl.loop.run_until_complete(task)
+        self.window.ctrl.loop.run_forever()
         print("CTRL Finished")
         task.cancel()
-        if self.ctrl.loop.is_running():
-            self.ctrl.loop.stop()
-        if not self.ctrl.loop.is_closed():
-            self.ctrl.loop.close()
+        if self.window.ctrl.loop.is_running():
+            self.window.ctrl.loop.stop()
+        if not self.window.ctrl.loop.is_closed():
+            self.window.ctrl.loop.close()
         self.finished.emit()
 
     async def start(self):
-        status = await self.ctrl.start()
+        status = await self.window.ctrl.start()
         if not status:
             print("CTRL Failed to Start")
-            message(None, "Error", self.ctrl.error)
-            self.ctrl.stop()
-        while not self.ctrl._stop_event.is_set():
-            await asyncio.sleep(0.001)
+            message(None, "Error", self.window.ctrl.error)
+            self.window.ctrl.stop()
+        self.started.emit()
 
 
 class AVProcessor(QtCore.QObject):
@@ -67,67 +65,79 @@ class AVProcessor(QtCore.QObject):
     def __init__(self, window):
         super().__init__()
         self.window = window
-        self.video_output = self.window.video_output
-        self.v_queue = self.window.v_queue
-        self.frame_mutex = QtCore.QMutex()
 
     def next_frame(self):
-        self.frame_mutex.lock()
+        self.window.frame_mutex.lock()
         try:
-            frame = self.v_queue.popleft()
+            frame = self.window.ctrl.av_receiver.v_queue.popleft()
         except IndexError:
-            self.frame_mutex.unlock()
+            self.window.frame_mutex.unlock()
             return
         img = QtGui.QImage(frame, frame.shape[1], frame.shape[0], QtGui.QImage.Format_RGB888)
         pix = QtGui.QPixmap.fromImage(img)
-        self.video_output.setPixmap(pix)
+        self.window.video_output.setPixmap(pix)
         self.frame.emit()
-        self.frame_mutex.unlock()
+        self.window.frame_mutex.unlock()
 
 
 class CTRLWindow(QtWidgets.QWidget):
-    def __init__(self, main_window, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None):
+    def __init__(self, main_window):
         super().__init__()
-        self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
         self._main_window = main_window
-        self.mapping = ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
-        self.host = host
-        self.profile = profile
-        self.fps = fps
-        self.ctrl = CTRLAsync(self.host, self.profile, resolution=resolution, fps=fps, av_receiver=GUIReceiver)
-        self.width = self.ctrl.resolution["width"]
-        self.height = self.ctrl.resolution["height"]
-        self.v_queue = self.ctrl.av_receiver.v_queue
-        # self.ctrl.av_receiver.add_audio_cb(self.handle_audio)
-        self.controller = self.ctrl.controller
-
-        self.setWindowTitle(f"Session {name} @ {host}")
+        self.hide()
         self.setStyleSheet("background-color: black")
-        self.resize(self.width, self.height)
         self.video_output = QtWidgets.QLabel(self, alignment=QtCore.Qt.AlignCenter)
         self.audio_output = None
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.addWidget(self.video_output)
-
-        self.worker = CTRLWorker(self, self.ctrl)
+        self.fps_label = get_label("FPS: ", self)
+        self.worker = CTRLWorker(self)
         self.av_worker = AVProcessor(self)
+        self.timer = QtCore.QTimer()
+        self.timer.setTimerType(QtCore.Qt.PreciseTimer)
+        self.timer.timeout.connect(self.av_worker.next_frame)
+        self.frame_mutex = QtCore.QMutex()
 
         self.thread = QtCore.QThread()
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.finished.connect(self.close)
+        self.worker.started.connect(self.show_video)
 
         self.av_thread = QtCore.QThread()
         self.av_worker.moveToThread(self.av_thread)
         self.av_thread.started.connect(self.start_timer)
         self.av_worker.frame.connect(self.set_fps)
 
-        self.fps_label = None
+    def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None):
+        self.video_output.hide()
+        self.mapping = ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
+        self.host = host
+        self.profile = profile
+        self.fps = fps
+        self.fullscreen = fullscreen
+        self.ctrl = CTRLAsync(self.host, self.profile, resolution=resolution, fps=fps, av_receiver=GUIReceiver)
+        # self.ctrl.av_receiver.add_audio_cb(self.handle_audio)
+        self.controller = self.ctrl.controller
+
+        self.setWindowTitle(f"Session {name} @ {host}")
+        self.resize(self.ctrl.resolution["width"], self.ctrl.resolution["height"])
+
         if show_fps:
             self.init_fps()
-        if fullscreen:
-            self.showMaximized()
+            self.fps_label.show()
+        else:
+            self.fps_label.hide()
+        self.frame_mutex.unlock()
+        self.thread.start()
+        self.av_thread.start()
 
+    def show_video(self):
+        if self.fullscreen:
+            self.showMaximized()
+        else:
+            self.show()
+        self.video_output.show()
 
 # Waiting on pyside6.2
 #    def init_audio(self):
@@ -143,11 +153,10 @@ class CTRLWindow(QtWidgets.QWidget):
 #        self.audio_output = output.start()
 
     def init_fps(self):
-        self.last_time = time.time()
-        self.fps_label = get_label("FPS: ", self)
         self.fps_label.move(20, 20)
         self.fps_label.setStyleSheet("background-color:#33333333;color:white;padding-left:5px;")
         self.fps_sample = 0
+        self.last_time = time.time()
 
     def set_fps(self):
         if self.fps_label is not None:
@@ -222,14 +231,10 @@ class CTRLWindow(QtWidgets.QWidget):
         self.ctrl.standby()
         self.stop()
 
-    def start(self):
-        self.thread.start()
-        self.av_thread.start()
-
     def closeEvent(self, event):
         self.stop()
         self.cleanup()
-        event.accept()
+        event.ignore()
 
     def stop(self):
         self.ctrl.stop()
@@ -240,19 +245,10 @@ class CTRLWindow(QtWidgets.QWidget):
         self.timer.stop()
         self.thread.quit()
         self.av_thread.quit()
-        self.worker.setParent(None)
-        self.worker.deleteLater()
-        self.av_worker.setParent(None)
-        self.av_worker.deleteLater()
-        self.video_output.setParent(None)
-        self.video_output.deleteLater()
         self._main_window.session_stop()
 
     def start_timer(self):
         print("AV Processor Started")
-        self.timer = QtCore.QTimer()
-        self.timer.setTimerType(QtCore.Qt.PreciseTimer)
-        self.timer.timeout.connect(self.av_worker.next_frame)
         self.timer.start(1000.0/self.fps)
 
 
@@ -555,7 +551,8 @@ class OptionsWidget(QtWidgets.QWidget):
         self.layout.setColumnStretch(1, 1)
         self.layout.setColumnStretch(2, 1)
         self.layout.setColumnStretch(3, 1)
-        self.layout.setColumnStretch(4, 2)
+        self.layout.setColumnStretch(4, 1)
+        self.layout.setColumnStretch(5, 1)
 
         # self.layout.setRowMinimumHeight(3, 20)
         # self.layout.setRowStretch(4, 1)
@@ -607,6 +604,13 @@ class OptionsWidget(QtWidgets.QWidget):
         self.add(add_device, 3, 4)
         self.add(del_device, 3, 5)
         self.layout.addWidget(self.devices, 4, 4, 3, 2)
+        devices_label = get_label(
+            "If your device is not showing up automatically, "
+            "try adding the IP Address below.",
+            self,
+        )
+        devices_label.setWordWrap(True)
+        self.layout.addWidget(devices_label, 2, 4, 1, 2)
 
     def set_options(self) -> bool:
         try:
@@ -1128,7 +1132,7 @@ class MainWidget(QtWidgets.QWidget):
         self._app = app
         self.idle = True
         self.thread = None
-        self.ctrl_window = None
+        self.ctrl_window = CTRLWindow(self)
         self.toolbar = None
         self.device_grid = None
         self._init_window()
@@ -1229,8 +1233,7 @@ class MainWidget(QtWidgets.QWidget):
         fps = options['fps']
         show_fps = options['show_fps']
         fullscreen = options['fullscreen']
-        self.ctrl_window = CTRLWindow(
-            self,
+        self.ctrl_window.start(
             ip_address,
             name,
             profile,
@@ -1242,14 +1245,10 @@ class MainWidget(QtWidgets.QWidget):
         )
         self.ctrl_window.show()
         self._app.setActiveWindow(self.ctrl_window)
-        self.ctrl_window.start()
 
     def session_stop(self):
         print("Detected Session Stop")
-        self.ctrl_window.close()
-        self.ctrl_window.setParent(None)
-        self.ctrl_window.deleteLater()
-        self.ctrl_window = None
+        self.ctrl_window.hide()
         self._app.setActiveWindow(self)
         self.device_grid.session_stop()
 

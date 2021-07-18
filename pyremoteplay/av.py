@@ -80,6 +80,7 @@ class AVHandler():
             #self._send_congestion()
         _LOGGER.info("Closing AV Receiver")
         self._receiver.close()
+        self._queue.clear()
         _LOGGER.info("AV Receiver Closed")
 
     def _send_congestion(self):
@@ -185,6 +186,7 @@ class AVStream():
             if packet.unit_index == 0:
                 self._frame = packet.frame_index
                 self._last_unit = -1
+                self._buf.close()
                 self._buf = BytesIO()
                 self._buf.write(self._header)
                 _LOGGER.debug("Started New Frame: %s", self.frame)
@@ -262,7 +264,7 @@ class QueueReceiver(AVReceiver):
         self.notify_started()
 
     def close(self):
-        pass
+        self.v_queue.clear()
 
     def handle_video(self, buf):
         self.v_queue.append(buf)
@@ -304,6 +306,7 @@ class GUIReceiver(QueueReceiver):
             self.a_cb(buf)
 
     def close(self):
+        super().close()
         self.codec.close()
 
 
