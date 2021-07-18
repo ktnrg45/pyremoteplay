@@ -12,7 +12,7 @@ from .const import RESOLUTION_PRESETS
 from .ctrl import CTRLAsync, CTRL, send_wakeup
 from .oauth import LOGIN_URL, get_user_account
 from .register import register
-from .util import (add_profile, get_options, get_profiles, write_options,
+from .util import (add_regist_data, add_profile, get_options, get_profiles, write_options,
                    write_profiles, get_mapping, write_mapping)
 
 try:
@@ -836,11 +836,7 @@ class OptionsWidget(QtWidgets.QWidget):
                 level = "critical"
             else:
                 profile = self.profiles[name]
-                mac_address = host['host-id']
-                profile['hosts'][mac_address] = {'data': data, 'type': ''}
-                for h_type in ['PS4', 'PS5']:
-                    if f"{h_type}-RegistKey" in list(data.keys()):
-                        profile['hosts'][mac_address]['type'] = h_type
+                profile = add_regist_data(profile, host, data)
                 self.profiles[name] = profile
                 write_profiles(self.profiles)
                 self.set_profiles()
@@ -1208,7 +1204,7 @@ class MainWidget(QtWidgets.QWidget):
         ip_address = host["host-ip"]
         host_type = host["host-type"]
         mac_address = host["host-id"]
-        regist_key = profile["hosts"][mac_address]["data"][f"{host_type}-RegistKey"]
+        regist_key = profile["hosts"][mac_address]["data"]["RegistKey"]
         send_wakeup(ip_address, regist_key)
         message(self, "Wakeup Sent", f"Sent Wakeup command to device at {ip_address}", "info")
 

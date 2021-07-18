@@ -13,7 +13,7 @@ from pyps4_2ndscreen.ddp import get_status
 from .ctrl import CTRL, CTRLAsync
 from .oauth import prompt as oauth_prompt
 from .register import register
-from .util import add_profile, get_profiles, write_profiles
+from .util import add_regist_data, add_profile, get_profiles, write_profiles
 
 NEW_PROFILE = "New Profile"
 CANCEL = "Cancel"
@@ -115,11 +115,8 @@ def register_profile(host: str):
     data = register(host, user_id, pin)
     if not data:
         sys.exit()
-    profiles[name]["hosts"][mac_address] = {"data": data, "type": ""}
-    for h_type in ["PS4", "PS5"]:
-        if f"{h_type}-RegistKey" in list(data.keys()):
-            profiles[name]["hosts"][mac_address]["type"] = h_type
-            break
+    profile = profiles[name]
+    profile = add_regist_data(profile, status, data)
     write_profiles(profiles)
 
 

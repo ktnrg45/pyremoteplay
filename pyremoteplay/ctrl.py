@@ -183,23 +183,16 @@ class CTRL():
         self.controller_ready_event = None
 
 
-    # TODO: Refactor this
     def _init_profile(self, mac_address):
         """Init profile."""
         regist_data = self._profile["hosts"].get(mac_address)
         if not regist_data:
             return False
+        self._mac_address = mac_address
         self._regist_data = regist_data["data"]
-
-        _regist_str = "".join(list(self._regist_data.keys()))
-        if TYPE_PS4 in _regist_str:
-            self._type = TYPE_PS4
-        elif TYPE_PS5 in _regist_str:
-            self._type = TYPE_PS5
-
-        self._mac_address = self._regist_data[f"{self.type}-Mac"]
-        self._name = self._regist_data[f"{self.type}-Nickname"]
-        self._regist_key = self._regist_data[f"{self.type}-RegistKey"]
+        self._type = regist_data["type"]
+        self._name = self._regist_data["Nickname"]
+        self._regist_key = self._regist_data["RegistKey"]
         self._rp_key = bytes.fromhex(self._regist_data["RP-Key"])
         return True
 

@@ -115,6 +115,19 @@ def add_profile(profiles: dict, user_data: dict) -> dict:
     return profiles
 
 
+def add_regist_data(profile: dict, host: dict, data:dict) -> dict:
+    """Add regist data to profile and return profile."""
+    mac_address = host['host-id']
+    host_type = host['host-type']
+    for key in list(data.keys()):
+        if key.startswith(host_type):
+            value = data.pop(key)
+            new_key = key.split("-")[1]
+            data[new_key] = value
+    profile['hosts'][mac_address] = {'data': data, 'type': host_type}
+    return profile
+
+
 def log_bytes(name: str, data: bytes):
     """Log bytes."""
     mod = inspect.getmodulename(inspect.stack()[1].filename)
