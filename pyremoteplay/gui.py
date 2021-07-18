@@ -3,9 +3,9 @@ import sys
 import threading
 import time
 
-import aiohttp
+import requests
 from pyps4_2ndscreen.ddp import search, get_status
-from pyps4_2ndscreen.media_art import async_search_ps_store
+from pyps4_2ndscreen.media_art import get_region_codes, BASE_URL, BASE_IMAGE_URL, DEFAULT_HEADERS, ResultItem
 
 from .av import GUIReceiver, QueueReceiver
 from .const import RESOLUTION_PRESETS
@@ -917,23 +917,28 @@ class DeviceGrid(QtWidgets.QWidget):
             self.set_style()
 
         def set_image(self):
-            async def get_image(title_id):
+            def get_image(title_id):
                 image = None
-                item = await async_search_ps_store(title_id, "United States")
-                if item is None:
+                codes = get_region_codes("United States")
+                data_url = BASE_URL.format(codes[1], codes[0], title_id)
+                image_url = BASE_IMAGE_URL.format(data_url)
+                resp = requests.get(data_url, headers=DEFAULT_HEADERS)
+                if not resp:
                     return None
-                if item.cover_art is None:
+                data = resp.json()
+                if data.get("gameContentTypesList") is None or data.get("title_name") is None:
                     return None
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(item.cover_art) as response:
-                        image = await response.read()
+                item = ResultItem(title_id, image_url, data)
+                if item is None or item.cover_art is None:
+                    return None
+                resp = requests.get(item.cover_art)
+                image = resp.content
                 return image
 
             self.bg_color = self.COLOR_BG
             title_id = self.host.get("running-app-titleid")
             if title_id:
-                image = asyncio.run(get_image(title_id))
-                asyncio.set_event_loop(asyncio.new_event_loop())
+                image = get_image(title_id)
                 if image is not None:
                     pix = QtGui.QPixmap()
                     pix.loadFromData(image)
