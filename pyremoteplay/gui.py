@@ -44,11 +44,11 @@ class CTRLWorker(QtCore.QObject):
         print("CTRL Start")
         self.ctrl.loop.run_until_complete(task)
         print("CTRL Finished")
+        task.cancel()
         if self.ctrl.loop.is_running():
             self.ctrl.loop.stop()
         if not self.ctrl.loop.is_closed():
             self.ctrl.loop.close()
-        del self.ctrl
         self.finished.emit()
 
     async def start(self):
@@ -56,8 +56,8 @@ class CTRLWorker(QtCore.QObject):
         if not status:
             print("CTRL Failed to Start")
             message(None, "Error", self.ctrl.error)
-            self.ctrl.loop.stop()
-        while not self.ctrl.is_stopped:
+            self.ctrl.stop()
+        while not self.ctrl._stop_event.is_set():
             await asyncio.sleep(0.001)
 
 
@@ -104,7 +104,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.setWindowTitle(f"Session {name} @ {host}")
         self.setStyleSheet("background-color: black")
         self.resize(self.width, self.height)
-        self.video_output = QtWidgets.QLabel(alignment=QtCore.Qt.AlignCenter)
+        self.video_output = QtWidgets.QLabel(self, alignment=QtCore.Qt.AlignCenter)
         self.audio_output = None
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.addWidget(self.video_output)
@@ -228,20 +228,24 @@ class CTRLWindow(QtWidgets.QWidget):
 
     def closeEvent(self, event):
         self.stop()
+        self.cleanup()
         event.accept()
 
     def stop(self):
-        self.timer.stop()
         self.ctrl.stop()
         print(f"Stopping Session @ {self.host}")
+
+    def cleanup(self):
+        print("Cleaning up window")
+        self.timer.stop()
         self.thread.quit()
         self.av_thread.quit()
-        self.v_queue = None
-        self.ctrl = None
-        self.thread.started.disconnect(self.worker.run)
-        self.worker.finished.disconnect(self.close)
-        self.av_thread.started.disconnect(self.start_timer)
-        self.av_worker.frame.disconnect(self.set_fps)
+        self.worker.setParent(None)
+        self.worker.deleteLater()
+        self.av_worker.setParent(None)
+        self.av_worker.deleteLater()
+        self.video_output.setParent(None)
+        self.video_output.deleteLater()
         self._main_window.session_stop()
 
     def start_timer(self):
@@ -1238,6 +1242,7 @@ class MainWidget(QtWidgets.QWidget):
     def session_stop(self):
         print("Detected Session Stop")
         self.ctrl_window.close()
+        self.ctrl_window.setParent(None)
         self.ctrl_window.deleteLater()
         self.ctrl_window = None
         self._app.setActiveWindow(self)

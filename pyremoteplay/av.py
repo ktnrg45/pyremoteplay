@@ -68,7 +68,7 @@ class AVHandler():
         self._queue.append(packet)
 
     def worker(self):
-        while not self._ctrl.is_stopped:
+        while not self._ctrl._stop_event.is_set():
             try:
                 msg = self._queue.popleft()
             except IndexError:
@@ -78,7 +78,9 @@ class AVHandler():
             packet.decrypt(self._cipher)
             self._handle(packet)
             #self._send_congestion()
+        _LOGGER.info("Closing AV Receiver")
         self._receiver.close()
+        _LOGGER.info("AV Receiver Closed")
 
     def _send_congestion(self):
         now = time.time()

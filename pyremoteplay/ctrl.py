@@ -508,6 +508,7 @@ class CTRLAsync(CTRL):
         self.loop = asyncio.get_event_loop() if loop is None else loop
         self._protocol = None
         self._transport = None
+        self._av_task = None
 
     async def run_io(self, func, *args, **kwargs):
         return await self.loop.run_in_executor(None, partial(func, *args, **kwargs))
@@ -563,7 +564,7 @@ class CTRLAsync(CTRL):
 
 
     def init_av_handler(self):
-        self.loop.create_task(self.async_run_av_handler())
+        self._av_task = self.loop.create_task(self.async_run_av_handler())
 
     async def async_run_av_handler(self):
         executor = ThreadPoolExecutor(max_workers=8)
@@ -571,6 +572,7 @@ class CTRLAsync(CTRL):
             executor,
             self.av_handler.worker,
         )
+        _LOGGER.info("AV Stopped")
 
     def stop(self):
         """Stop Stream."""
@@ -579,5 +581,7 @@ class CTRLAsync(CTRL):
             return
         _LOGGER.info("CTRL Received Stop Signal")
         self._stop_event.set()
+        if self._av_task:
+            self._av_task.cancel()
         if self._protocol:
             self._protocol.close()
