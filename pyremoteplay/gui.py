@@ -39,14 +39,16 @@ class CTRLWorker(QtCore.QObject):
         self.worker.start()
 
     def worker_target(self):
-        self.loop = asyncio.new_event_loop()
-        self.ctrl.loop = self.loop
-        task = self.loop.create_task(self.start())
+        self.ctrl.loop = asyncio.new_event_loop()
+        task = self.ctrl.loop.create_task(self.start())
         print("CTRL Start")
-        self.loop.run_until_complete(task)
-        self.loop.run_forever()
-        self.loop.close()
+        self.ctrl.loop.run_until_complete(task)
         print("CTRL Finished")
+        if self.ctrl.loop.is_running():
+            self.ctrl.loop.stop()
+        if not self.ctrl.loop.is_closed():
+            self.ctrl.loop.close()
+        del self.ctrl
         self.finished.emit()
 
     async def start(self):
@@ -54,7 +56,9 @@ class CTRLWorker(QtCore.QObject):
         if not status:
             print("CTRL Failed to Start")
             message(None, "Error", self.ctrl.error)
-            self.loop.stop()
+            self.ctrl.loop.stop()
+        while not self.ctrl.is_stopped:
+            await asyncio.sleep(0.001)
 
 
 class AVProcessor(QtCore.QObject):
@@ -84,6 +88,7 @@ class AVProcessor(QtCore.QObject):
 class CTRLWindow(QtWidgets.QWidget):
     def __init__(self, main_window, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None):
         super().__init__()
+        self.setAttribute(QtCore.Qt.WA_DeleteOnClose)
         self._main_window = main_window
         self.mapping = ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
         self.host = host
@@ -183,7 +188,7 @@ class CTRLWindow(QtWidgets.QWidget):
             print(f"Button Invalid: {key}")
             return
         if button == "QUIT":
-            self.stop()
+            self.close()
             return
         if button == "STANDBY":
             message(self, "Standby", "Set host to standby?", level="info", cb=self.standby, escape=True)
@@ -222,8 +227,8 @@ class CTRLWindow(QtWidgets.QWidget):
         self.av_thread.start()
 
     def closeEvent(self, event):
-        event.accept()
         self.stop()
+        event.accept()
 
     def stop(self):
         self.timer.stop()
@@ -231,6 +236,12 @@ class CTRLWindow(QtWidgets.QWidget):
         print(f"Stopping Session @ {self.host}")
         self.thread.quit()
         self.av_thread.quit()
+        self.v_queue = None
+        self.ctrl = None
+        self.thread.started.disconnect(self.worker.run)
+        self.worker.finished.disconnect(self.close)
+        self.av_thread.started.disconnect(self.start_timer)
+        self.av_worker.frame.disconnect(self.set_fps)
         self._main_window.session_stop()
 
     def start_timer(self):
@@ -1230,6 +1241,7 @@ class MainWidget(QtWidgets.QWidget):
 
     def session_stop(self):
         print("Detected Session Stop")
+        self.ctrl_window.close()
         self.ctrl_window.deleteLater()
         self.ctrl_window = None
         self._app.setActiveWindow(self)

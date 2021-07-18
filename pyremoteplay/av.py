@@ -59,6 +59,7 @@ class AVHandler():
     def set_headers(self, v_header, a_header):
         """Set headers."""
         if self._receiver:
+            self._receiver._v_header = v_header
             self._v_stream = AVStream("video", v_header, self._receiver.handle_video)
             self._a_stream = AVStream("audio", a_header, self._receiver.handle_audio)
 
@@ -67,7 +68,7 @@ class AVHandler():
         self._queue.append(packet)
 
     def worker(self):
-        while not self._ctrl._stop_event.is_set():
+        while not self._ctrl.is_stopped:
             try:
                 msg = self._queue.popleft()
             except IndexError:
@@ -274,20 +275,34 @@ class GUIReceiver(QueueReceiver):
         super().__init__(ctrl)
         self.codec = av.codec.Codec("h264", "r").create()
         self.codec.flags = av.codec.context.Flags.LOW_DELAY
+        self.codec.options = {
+            'tune': 'zerolatency'
+        }
+        self._v_header = None
+        self._recv_first = False
 
     def handle_video(self, buf):
+        if not self._recv_first:
+            header_len = len(self._v_header)
+            extradata = buf[:header_len + 3]
+            self.codec.extradata = extradata
+            log_bytes("H264 Extra Data", extradata)
+            self._recv_first = True
         packet = av.packet.Packet(buf)
         frames = self.codec.decode(packet)
         if not frames:
             return
         frame = frames[0]
-        frame = frame.to_ndarray()
+        frame = frame.reformat().to_ndarray()
         frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
         self.v_queue.append(frame)
 
     def handle_audio(self, buf):
         if self.a_cb is not None:
             self.a_cb(buf)
+
+    def close(self):
+        self.codec.close()
 
 
 class AVFileReceiver(AVReceiver):

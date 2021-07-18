@@ -482,6 +482,11 @@ class CTRL():
         return self.state != CTRL.STATE_STOP
 
     @property
+    def is_stopped(self) -> bool:
+        """Return True if stopped."""
+        return self.state == CTRL.STATE_STOP
+
+    @property
     def session_id(self) -> bytes:
         """Return Session ID."""
         return self._session_id
