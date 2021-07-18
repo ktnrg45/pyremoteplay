@@ -1035,19 +1035,20 @@ class DeviceGrid(QtWidgets.QWidget):
     class DeviceSearch(QtCore.QObject):
         finished = QtCore.Signal()
 
-        def __init__(self, hosts=[]):
+        def __init__(self, main_window):
             super().__init__()
+            self.main_window = main_window
             self.hosts = []
-            self.manual_hosts = hosts
 
         def get_hosts(self):
+            manual_hosts = self.main_window.options.options.get("devices")
             self.hosts = search()
-            if self.manual_hosts:
+            if manual_hosts:
                 found = []
                 if self.hosts:
                     for item in self.hosts:
                         found.append(item.get("host-ip"))
-                for _host in self.manual_hosts:
+                for _host in manual_hosts:
                     if _host in found:
                         continue
                     host = get_status(_host)
@@ -1062,8 +1063,14 @@ class DeviceGrid(QtWidgets.QWidget):
         self.layout.setColumnMinimumWidth(0, 100)
         self.widgets = []
         self.setStyleSheet("QPushButton {padding: 50px 25px;}")
+        self.searcher = DeviceGrid.DeviceSearch(self.main_window)
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.discover)
+        self.thread = QtCore.QThread(self)
+        self.searcher.moveToThread(self.thread)
+        self.thread.started.connect(self.searcher.get_hosts)
+        self.searcher.finished.connect(lambda: self.create_grid(self.searcher.hosts))
+        self.searcher.finished.connect(self.thread.quit)
 
     def add(self, button, row, col):
         self.layout.setRowStretch(row, 6)
@@ -1104,15 +1111,7 @@ class DeviceGrid(QtWidgets.QWidget):
             self.main_window.center_text.hide()
 
     def discover(self):
-        thread = QtCore.QThread(self)
-        worker = DeviceGrid.DeviceSearch(
-            self.main_window.options.options.get("devices")
-        )
-        worker.moveToThread(thread)
-        thread.started.connect(worker.get_hosts)
-        worker.finished.connect(lambda: self.create_grid(worker.hosts))
-        worker.finished.connect(thread.quit)
-        thread.start()
+        self.thread.start()
 
     def start_timer(self):
         self.timer.start(5000)
