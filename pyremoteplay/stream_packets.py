@@ -389,7 +389,7 @@ class Packet(PacketSection):
         if cipher is not None:
             # If cipher is available need to send the gmac and key_pos
             if not advance_by:
-                advance_by = DATA_LENGTH + len(payload)
+                advance_by = len(payload)
             # gmac and key_pos need to be 0 when calculating gmac
             gmac = cipher.get_gmac(bytes(buf))
             gmac = int.from_bytes(gmac, "big")

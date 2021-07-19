@@ -508,13 +508,14 @@ class CTRLAsync(CTRL):
         self.loop = asyncio.get_event_loop() if loop is None else loop
         self._protocol = None
         self._transport = None
-        self._av_task = None
+        self._tasks = []
 
     async def run_io(self, func, *args, **kwargs):
         return await self.loop.run_in_executor(None, partial(func, *args, **kwargs))
 
     async def start(self, wakeup=True, autostart=True) -> bool:
         """Start CTRL/RP Session."""
+        _LOGGER.info("CTRL Started")
         self._ready_event = asyncio.Event()
         self._stop_event = asyncio.Event()
         self.receiver_started = asyncio.Event()
@@ -562,9 +563,8 @@ class CTRLAsync(CTRL):
         self._stream = RPStream(self, stop_event, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
         self.loop.create_task(self._stream.async_connect())
 
-
     def init_av_handler(self):
-        self._av_task = self.loop.create_task(self.async_run_av_handler())
+        self._tasks.append(self.loop.create_task(self.async_run_av_handler()))
 
     async def async_run_av_handler(self):
         executor = ThreadPoolExecutor(max_workers=8)
@@ -579,9 +579,11 @@ class CTRLAsync(CTRL):
         if self.state == CTRL.STATE_STOP:
             _LOGGER.debug("CTRL already stopping")
             return
+        self._stream.disconnect()
         _LOGGER.info("CTRL Received Stop Signal")
         self._stop_event.set()
-        if self._av_task:
-            self._av_task.cancel()
+        if self._tasks:
+            for task in self._tasks:
+                task.cancel()
         if self._protocol:
             self._protocol.close()

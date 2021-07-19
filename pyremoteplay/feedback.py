@@ -36,9 +36,11 @@ class Controller():
             "right": {"x": 0, "y": 0},
         }
 
-    def send(self):
+    def send_state(self):
         self._ctrl._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
         self._sequence_state += 1
+
+    def send_event(self):
         if self._event_queue:
             self.add_event_buffer(self._event_queue.pop(0))
             data = b"".join(self._event_buf)
@@ -70,7 +72,7 @@ class Controller():
             elif action == self.ACTION_TAP:
                 self.add_event_queue(FeedbackEvent(button, is_active=True))
                 self.add_event_queue(FeedbackEvent(button, is_active=False))
-            self.send()
+            self.send_event()
 
     def stick(self, stick: str, axis: str, value: int):
         """Set Stick Value."""
@@ -87,9 +89,10 @@ class Controller():
             value = Controller.STICK_STATE_MAX
         elif value < Controller.STICK_STATE_MIN:
             value = Controller.STICK_STATE_MIN
-
-        self._stick_state[stick][axis] = value
-        self.send()
+        current = self._stick_state[stick][axis]
+        if current != value:
+            self._stick_state[stick][axis] = value
+            self.send_state()
 
     @property
     def sequence_event(self) -> int:

@@ -29,34 +29,78 @@ class CTRLWorker(QtCore.QObject):
     def __init__(self, window):
         super().__init__()
         self.window = window
+        self.ctrl = None
+        self.thread = None
+        self.loop = None
 
     def run(self):
-        worker = threading.Thread(
+        if not self.ctrl:
+            print("No CTRL")
+            self.ctrl = None
+            self.finished.emit()
+            return
+        self.thread = threading.Thread(
             target=self.worker,
         )
-        worker.start()
+        self.thread.start()
 
-    def worker(self):
-        self.window.ctrl.loop = asyncio.new_event_loop()
-        task = self.window.ctrl.loop.create_task(self.start())
-        print("CTRL Start")
-        self.window.ctrl.loop.run_until_complete(task)
-        self.window.ctrl.loop.run_forever()
-        print("CTRL Finished")
-        task.cancel()
-        if self.window.ctrl.loop.is_running():
-            self.window.ctrl.loop.stop()
-        if not self.window.ctrl.loop.is_closed():
-            self.window.ctrl.loop.close()
+    def stop(self):
+        print(f"Stopping Session @ {self.ctrl.host}")
+        self.ctrl.stop()
+        self.loop.stop()
+        del self.ctrl
+        del self.loop
+        self.loop = None
+        self.ctrl = None
         self.finished.emit()
 
+    def get_ctrl(self, host, profile, resolution, fps):
+        self.ctrl = CTRLAsync(host, profile, resolution=resolution, fps=fps, av_receiver=GUIReceiver)
+        # self.ctrl.av_receiver.add_audio_cb(self.handle_audio)
+
+    def worker(self):
+        self.loop = asyncio.new_event_loop()
+        task = self.loop.create_task(self.start())
+        print("CTRL Start")
+        self.loop.run_until_complete(task)
+        self.loop.run_forever()
+        print("CTRL Finished")
+        task.cancel()
+        if self.ctrl:
+            self.stop()
+
     async def start(self):
-        status = await self.window.ctrl.start()
+        self.ctrl.loop = self.loop
+        status = await self.ctrl.start()
         if not status:
             print("CTRL Failed to Start")
-            message(None, "Error", self.window.ctrl.error)
-            self.window.ctrl.stop()
-        self.started.emit()
+            message(None, "Error", self.ctrl.error)
+            self.stop()
+        else:
+            self.started.emit()
+
+    def send_standby(self):
+        self.ctrl.standby()
+        self.stop()
+
+    def stick_state(self, button: str, release=False):
+        button = button.split("_")
+        stick = button[1]
+        direction = button[2]
+        if direction in ("LEFT", "RIGHT"):
+            axis = "X"
+        else:
+            axis = "Y"
+        if release:
+            value = 0
+        elif direction in ("UP", "LEFT"):
+            value = self.ctrl.controller.STICK_STATE_MIN
+        else:
+            value = self.ctrl.controller.STICK_STATE_MAX
+        self.ctrl.controller.stick(stick, axis, value)
+
+    def send_button(self, button, action):
+        self.ctrl.controller.button(button, action)
 
 
 class AVProcessor(QtCore.QObject):
@@ -67,17 +111,18 @@ class AVProcessor(QtCore.QObject):
         self.window = window
 
     def next_frame(self):
-        self.window.frame_mutex.lock()
+        #self.window.frame_mutex.lock()
+        v_queue = self.window.worker.ctrl.av_receiver.v_queue
         try:
-            frame = self.window.ctrl.av_receiver.v_queue.popleft()
+            frame = v_queue.popleft()
         except IndexError:
-            self.window.frame_mutex.unlock()
+            #self.window.frame_mutex.unlock()
             return
         img = QtGui.QImage(frame, frame.shape[1], frame.shape[0], QtGui.QImage.Format_RGB888)
         pix = QtGui.QPixmap.fromImage(img)
         self.window.video_output.setPixmap(pix)
         self.frame.emit()
-        self.window.frame_mutex.unlock()
+        #self.window.frame_mutex.unlock()
 
 
 class CTRLWindow(QtWidgets.QWidget):
@@ -101,7 +146,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.thread = QtCore.QThread()
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
-        self.worker.finished.connect(self.close)
+        self.worker.finished.connect(self.cleanup)
         self.worker.started.connect(self.show_video)
 
         self.av_thread = QtCore.QThread()
@@ -112,17 +157,10 @@ class CTRLWindow(QtWidgets.QWidget):
     def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None):
         self.video_output.hide()
         self.mapping = ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
-        self.host = host
-        self.profile = profile
         self.fps = fps
         self.fullscreen = fullscreen
-        self.ctrl = CTRLAsync(self.host, self.profile, resolution=resolution, fps=fps, av_receiver=GUIReceiver)
-        # self.ctrl.av_receiver.add_audio_cb(self.handle_audio)
-        self.controller = self.ctrl.controller
-
         self.setWindowTitle(f"Session {name} @ {host}")
-        self.resize(self.ctrl.resolution["width"], self.ctrl.resolution["height"])
-
+        self.worker.get_ctrl(host, profile, resolution, fps)
         if show_fps:
             self.init_fps()
             self.fps_label.show()
@@ -174,22 +212,6 @@ class CTRLWindow(QtWidgets.QWidget):
             self.init_audio()
         self.audio_output.write()
 
-    def stick_state(self, button: str, release=False):
-        button = button.split("_")
-        stick = button[1]
-        direction = button[2]
-        if direction in ("LEFT", "RIGHT"):
-            axis = "X"
-        else:
-            axis = "Y"
-        if release:
-            value = 0
-        elif direction in ("UP", "LEFT"):
-            value = self.controller.STICK_STATE_MIN
-        else:
-            value = self.controller.STICK_STATE_MAX
-        return stick, axis, value
-
     def keyPressEvent(self, event):
         key = Qt.Key(event.key()).name.decode()
         button = self.mapping.get(key)
@@ -203,11 +225,10 @@ class CTRLWindow(QtWidgets.QWidget):
             message(self, "Standby", "Set host to standby?", level="info", cb=self.standby, escape=True)
             return
         if "STICK" in button:
-            stick, axis, value = self.stick_state(button, release=False)
-            self.controller.stick(stick, axis, value)
+            self.worker.stick_state(button, release=False)
         else:
             if not event.isAutoRepeat():
-                self.controller.button(button, "press")
+                self.worker.send_button(button, "press")
         event.accept()
 
     def keyReleaseEvent(self, event):
@@ -221,24 +242,14 @@ class CTRLWindow(QtWidgets.QWidget):
         if button in ["QUIT", "STANDBY"]:
             return
         if "STICK" in button:
-            stick, axis, value = self.stick_state(button, release=True)
-            self.controller.stick(stick, axis, value)
+            self.worker.stick_state(button, release=True)
         else:
-            self.controller.button(button, "release")
+            self.worker.send_button(button, "release")
         event.accept()
 
-    def standby(self):
-        self.ctrl.standby()
-        self.stop()
-
     def closeEvent(self, event):
-        self.stop()
-        self.cleanup()
-        event.ignore()
-
-    def stop(self):
-        self.ctrl.stop()
-        print(f"Stopping Session @ {self.host}")
+        self.worker.stop()
+        event.accept()
 
     def cleanup(self):
         print("Cleaning up window")
@@ -1118,7 +1129,7 @@ class DeviceGrid(QtWidgets.QWidget):
 
     def session_stop(self):
         self.start_timer()
-        QtCore.QTimer.singleShot(5000, self.enable_buttons)
+        QtCore.QTimer.singleShot(10000, self.enable_buttons)
 
     def enable_buttons(self):
         for button in self.widgets:
@@ -1242,7 +1253,6 @@ class MainWidget(QtWidgets.QWidget):
             fullscreen=fullscreen,
             input_map=self.controls.map,
         )
-        self.ctrl_window.show()
         self._app.setActiveWindow(self.ctrl_window)
 
     def session_stop(self):
