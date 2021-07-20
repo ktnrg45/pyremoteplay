@@ -59,6 +59,8 @@ class CTRLWorker(QtCore.QObject):
         # self.ctrl.av_receiver.add_audio_cb(self.handle_audio)
 
     def worker(self):
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         self.loop = asyncio.new_event_loop()
         task = self.loop.create_task(self.start())
         print("CTRL Start")
@@ -163,7 +165,6 @@ class CTRLWindow(QtWidgets.QWidget):
             self.fps_label.show()
         else:
             self.fps_label.hide()
-        self.frame_mutex.unlock()
         self.thread.start()
         self.av_thread.start()
 
