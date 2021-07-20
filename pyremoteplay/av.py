@@ -11,7 +11,7 @@ from struct import unpack_from
 import sys
 
 from .stream_packets import AVPacket, Packet
-from .util import log_bytes
+from .util import log_bytes, timeit
 
 try:
     import av
@@ -51,15 +51,12 @@ class AVHandler():
     def set_cipher(self, cipher):
         self._cipher = cipher
         self._ctrl.init_av_handler()
-        # self._worker = threading.Thread(
-        #     target=self.worker,
-        # )
-        # self._worker.start()
 
     def set_headers(self, v_header, a_header):
         """Set headers."""
         if self._receiver:
             self._receiver._v_header = v_header
+            _LOGGER.info("Video Header: %s", v_header.hex())
             self._v_stream = AVStream("video", v_header, self._receiver.handle_video)
             self._a_stream = AVStream("audio", a_header, self._receiver.handle_audio)
 
@@ -188,7 +185,6 @@ class AVStream():
                 self._last_unit = -1
                 self._buf.close()
                 self._buf = BytesIO()
-                self._buf.write(self._header)
                 _LOGGER.debug("Started New Frame: %s", self.frame)
 
         # Current Frame not FEC
@@ -232,30 +228,72 @@ class AVStream():
 class AVReceiver(abc.ABC):
     """Base Class for AV Receiver."""
 
+    def video_frame(buf, codec, to_rgb=True):
+        """Decode H264 Frame to raw image.
+        Returns Numpy Array.
+
+        Frame Format:
+        AV_PIX_FMT_YUV420P (libavutil)
+        YUV 4:2:0, 12bpp
+        (1 Cr & Cb sample per 2x2 Y samples)
+        """
+        packet = av.packet.Packet(buf)
+        frames = codec.decode(packet)
+        if not frames:
+            return None
+        frame = frames[0]
+        frame = frame.reformat().to_ndarray()
+        if to_rgb:
+            frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
+        return frame
+
+    def video_codec():
+        codec = av.codec.Codec("h264", "r").create()
+        codec.flags = av.codec.context.Flags.LOW_DELAY
+        codec.options = {
+            'tune': 'zerolatency'
+        }
+        return codec
+
     def __init__(self, ctrl):
         self._ctrl = ctrl
+        self.a_cb = None
+        self.codec = None
+        self._recv_first = False
+
+    def get_video_codec(self):
+        self.codec = AVReceiver.video_codec()
 
     def notify_started(self):
         self._ctrl.receiver_started.set()
 
-    def handle_video(self, data: bytes):
+    def start(self):
+        self.notify_started()
+
+    def get_video_frame(self):
+        """Return Video Frame."""
+        raise NotImplementedError
+
+    def handle_video(self, buf: bytes):
         """Handle video frame."""
         raise NotImplementedError
 
-    def handle_audio(self, data: bytes):
+    def handle_audio(self, buf: bytes):
         """Handle audio frame."""
         raise NotImplementedError
 
     def close(self):
         """Close Receiver."""
-        raise NotImplementedError
+        if self.codec is not None:
+            self.codec.close()
 
 
 class QueueReceiver(AVReceiver):
     def __init__(self, ctrl):
         super().__init__(ctrl)
-        self.a_cb = None
         self.v_queue = deque()
+        self.get_video_codec()
+        self.lock = threading.Lock()
 
     def add_audio_cb(self, cb):
         self.a_cb = cb
@@ -264,50 +302,79 @@ class QueueReceiver(AVReceiver):
         self.notify_started()
 
     def close(self):
+        super().close()
         self.v_queue.clear()
 
-    def handle_video(self, buf):
-        self.v_queue.append(buf)
-
-    def handle_audio(self, buf):
-        if self.a_cb is not None:
-            self.a_cb(buf)
-
-
-class GUIReceiver(QueueReceiver):
-    def __init__(self, ctrl):
-        super().__init__(ctrl)
-        self.codec = av.codec.Codec("h264", "r").create()
-        self.codec.flags = av.codec.context.Flags.LOW_DELAY
-        self.codec.options = {
-            'tune': 'zerolatency'
-        }
-        self._v_header = None
-        self._recv_first = False
+    def get_video_frame(self):
+        try:
+            return self.v_queue.popleft()
+        except IndexError:
+            return None
 
     def handle_video(self, buf):
         if not self._recv_first:
-            header_len = len(self._v_header)
-            extradata = buf[:header_len + 3]
-            self.codec.extradata = extradata
-            log_bytes("H264 Extra Data", extradata)
+            buf = b''.join([self._v_header, buf])
             self._recv_first = True
-        packet = av.packet.Packet(buf)
-        frames = self.codec.decode(packet)
-        if not frames:
+        frame = AVReceiver.video_frame(buf, self.codec)
+        if frame is None:
             return
-        frame = frames[0]
-        frame = frame.reformat().to_ndarray()
-        frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
         self.v_queue.append(frame)
 
     def handle_audio(self, buf):
         if self.a_cb is not None:
             self.a_cb(buf)
 
+
+class ProcessReceiver(AVReceiver):
+    """Uses Multiprocessing. Seems to be slower than threaded."""
+
+    def process(pipe_in, output, lock):
+        codec = AVReceiver.video_codec()
+
+        _LOGGER.info("Process Started")
+        while True:
+            buf = pipe_in.recv_bytes()
+            frame = AVReceiver.get_frame(buf, codec)
+            if frame is None:
+                continue
+            output.put(frame)
+            frame = None
+
+    def __init__(self, ctrl):
+        super().__init__(ctrl)
+        self.pipe1, self.pipe2 = multiprocessing.Pipe()
+        self.manager = multiprocessing.Manager()
+        self.v_queue = self.manager.Queue()
+        self.lock = self.manager.Lock()
+        self._worker = None
+
+    def start(self):
+        self._worker = multiprocessing.Process(
+            target=ProcessReceiver.process,
+            args=(self.pipe1, self.v_queue, self.lock),
+            daemon=True,
+        )
+        self._worker.start()
+        self.notify_started()
+        _LOGGER.info("Process Start")
+
+    def get_video_frame(self):
+        if not self.v_queue:
+            return None
+        return self.v_queue.get()
+
+    def handle_video(self, buf):
+        self.pipe2.send_bytes(buf)
+
+    def handle_audio(self, buf):
+        if self.a_cb is not None:
+            self.a_cb(buf)
+
     def close(self):
-        super().close()
-        self.codec.close()
+        if self._worker:
+            self._worker.terminate()
+            self._worker.join()
+            self._worker.close()
 
 
 class AVFileReceiver(AVReceiver):

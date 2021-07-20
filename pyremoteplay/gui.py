@@ -7,7 +7,7 @@ import requests
 from pyps4_2ndscreen.ddp import search, get_status
 from pyps4_2ndscreen.media_art import get_region_codes, BASE_URL, BASE_IMAGE_URL, DEFAULT_HEADERS, ResultItem
 
-from .av import GUIReceiver, QueueReceiver
+from .av import QueueReceiver, ProcessReceiver
 from .const import RESOLUTION_PRESETS
 from .ctrl import CTRLAsync, CTRL, send_wakeup
 from .oauth import LOGIN_URL, get_user_account
@@ -55,7 +55,7 @@ class CTRLWorker(QtCore.QObject):
         self.finished.emit()
 
     def get_ctrl(self, host, profile, resolution, fps):
-        self.ctrl = CTRLAsync(host, profile, resolution=resolution, fps=fps, av_receiver=GUIReceiver)
+        self.ctrl = CTRLAsync(host, profile, resolution=resolution, fps=fps, av_receiver=QueueReceiver)
         # self.ctrl.av_receiver.add_audio_cb(self.handle_audio)
 
     def worker(self):
@@ -111,18 +111,13 @@ class AVProcessor(QtCore.QObject):
         self.window = window
 
     def next_frame(self):
-        #self.window.frame_mutex.lock()
-        v_queue = self.window.worker.ctrl.av_receiver.v_queue
-        try:
-            frame = v_queue.popleft()
-        except IndexError:
-            #self.window.frame_mutex.unlock()
+        frame = self.window.worker.ctrl.av_receiver.get_video_frame()
+        if frame is None:
             return
         img = QtGui.QImage(frame, frame.shape[1], frame.shape[0], QtGui.QImage.Format_RGB888)
         pix = QtGui.QPixmap.fromImage(img)
         self.window.video_output.setPixmap(pix)
         self.frame.emit()
-        #self.window.frame_mutex.unlock()
 
 
 class CTRLWindow(QtWidgets.QWidget):
@@ -142,6 +137,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.timer.setTimerType(QtCore.Qt.PreciseTimer)
         self.timer.timeout.connect(self.av_worker.next_frame)
         self.frame_mutex = QtCore.QMutex()
+        self.ms_refresh = 0
 
         self.thread = QtCore.QThread()
         self.worker.moveToThread(self.thread)
@@ -159,6 +155,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.mapping = ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
         self.fps = fps
         self.fullscreen = fullscreen
+        self.ms_refresh = 1000.0/self.fps
         self.setWindowTitle(f"Session {name} @ {host}")
         self.worker.get_ctrl(host, profile, resolution, fps)
         if show_fps:
@@ -215,6 +212,7 @@ class CTRLWindow(QtWidgets.QWidget):
     def keyPressEvent(self, event):
         key = Qt.Key(event.key()).name.decode()
         button = self.mapping.get(key)
+        print(button)
         if button is None:
             print(f"Button Invalid: {key}")
             return
@@ -260,7 +258,7 @@ class CTRLWindow(QtWidgets.QWidget):
 
     def start_timer(self):
         print("AV Processor Started")
-        self.timer.start(1000.0/self.fps)
+        self.timer.start(self.ms_refresh)
 
 
 class ToolbarWidget(QtWidgets.QWidget):
@@ -340,7 +338,7 @@ class ToolbarWidget(QtWidgets.QWidget):
 
     def refresh_reset(self):
         self.refresh.setChecked(False)
-        self.main_window.device_grid.timer.stop()
+        self.main_window.device_grid.stop_update()
 
 
 class ControlsWidget(QtWidgets.QWidget):
@@ -606,22 +604,25 @@ class OptionsWidget(QtWidgets.QWidget):
         self.add(self.fps_show, 0, 2)
         self.add(self.resolution, 1, 1, label=get_label("Resolution:", self))
         self.add(self.fullscreen, 1, 2)
-        self.layout.addItem(spacer(), 2, 0)
-        self.add(set_account, 3, 0)
-        self.add(add_account, 3, 1)
-        self.add(del_account, 3, 2)
-        self.layout.addWidget(self.accounts, 4, 0, 3, 3)
-        self.layout.addItem(spacer(), 4, 3)
-        self.add(add_device, 3, 4)
-        self.add(del_device, 3, 5)
-        self.layout.addWidget(self.devices, 4, 4, 3, 2)
+        res_label = get_label("**1080p is not reccomended**", self)
+        res_label.setWordWrap(True)
+        self.layout.addWidget(res_label, 2, 0, 1, 2)
+        self.layout.addItem(spacer(), 3, 0)
+        self.add(set_account, 4, 0)
+        self.add(add_account, 4, 1)
+        self.add(del_account, 4, 2)
+        self.layout.addWidget(self.accounts, 5, 0, 3, 3)
+        self.layout.addItem(spacer(), 5, 3)
+        self.add(add_device, 4, 4)
+        self.add(del_device, 4, 5)
+        self.layout.addWidget(self.devices, 5, 4, 3, 2)
         devices_label = get_label(
             "If your device is not showing up automatically, "
             "try adding the IP Address below.",
             self,
         )
         devices_label.setWordWrap(True)
-        self.layout.addWidget(devices_label, 2, 4, 1, 2)
+        self.layout.addWidget(devices_label, 3, 4, 1, 2)
 
     def set_options(self) -> bool:
         try:
@@ -1128,12 +1129,17 @@ class DeviceGrid(QtWidgets.QWidget):
         self.timer.start(5000)
 
     def session_stop(self):
-        self.start_timer()
+        if self.main_window.toolbar.refresh.isChecked():
+            self.start_timer()
         QtCore.QTimer.singleShot(10000, self.enable_buttons)
 
     def enable_buttons(self):
         for button in self.widgets:
             button.setDisabled(False)
+
+    def stop_update(self):
+        self.timer.stop()
+        self.thread.quit()
 
 
 class MainWidget(QtWidgets.QWidget):
@@ -1264,6 +1270,11 @@ class MainWidget(QtWidgets.QWidget):
     def set_center_text(self, text):
         self.center_text.setText(text)
         self.center_text.show()
+
+    def close(self, event):
+        self.device_grid.stop_update()
+        event.accept()
+
 
 
 class Popup(QtWidgets.QWidget):

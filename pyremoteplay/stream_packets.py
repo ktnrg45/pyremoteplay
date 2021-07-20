@@ -416,11 +416,13 @@ class AVPacket(PacketSection):
         AUDIO = Header.Type.AUDIO
 
     def __repr__(self) -> str:
+        nalu = self.nalu.hex() if self.has_nalu else None
         return (
             f"<RP AVPacket "
             f"type={self.type.name} "
-            f"NALU={self.has_nalu} "
+            f"NALU={nalu} "
             f"codec={self.codec} "
+            f"data size={len(self._data)} "
             f"key_pos={self.key_pos} "
             f"is_fec={self.is_fec} "
             f"index={self.index} "
@@ -443,6 +445,7 @@ class AVPacket(PacketSection):
         self._data = None
         self._encrypted = True
         self._frame_meta = {}
+        self._nalu = None
 
         offset = 1  # TODO: Offset 1 verify?
         if self.type == self.Type.VIDEO:
@@ -453,6 +456,7 @@ class AVPacket(PacketSection):
             self._unit_index = (self._dword2 >> 0x18) & 0xff
         if self.has_nalu:
             # Unknown ushort at 18
+            self._nalu = buf[18 + offset: 18 + offset + 3]
             offset += 3
         self._data = buf[18 + offset:]
 
@@ -571,6 +575,11 @@ class AVPacket(PacketSection):
     def is_fec(self) -> bool:
         """Return True if packet is fec."""
         return self.unit_index >= self.frame_length_src
+
+    @property
+    def nalu(self) -> bytes:
+        """Return NALU info."""
+        return self._nalu
 
     @property
     def encrypted(self) -> bool:

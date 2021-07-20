@@ -4,7 +4,7 @@ import socket
 import threading
 import time
 from base64 import b64decode, b64encode
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from enum import IntEnum
 from functools import partial
 from struct import pack_into
@@ -565,6 +565,7 @@ class CTRLAsync(CTRL):
 
     def init_av_handler(self):
         self._tasks.append(self.loop.create_task(self.async_run_av_handler()))
+        #self._tasks.append(self.loop.create_task(self.async_run_av_receiver()))
 
     async def async_run_av_handler(self):
         executor = ThreadPoolExecutor(max_workers=8)
@@ -573,6 +574,13 @@ class CTRLAsync(CTRL):
             self.av_handler.worker,
         )
         _LOGGER.info("AV Stopped")
+
+    async def async_run_av_receiver(self):
+        executor = ProcessPoolExecutor(max_workers=1)
+        await self.loop.run_in_executor(
+            executor,
+            self.av_receiver.worker.run,
+        )
 
     def stop(self):
         """Stop Stream."""
