@@ -114,14 +114,17 @@ class AVProcessor(QtCore.QObject):
     def __init__(self, window):
         super().__init__()
         self.window = window
+        self.size = (self.window.geometry().width(), self.window.geometry().height())
 
     def next_frame(self):
         frame = self.window.worker.ctrl.av_receiver.get_video_frame()
         if frame is None:
             return
         img = QtGui.QImage(frame, frame.shape[1], frame.shape[0], QtGui.QImage.Format_RGB888)
-        pix = QtGui.QPixmap.fromImage(img)
+        pix = QtGui.QPixmap.fromImage(img).scaled(self.size[0], self.size[1], QtCore.Qt.KeepAspectRatio)
+        self.window.frame_mutex.lock()
         self.window.video_output.setPixmap(pix)
+        self.window.frame_mutex.unlock()
         # Clear Queue if behind. Try to use latest frame.
         if self.window.worker.ctrl.av_receiver.queue_size > 3:
             self.window.worker.ctrl.av_receiver.v_queue.clear()
@@ -131,12 +134,17 @@ class AVProcessor(QtCore.QObject):
 class CTRLWindow(QtWidgets.QWidget):
     def __init__(self, main_window):
         super().__init__()
-        self._main_window = main_window
+        self.main_window = main_window
         self.hide()
+        print(self.main_window.screen.virtualSize().width(), self.main_window.screen.virtualSize().height())
+        self.setMaximumWidth(self.main_window.screen.virtualSize().width())
+        self.setMaximumHeight(self.main_window.screen.virtualSize().height())
         self.setStyleSheet("background-color: black")
         self.video_output = QtWidgets.QLabel(self, alignment=QtCore.Qt.AlignCenter)
+        self.video_output.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
         self.audio_output = None
         self.layout = QtWidgets.QVBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.addWidget(self.video_output)
         self.fps_label = get_label("FPS: ", self)
         self.worker = CTRLWorker(self)
@@ -144,7 +152,6 @@ class CTRLWindow(QtWidgets.QWidget):
         self.timer = QtCore.QTimer()
         self.timer.setTimerType(QtCore.Qt.PreciseTimer)
         self.timer.timeout.connect(self.av_worker.next_frame)
-        self.frame_mutex = QtCore.QMutex()
         self.ms_refresh = 0
 
         self.thread = QtCore.QThread()
@@ -159,6 +166,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.av_worker.frame.connect(self.set_fps)
 
     def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None):
+        self.frame_mutex = QtCore.QMutex()
         self.video_output.hide()
         self.mapping = ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
         self.fps = fps
@@ -166,6 +174,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.ms_refresh = 1000.0/self.fps
         self.setWindowTitle(f"Session {name} @ {host}")
         self.worker.get_ctrl(host, profile, resolution, fps)
+        self.resize(self.worker.ctrl.resolution['width'], self.worker.ctrl.resolution['height'])
         if show_fps:
             self.init_fps()
             self.fps_label.show()
@@ -216,6 +225,13 @@ class CTRLWindow(QtWidgets.QWidget):
             self.init_audio()
         self.audio_output.write()
 
+    def resizeEvent(self, event):
+        print(self.geometry().width(), self.geometry().height())
+        print(self.frameGeometry().width(), self.frameGeometry().height())
+        self.av_worker.size = (self.geometry().width(), self.geometry().height())
+        event.accept()
+
+
     def keyPressEvent(self, event):
         key = Qt.Key(event.key()).name.decode()
         button = self.mapping.get(key)
@@ -261,7 +277,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.timer.stop()
         self.thread.quit()
         self.av_thread.quit()
-        self._main_window.session_stop()
+        self.main_window.session_stop()
 
     def start_timer(self):
         print("AV Processor Started")
@@ -1153,6 +1169,7 @@ class MainWidget(QtWidgets.QWidget):
     def __init__(self, app):
         super().__init__()
         self._app = app
+        self.screen = self._app.primaryScreen()
         self.idle = True
         self.thread = None
         self.ctrl_window = CTRLWindow(self)
