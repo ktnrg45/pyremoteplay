@@ -245,7 +245,7 @@ class CTRLWindow(QtWidgets.QWidget):
             self.close()
             return
         if button == "STANDBY":
-            message(self, "Standby", "Set host to standby?", level="info", cb=self.standby, escape=True)
+            message(self, "Standby", "Set host to standby?", level="info", cb=self.send_standby, escape=True)
             return
         if event.isAutoRepeat():
             return
@@ -270,6 +270,10 @@ class CTRLWindow(QtWidgets.QWidget):
         else:
             self.worker.send_button(button, "release")
         event.accept()
+
+    def send_standby(self):
+        if self.worker.ctrl is not None:
+            self.worker.ctrl.standby()
 
     def closeEvent(self, event):
         self.worker.stop()
