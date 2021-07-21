@@ -171,6 +171,6 @@ def timeit(func):
         result = func(*args, **kwargs)
         end = time.time()
         elapsed = round(end - start, 8)
-        _LOGGER.debug("Timed %s.%s at %s seconds", func.__module__, func.__name__, elapsed)
+        _LOGGER.info("Timed %s.%s at %s seconds", func.__module__, func.__name__, elapsed)
         return result
     return inner

@@ -2,6 +2,7 @@ import asyncio
 import sys
 import threading
 import time
+import logging
 
 import requests
 from pyps4_2ndscreen.ddp import search, get_status
@@ -13,13 +14,15 @@ from .ctrl import CTRLAsync, CTRL, send_wakeup
 from .oauth import LOGIN_URL, get_user_account
 from .register import register
 from .util import (add_regist_data, add_profile, get_options, get_profiles, write_options,
-                   write_profiles, get_mapping, write_mapping)
+                   write_profiles, get_mapping, write_mapping, timeit)
 
 try:
     from PySide6 import QtCore, QtGui, QtWidgets
     from PySide6.QtCore import Qt
 except ModuleNotFoundError:
     pass
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CTRLWorker(QtCore.QObject):
@@ -119,6 +122,9 @@ class AVProcessor(QtCore.QObject):
         img = QtGui.QImage(frame, frame.shape[1], frame.shape[0], QtGui.QImage.Format_RGB888)
         pix = QtGui.QPixmap.fromImage(img)
         self.window.video_output.setPixmap(pix)
+        # Clear Queue if behind. Try to use latest frame.
+        if self.window.worker.ctrl.av_receiver.queue_size > 3:
+            self.window.worker.ctrl.av_receiver.v_queue.clear()
         self.frame.emit()
 
 
@@ -213,7 +219,6 @@ class CTRLWindow(QtWidgets.QWidget):
     def keyPressEvent(self, event):
         key = Qt.Key(event.key()).name.decode()
         button = self.mapping.get(key)
-        print(button)
         if button is None:
             print(f"Button Invalid: {key}")
             return
@@ -223,11 +228,12 @@ class CTRLWindow(QtWidgets.QWidget):
         if button == "STANDBY":
             message(self, "Standby", "Set host to standby?", level="info", cb=self.standby, escape=True)
             return
+        if event.isAutoRepeat():
+            return
         if "STICK" in button:
             self.worker.stick_state(button, release=False)
         else:
-            if not event.isAutoRepeat():
-                self.worker.send_button(button, "press")
+            self.worker.send_button(button, "press")
         event.accept()
 
     def keyReleaseEvent(self, event):

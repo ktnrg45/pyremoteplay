@@ -75,6 +75,7 @@ class RPStream():
         self._cb_ack = None
         self._cb_ack_tsn = 0
         self._ecdh = None
+        self._verify_gmac = False
         self.cipher = None
         self.proto = ProtoHandler(self)
         self.av_handler = ctrl.av_handler
@@ -178,7 +179,8 @@ class RPStream():
                 _gmac = int.to_bytes(gmac, 4, "big")
                 key_pos = packet.header.key_pos
                 packet.header.gmac = packet.header.key_pos = 0
-                gmac = self.cipher.verify_gmac(packet.bytes(), key_pos, _gmac)
+                if self._verify_gmac:
+                    gmac = self.cipher.verify_gmac(packet.bytes(), key_pos, _gmac)
 
             if packet.chunk.type == Chunk.Type.INIT_ACK:
                 self._recv_init(packet)

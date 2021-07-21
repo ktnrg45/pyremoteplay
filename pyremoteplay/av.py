@@ -25,7 +25,6 @@ try:
 except Exception as err:
     print(err)
 
-
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -65,7 +64,7 @@ class AVHandler():
         self._queue.append(packet)
 
     def worker(self):
-        while not self._ctrl._stop_event.is_set():
+        while not self._ctrl.is_stopped:
             try:
                 msg = self._queue.popleft()
             except IndexError:
@@ -230,7 +229,7 @@ class AVReceiver(abc.ABC):
 
     def video_frame(buf, codec, to_rgb=True):
         """Decode H264 Frame to raw image.
-        Returns Numpy Array.
+        Return Numpy Array.
 
         Frame Format:
         AV_PIX_FMT_YUV420P (libavutil)
@@ -242,7 +241,7 @@ class AVReceiver(abc.ABC):
         if not frames:
             return None
         frame = frames[0]
-        frame = frame.reformat().to_ndarray()
+        frame = frame.to_ndarray()
         if to_rgb:
             frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
         return frame
@@ -250,6 +249,8 @@ class AVReceiver(abc.ABC):
     def video_codec():
         codec = av.codec.Codec("h264", "r").create()
         codec.flags = av.codec.context.Flags.LOW_DELAY
+        codec.flags2 = av.codec.context.Flags2.FAST
+        codec.thread_type = av.codec.context.ThreadType.NONE
         codec.options = {
             'tune': 'zerolatency'
         }
@@ -307,7 +308,8 @@ class QueueReceiver(AVReceiver):
 
     def get_video_frame(self):
         try:
-            return self.v_queue.popleft()
+            frame = self.v_queue.popleft()
+            return frame
         except IndexError:
             return None
 
@@ -323,6 +325,10 @@ class QueueReceiver(AVReceiver):
     def handle_audio(self, buf):
         if self.a_cb is not None:
             self.a_cb(buf)
+
+    @property
+    def queue_size(self):
+        return len(self.v_queue)
 
 
 class ProcessReceiver(AVReceiver):
