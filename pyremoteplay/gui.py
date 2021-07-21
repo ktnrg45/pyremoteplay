@@ -121,7 +121,10 @@ class AVProcessor(QtCore.QObject):
         if frame is None:
             return
         img = QtGui.QImage(frame, frame.shape[1], frame.shape[0], QtGui.QImage.Format_RGB888)
-        pix = QtGui.QPixmap.fromImage(img).scaled(self.size[0], self.size[1], QtCore.Qt.KeepAspectRatio)
+        if self.window.fullscreen:
+            pix = QtGui.QPixmap.fromImage(img).scaled(self.size[0], self.size[1], QtCore.Qt.KeepAspectRatio)
+        else:
+            pix = QtGui.QPixmap.fromImage(img)
         self.window.frame_mutex.lock()
         self.window.video_output.setPixmap(pix)
         self.window.frame_mutex.unlock()
