@@ -184,6 +184,8 @@ class AVStream():
                 self._last_unit = -1
                 self._buf.close()
                 self._buf = BytesIO()
+                if packet.index == 0:
+                    self._buf.write(self._header)
                 _LOGGER.debug("Started New Frame: %s", self.frame)
 
         # Current Frame not FEC
@@ -191,6 +193,8 @@ class AVStream():
             # Packet is in order
             if packet.unit_index == self.last_unit + 1:
                 self._last_unit += 1
+                if packet.has_nalu:  # Slight decoding error when this is present
+                    _LOGGER.debug(packet)
                 self._buf.write(packet.data)
             else:
                 _LOGGER.debug("Received unit out of order: %s, expected: %s", packet.unit_index, self.last_unit + 1)
@@ -241,6 +245,7 @@ class AVReceiver(abc.ABC):
         if not frames:
             return None
         frame = frames[0]
+        #_LOGGER.info(f"Frame: Key:{frame.key_frame}, Interlaced:{frame.interlaced_frame} Pict:{frame.pict_type}")
         frame = frame.to_ndarray()
         if to_rgb:
             frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
@@ -248,19 +253,18 @@ class AVReceiver(abc.ABC):
 
     def video_codec():
         codec = av.codec.Codec("h264", "r").create()
-        codec.flags = av.codec.context.Flags.LOW_DELAY
-        codec.flags2 = av.codec.context.Flags2.FAST
-        codec.thread_type = av.codec.context.ThreadType.NONE
-        codec.options = {
-            'tune': 'zerolatency'
-        }
+        # codec.flags = av.codec.context.Flags.LOW_DELAY
+        # codec.flags2 = av.codec.context.Flags2.FAST
+        # codec.thread_type = av.codec.context.ThreadType.NONE
+        # codec.options = {
+        #     'tune': 'zerolatency'
+        # }
         return codec
 
     def __init__(self, ctrl):
         self._ctrl = ctrl
         self.a_cb = None
         self.codec = None
-        self._recv_first = False
 
     def get_video_codec(self):
         self.codec = AVReceiver.video_codec()
@@ -314,9 +318,6 @@ class QueueReceiver(AVReceiver):
             return None
 
     def handle_video(self, buf):
-        if not self._recv_first:
-            buf = b''.join([self._v_header, buf])
-            self._recv_first = True
         frame = AVReceiver.video_frame(buf, self.codec)
         if frame is None:
             return

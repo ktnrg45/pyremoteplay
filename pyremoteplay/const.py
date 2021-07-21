@@ -37,7 +37,7 @@ RESOLUTION_720P = {
 RESOLUTION_1080P = {
     'width': 1920,
     'height': 1080,
-    'bitrate': 10000,
+    'bitrate': 15000,
 }
 
 RESOLUTION_PRESETS = {

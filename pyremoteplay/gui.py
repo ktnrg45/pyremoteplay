@@ -630,7 +630,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.add(self.fps_show, 0, 2)
         self.add(self.resolution, 1, 1, label=get_label("Resolution:", self))
         self.add(self.fullscreen, 1, 2)
-        res_label = get_label("**1080p is not reccomended**", self)
+        res_label = get_label("**1080p is for PS4 Pro only**", self)
         res_label.setWordWrap(True)
         self.layout.addWidget(res_label, 2, 0, 1, 2)
         self.layout.addItem(spacer(), 3, 0)
