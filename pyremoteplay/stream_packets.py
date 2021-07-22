@@ -451,12 +451,12 @@ class AVPacket(PacketSection):
         if self.type == self.Type.VIDEO:
             offset = 3
             self._unit_index = (self._dword2 >> 0x15) & 0x7ff
-            self._adaptive_stream_index = unpack_from("!b", buf, 19)[0] >> 5
+            self._adaptive_stream_index = unpack_from("!b", buf, 20)[0] >> 5
         else:
             self._unit_index = (self._dword2 >> 0x18) & 0xff
         if self.has_nalu:
             # Unknown ushort at 18
-            self._nalu = buf[18 + offset: 18 + offset + 3]
+            self._nalu = buf[18 + offset + 1: 18 + offset + 3]
             offset += 3
         self._data = buf[18 + offset:]
 

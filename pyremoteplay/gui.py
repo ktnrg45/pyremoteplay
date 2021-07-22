@@ -140,7 +140,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.setMaximumHeight(self.main_window.screen.virtualSize().height())
         self.setStyleSheet("background-color: black")
         self.video_output = QtWidgets.QLabel(self, alignment=QtCore.Qt.AlignCenter)
-        self.video_output.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
+        #self.video_output.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
         self.audio_output = None
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -173,7 +173,6 @@ class CTRLWindow(QtWidgets.QWidget):
         self.ms_refresh = 1000.0/self.fps
         self.setWindowTitle(f"Session {name} @ {host}")
         self.worker.get_ctrl(host, profile, resolution, fps)
-        self.resize(self.worker.ctrl.resolution['width'], self.worker.ctrl.resolution['height'])
 
         if show_fps:
             self.init_fps()
@@ -188,6 +187,7 @@ class CTRLWindow(QtWidgets.QWidget):
             self.showMaximized()
         else:
             self.show()
+        self.resize(self.worker.ctrl.resolution['width'], self.worker.ctrl.resolution['height'])
         self.video_output.show()
 
 # Waiting on pyside6.2

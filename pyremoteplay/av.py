@@ -10,6 +10,7 @@ from io import BytesIO
 from struct import unpack_from
 import sys
 
+from .const import AV_CODEC_OPTIONS_H264
 from .stream_packets import AVPacket, Packet
 from .util import log_bytes, timeit
 
@@ -195,6 +196,7 @@ class AVStream():
                 self._last_unit += 1
                 if packet.has_nalu:  # Slight decoding error when this is present
                     _LOGGER.debug(packet)
+                    _LOGGER.debug(packet.data[:32].hex())
                 self._buf.write(packet.data)
             else:
                 _LOGGER.debug("Received unit out of order: %s, expected: %s", packet.unit_index, self.last_unit + 1)
@@ -251,14 +253,15 @@ class AVReceiver(abc.ABC):
             frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
         return frame
 
-    def video_codec():
+    def video_codec(width=None, height=None):
         codec = av.codec.Codec("h264", "r").create()
+        codec.options = AV_CODEC_OPTIONS_H264
+        codec.width = width
+        codec.height = height
+        codec.pix_fmt = "yuv420p"
         # codec.flags = av.codec.context.Flags.LOW_DELAY
         # codec.flags2 = av.codec.context.Flags2.FAST
         # codec.thread_type = av.codec.context.ThreadType.NONE
-        # codec.options = {
-        #     'tune': 'zerolatency'
-        # }
         return codec
 
     def __init__(self, ctrl):
@@ -267,7 +270,7 @@ class AVReceiver(abc.ABC):
         self.codec = None
 
     def get_video_codec(self):
-        self.codec = AVReceiver.video_codec()
+        self.codec = AVReceiver.video_codec(self._ctrl.resolution['width'], self._ctrl.resolution['height'])
 
     def notify_started(self):
         self._ctrl.receiver_started.set()
