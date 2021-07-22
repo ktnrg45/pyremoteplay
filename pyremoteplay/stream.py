@@ -6,6 +6,7 @@ import socket
 import threading
 import time
 from struct import pack_into
+from concurrent.futures import ThreadPoolExecutor
 
 from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
@@ -44,13 +45,18 @@ class RPStream():
         def __init__(self, stream):
             self.transport = None
             self.stream = stream
+            self.executor = ThreadPoolExecutor(max_workers=8)
 
         def connection_made(self, transport):
             _LOGGER.debug("Connected Stream")
             self.transport = transport
 
         def datagram_received(self, data, addr):
-            self.stream._handle(data)
+            asyncio.ensure_future(self.stream._ctrl.loop.run_in_executor(
+                self.executor,
+                self.stream._handle,
+                data,
+            ))
 
         def sendto(self, data, addr):
             self.transport.sendto(data, addr)

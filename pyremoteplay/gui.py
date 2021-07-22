@@ -114,17 +114,13 @@ class AVProcessor(QtCore.QObject):
     def __init__(self, window):
         super().__init__()
         self.window = window
-        self.size = (self.window.geometry().width(), self.window.geometry().height())
 
     def next_frame(self):
         frame = self.window.worker.ctrl.av_receiver.get_video_frame()
         if frame is None:
             return
         img = QtGui.QImage(frame, frame.shape[1], frame.shape[0], QtGui.QImage.Format_RGB888)
-        if self.window.fullscreen:
-            pix = QtGui.QPixmap.fromImage(img).scaled(self.size[0], self.size[1], QtCore.Qt.KeepAspectRatio)
-        else:
-            pix = QtGui.QPixmap.fromImage(img)
+        pix = QtGui.QPixmap.fromImage(img)
         self.window.frame_mutex.lock()
         self.window.video_output.setPixmap(pix)
         self.window.frame_mutex.unlock()
@@ -178,6 +174,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.setWindowTitle(f"Session {name} @ {host}")
         self.worker.get_ctrl(host, profile, resolution, fps)
         self.resize(self.worker.ctrl.resolution['width'], self.worker.ctrl.resolution['height'])
+
         if show_fps:
             self.init_fps()
             self.fps_label.show()
@@ -228,12 +225,11 @@ class CTRLWindow(QtWidgets.QWidget):
             self.init_audio()
         self.audio_output.write()
 
-    def resizeEvent(self, event):
-        print(self.geometry().width(), self.geometry().height())
-        print(self.frameGeometry().width(), self.frameGeometry().height())
-        self.av_worker.size = (self.geometry().width(), self.geometry().height())
-        event.accept()
-
+    # def resizeEvent(self, event):
+    #     self.worker.ctrl.max_width = self.geometry().width()
+    #     self.worker.ctrl.max_height = self.geometry().height()
+    #     self.video_output.resize(self.geometry().width(), self.geometry().height())
+    #     event.accept()
 
     def keyPressEvent(self, event):
         key = Qt.Key(event.key()).name.decode()

@@ -231,7 +231,7 @@ class AVStream():
 class AVReceiver(abc.ABC):
     """Base Class for AV Receiver."""
 
-    def video_frame(buf, codec, to_rgb=True):
+    def video_frame(buf, codec, to_rgb=True, width=None, height=None):
         """Decode H264 Frame to raw image.
         Return Numpy Array.
 
@@ -246,7 +246,7 @@ class AVReceiver(abc.ABC):
             return None
         frame = frames[0]
         #_LOGGER.info(f"Frame: Key:{frame.key_frame}, Interlaced:{frame.interlaced_frame} Pict:{frame.pict_type}")
-        frame = frame.to_ndarray()
+        frame = frame.to_ndarray(width=width, height=height)
         if to_rgb:
             frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
         return frame
@@ -318,7 +318,7 @@ class QueueReceiver(AVReceiver):
             return None
 
     def handle_video(self, buf):
-        frame = AVReceiver.video_frame(buf, self.codec)
+        frame = AVReceiver.video_frame(buf, self.codec, width=self._ctrl.max_width, height=self._ctrl.max_height)
         if frame is None:
             return
         self.v_queue.append(frame)

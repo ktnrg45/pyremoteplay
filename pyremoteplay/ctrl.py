@@ -170,6 +170,7 @@ class CTRL():
         self._cipher = None
         self._state = CTRL.STATE_INIT
         self._stream = None
+        self.max_width = self.max_height = None
         self.fps = FPS.preset(fps)
         self.resolution = Resolution.preset(resolution)
         self.error = ""
