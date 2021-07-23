@@ -3,6 +3,7 @@ import sys
 import threading
 import time
 import logging
+from enum import Enum
 
 import requests
 from pyps4_2ndscreen.ddp import search, get_status
@@ -88,20 +89,17 @@ class CTRLWorker(QtCore.QObject):
         self.ctrl.standby()
         self.stop()
 
-    def stick_state(self, button: str, release=False):
-        button = button.split("_")
-        stick = button[1]
-        direction = button[2]
+    def stick_state(self, stick: str, direction: str = None, value: float = None, point=None):
+        if point is not None:
+            self.ctrl.controller.stick(stick, point=point)
+            return
+
         if direction in ("LEFT", "RIGHT"):
             axis = "X"
         else:
             axis = "Y"
-        if release:
-            value = 0
-        elif direction in ("UP", "LEFT"):
-            value = self.ctrl.controller.STICK_STATE_MIN
-        else:
-            value = self.ctrl.controller.STICK_STATE_MAX
+        if direction in ("UP", "LEFT") and value != 0.0:
+            value *= -1.0
         self.ctrl.controller.stick(stick, axis, value)
 
     def send_button(self, button, action):
@@ -130,6 +128,95 @@ class AVProcessor(QtCore.QObject):
         self.frame.emit()
 
 
+class Joystick(QtWidgets.QLabel):
+
+    class Direction(Enum):
+        LEFT = 0
+        RIGHT = 1
+        UP = 2
+        DOWN = 3
+
+    def __init__(self, window, stick):
+        super().__init__(window)
+        self.window = window
+        self.stick = stick
+        self.setMinimumSize(150, 150)
+        self.movingOffset = QtCore.QPointF(0, 0)
+        self.grabCenter = False
+        self.grab_outside = False
+        self._last_pos = None
+        self.__maxDistance = 50
+        self.setStyleSheet("background-color: rgba(255, 255, 255, 0.6)")
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        bounds = QtCore.QRectF(-self.__maxDistance, -self.__maxDistance, self.__maxDistance * 2, self.__maxDistance * 2).translated(self._center())
+        painter.setBrush(QtGui.QColor(75, 75, 75, 150))
+        painter.drawEllipse(bounds)
+        painter.setBrush(Qt.black)
+        painter.drawEllipse(self._centerEllipse())
+
+    def _centerEllipse(self):
+        if self.grabCenter:
+            return QtCore.QRectF(-20, -20, 40, 40).translated(self.movingOffset)
+        return QtCore.QRectF(-20, -20, 40, 40).translated(self._center())
+
+    def _center(self):
+        return QtCore.QPointF(self.width()/2, self.height()/2)
+
+    def _boundJoystick(self, point):
+        limitLine = QtCore.QLineF(self._center(), point)
+        if (limitLine.length() > self.__maxDistance):
+            limitLine.setLength(self.__maxDistance)
+        return limitLine.p2()
+
+    def joystickDirection(self):
+        if not self.grabCenter:
+            return (0.0, 0.0)
+        vector = QtCore.QLineF(self._center(), self.movingOffset)
+        distance = vector.length()
+        angle = vector.angle()
+        point = vector.p2()
+        point_x = (point.x() - self._center().x()) / self.__maxDistance
+        point_y = (point.y() - self._center().y()) / self.__maxDistance
+        return (point_x, point_y)
+
+    def mousePressEvent(self, event):
+        is_center = self._centerEllipse().contains(event.pos())
+        if is_center:
+            self.grabCenter = True
+            self.movingOffset = self._boundJoystick(event.pos())
+            self.update()
+        if not self.grabCenter:
+            self.grab_outside = True
+            self._last_pos = event.globalPos()
+        return super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self.grabCenter = False
+        self.grab_outside = False
+        self.movingOffset = QtCore.QPointF(0, 0)
+        self.update()
+        point = self.joystickDirection()
+        self.window.worker.stick_state(self.stick, point=point)
+
+    def mouseMoveEvent(self, event):
+        if self.grab_outside:
+            currPos = self.mapToGlobal(self.pos())
+            globalPos = event.globalPos()
+            diff = globalPos - self._last_pos
+            newPos = self.mapFromGlobal(currPos + diff)
+            self.move(newPos)
+            self._last_pos = globalPos
+
+        if self.grabCenter:
+            self.movingOffset = self._boundJoystick(event.pos())
+            self.update()
+        point = self.joystickDirection()
+        self.window.worker.stick_state(self.stick, point=point)
+
+
 class CTRLWindow(QtWidgets.QWidget):
     def __init__(self, main_window):
         super().__init__()
@@ -145,6 +232,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.addWidget(self.video_output)
+        self.joystick = Joystick(self, 'left')
         self.fps_label = get_label("FPS: ", self)
         self.worker = CTRLWorker(self)
         self.av_worker = AVProcessor(self)
@@ -183,12 +271,13 @@ class CTRLWindow(QtWidgets.QWidget):
         self.av_thread.start()
 
     def show_video(self):
+        self.resize(self.worker.ctrl.resolution['width'], self.worker.ctrl.resolution['height'])
         if self.fullscreen:
             self.showMaximized()
         else:
             self.show()
-        self.resize(self.worker.ctrl.resolution['width'], self.worker.ctrl.resolution['height'])
         self.video_output.show()
+        self.joystick.show()
 
 # Waiting on pyside6.2
 #    def init_audio(self):
@@ -246,7 +335,10 @@ class CTRLWindow(QtWidgets.QWidget):
         if event.isAutoRepeat():
             return
         if "STICK" in button:
-            self.worker.stick_state(button, release=False)
+            button = button.split("_")
+            stick = button[1]
+            direction = button[2]
+            self.worker.stick_state(stick, direction, 1.0)
         else:
             self.worker.send_button(button, "press")
         event.accept()
@@ -262,7 +354,10 @@ class CTRLWindow(QtWidgets.QWidget):
         if button in ["QUIT", "STANDBY"]:
             return
         if "STICK" in button:
-            self.worker.stick_state(button, release=True)
+            button = button.split("_")
+            stick = button[1]
+            direction = button[2]
+            self.worker.stick_state(stick, direction, 0.0)
         else:
             self.worker.send_button(button, "release")
         event.accept()

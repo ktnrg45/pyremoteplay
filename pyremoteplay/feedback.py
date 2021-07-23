@@ -74,21 +74,47 @@ class Controller():
                 self.add_event_queue(FeedbackEvent(button, is_active=False))
             self.send_event()
 
-    def stick(self, stick: str, axis: str, value: int):
+    def stick(self, stick: str, axis: str = None, value: float = None, point=None):
         """Set Stick Value."""
-        stick = stick.lower()
-        axis = axis.lower()
 
+        def check_value(value):
+            if not isinstance(value, float):
+                raise ValueError("Invalid value: Expected float")
+            if value > 1.0 or value < -1.0:
+                raise ValueError("Stick Value must be between -1.0 and 1.0")
+
+        def scale_value(value):
+            value = int(Controller.STICK_STATE_MAX * value)
+            if value > Controller.STICK_STATE_MAX:
+                value = Controller.STICK_STATE_MAX
+            elif value < Controller.STICK_STATE_MIN:
+                value = Controller.STICK_STATE_MIN
+            return value
+
+        stick = stick.lower()
         if stick not in ("left", "right"):
             raise ValueError("Invalid stick: Expected 'left', 'right'")
+
+        if point is not None:
+            if len(point) != 2:
+                raise ValueError("Point must have two values")
+            for val in point:
+                check_value(val)
+            val_x, val_y = point
+            val_x = scale_value(val_x)
+            val_y = scale_value(val_y)
+            self._stick_state[stick]["x"] = val_x
+            self._stick_state[stick]["y"] = val_y
+            self.send_state()
+            return
+
+        if axis is None or value is None:
+            raise ValueError("Axis and Value can not be None")
+        axis = axis.lower()
         if axis not in ("x", "y"):
             raise ValueError("Invalid axis: Expected 'x', 'y'")
-        if not isinstance(value, int):
-            raise ValueError("Invalid value: Expected Int")
-        if value > Controller.STICK_STATE_MAX:
-            value = Controller.STICK_STATE_MAX
-        elif value < Controller.STICK_STATE_MIN:
-            value = Controller.STICK_STATE_MIN
+        check_value(value)
+        value = scale_value(value)
         current = self._stick_state[stick][axis]
         if current != value:
             self._stick_state[stick][axis] = value

@@ -65,7 +65,7 @@ class AVHandler():
         self._queue.append(packet)
 
     def worker(self):
-        while not self._ctrl.is_stopped:
+        while not self._ctrl._stop_event.is_set():
             try:
                 msg = self._queue.popleft()
             except IndexError:
@@ -256,8 +256,8 @@ class AVReceiver(abc.ABC):
     def video_codec(width=None, height=None):
         codec = av.codec.Codec("h264", "r").create()
         codec.options = AV_CODEC_OPTIONS_H264
-        codec.width = width
-        codec.height = height
+        # codec.width = width
+        # codec.height = height
         codec.pix_fmt = "yuv420p"
         # codec.flags = av.codec.context.Flags.LOW_DELAY
         # codec.flags2 = av.codec.context.Flags2.FAST
