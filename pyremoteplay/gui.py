@@ -35,7 +35,6 @@ class CTRLWorker(QtCore.QObject):
         self.window = window
         self.ctrl = None
         self.thread = None
-        self.loop = None
 
     def run(self):
         if not self.ctrl:
@@ -49,12 +48,11 @@ class CTRLWorker(QtCore.QObject):
         self.thread.start()
 
     def stop(self):
-        print(f"Stopping Session @ {self.ctrl.host}")
-        self.ctrl.stop()
-        self.loop.stop()
-        del self.ctrl
-        del self.loop
-        self.loop = None
+        if self.ctrl:
+            print(f"Stopping Session @ {self.ctrl.host}")
+            self.ctrl.stop()
+            self.ctrl.loop.stop()
+            del self.ctrl
         self.ctrl = None
         self.finished.emit()
 
@@ -65,18 +63,17 @@ class CTRLWorker(QtCore.QObject):
     def worker(self):
         if sys.platform == "win32":
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        self.loop = asyncio.new_event_loop()
-        task = self.loop.create_task(self.start())
+        self.ctrl.loop = asyncio.new_event_loop()
+        task = self.ctrl.loop.create_task(self.start())
         print("CTRL Start")
-        self.loop.run_until_complete(task)
-        self.loop.run_forever()
+        self.ctrl.loop.run_until_complete(task)
+        if self.ctrl:
+            self.ctrl.loop.run_forever()
         print("CTRL Finished")
         task.cancel()
-        if self.ctrl:
-            self.stop()
+        self.stop()
 
     async def start(self):
-        self.ctrl.loop = self.loop
         status = await self.ctrl.start()
         if not status:
             print("CTRL Failed to Start")
@@ -112,15 +109,17 @@ class AVProcessor(QtCore.QObject):
     def __init__(self, window):
         super().__init__()
         self.window = window
+        self.pixmap = None
+        self.next_pixmap = None
+
 
     def next_frame(self):
         frame = self.window.worker.ctrl.av_receiver.get_video_frame()
         if frame is None:
             return
         img = QtGui.QImage(frame, frame.shape[1], frame.shape[0], QtGui.QImage.Format_RGB888)
-        pix = QtGui.QPixmap.fromImage(img)
         self.window.frame_mutex.lock()
-        self.window.video_output.setPixmap(pix)
+        self.next_pixmap = QtGui.QPixmap.fromImage(img)
         self.window.frame_mutex.unlock()
         # Clear Queue if behind. Try to use latest frame.
         if self.window.worker.ctrl.av_receiver.queue_size > 3:
@@ -250,7 +249,7 @@ class CTRLWindow(QtWidgets.QWidget):
         self.av_thread = QtCore.QThread()
         self.av_worker.moveToThread(self.av_thread)
         self.av_thread.started.connect(self.start_timer)
-        self.av_worker.frame.connect(self.set_fps)
+        self.av_worker.frame.connect(self.new_frame)
 
     def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None):
         self.frame_mutex = QtCore.QMutex()
@@ -291,6 +290,13 @@ class CTRLWindow(QtWidgets.QWidget):
 #        format.setSampleType(QtMultimedia.QAudioFormat.SignedInt)
 #        output = QtMultimedia.QAudioOutput(format)
 #        self.audio_output = output.start()
+
+    def new_frame(self):
+        self.frame_mutex.lock()
+        if self.av_worker.next_pixmap is not None:
+            self.av_worker.pixmap = self.av_worker.next_pixmap
+            self.video_output.setPixmap(self.av_worker.pixmap)
+        self.frame_mutex.unlock()
 
     def init_fps(self):
         self.fps_label.move(20, 20)

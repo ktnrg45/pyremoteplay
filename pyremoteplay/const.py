@@ -76,7 +76,7 @@ class Resolution(IntEnum):
             return RESOLUTION_PRESETS[Resolution(index).name.replace("RESOLUTION_", "").lower()]
 
 AV_CODEC_OPTIONS_H264 = {
-    # "profile": "high",
+    #"profile": "0",
     # "level": "3.2",
     "tune": "film",
     "preset": "ultrafast"

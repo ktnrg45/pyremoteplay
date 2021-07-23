@@ -580,7 +580,7 @@ class CTRLAsync(CTRL):
         executor = ProcessPoolExecutor(max_workers=1)
         await self.loop.run_in_executor(
             executor,
-            self.av_receiver.worker.run,
+            self.av_receiver.run,
         )
 
     def stop(self):
