@@ -244,7 +244,6 @@ class AVReceiver(abc.ABC):
         """
         packet = av.packet.Packet(buf)
         frames = codec.decode(packet)
-        _LOGGER.error(codec.profile)
         if not frames:
             return None
         frame = frames[0]

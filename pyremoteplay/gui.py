@@ -297,6 +297,7 @@ class CTRLWindow(QtWidgets.QWidget):
             self.av_worker.pixmap = self.av_worker.next_pixmap
             self.video_output.setPixmap(self.av_worker.pixmap)
         self.frame_mutex.unlock()
+        self.set_fps()
 
     def init_fps(self):
         self.fps_label.move(20, 20)
