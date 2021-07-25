@@ -261,8 +261,8 @@ class AVReceiver(abc.ABC):
         # codec.height = height
         codec.pix_fmt = "yuv420p"
         codec.flags = av.codec.context.Flags.TRUNCATED
-        codec.flags2 = av.codec.context.Flags2.IGNORE_CROP
-        #codec.thread_type = av.codec.context.ThreadType.AUTO
+        codec.flags2 = av.codec.context.Flags2.FAST
+        codec.thread_type = av.codec.context.ThreadType.AUTO
         return codec
 
     def __init__(self, ctrl):

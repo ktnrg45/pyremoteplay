@@ -125,7 +125,58 @@ class AVProcessor(QtCore.QObject):
         self.frame.emit()
 
 
+class JoystickWidget(QtWidgets.QFrame):
+    def __init__(self, window, left=False, right=False):
+        super().__init__(window)
+        self.window = window
+        self.left = Joystick(self, "left") if left else None
+        self.right = Joystick(self, "right") if right else None
+        self.layout = QtWidgets.QHBoxLayout(self)
+        self.layout.setAlignment(QtCore.Qt.AlignCenter)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.setStyleSheet("background-color: rgba(255, 255, 255, 0.4)")
+        for joystick in [self.left, self.right]:
+            self.layout.addWidget(joystick)
+            joystick.show()
+
+    def hide_sticks(self):
+        self.left.hide()
+        self.right.hide()
+
+    def show_sticks(self, left=False, right=False):
+        width = 0
+        should_show = False
+        if left:
+            width += Joystick.SIZE
+            self.left.show()
+            should_show = True
+        if right:
+            width += Joystick.SIZE
+            self.right.show()
+            should_show = True
+        self.resize(width, Joystick.SIZE)
+        self.show()
+
+    def mousePressEvent(self, event):
+        self.grab_outside = True
+        self._last_pos = event.globalPos()
+
+    def mouseReleaseEvent(self, event):
+        self.grab_outside = False
+
+    def mouseMoveEvent(self, event):
+        if self.grab_outside:
+            curPos = self.mapToGlobal(self.pos())
+            globalPos = event.globalPos()
+            diff = globalPos - self._last_pos
+            newPos = self.mapFromGlobal(curPos + diff)
+            self.move(newPos)
+            self._last_pos = globalPos
+
+
 class Joystick(QtWidgets.QLabel):
+
+    SIZE = 180
 
     class Direction(Enum):
         LEFT = 0
@@ -133,17 +184,15 @@ class Joystick(QtWidgets.QLabel):
         UP = 2
         DOWN = 3
 
-    def __init__(self, window, stick):
-        super().__init__(window)
-        self.window = window
+    def __init__(self, parent, stick):
+        super().__init__(parent)
+        self.parent = parent
         self.stick = stick
-        self.setMinimumSize(175, 175)
+        self.setMinimumSize(Joystick.SIZE, Joystick.SIZE)
         self.movingOffset = QtCore.QPointF(0, 0)
         self.grabCenter = False
-        self.grab_outside = False
-        self._last_pos = None
         self.__maxDistance = 50
-        self.setStyleSheet("background-color: rgba(255, 255, 255, 0.6)")
+        self.setStyleSheet("background-color: rgba(0, 0, 0, 0.0)")
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
@@ -184,32 +233,26 @@ class Joystick(QtWidgets.QLabel):
             self.movingOffset = self._boundJoystick(event.pos())
             self.update()
         if not self.grabCenter:
-            self.grab_outside = True
-            self._last_pos = event.globalPos()
+            self.parent.mousePressEvent(event)
         return super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
+        if not self.grabCenter:
+            self.parent.mouseMoveEvent(event)
         self.grabCenter = False
-        self.grab_outside = False
         self.movingOffset = QtCore.QPointF(0, 0)
         self.update()
         point = self.joystickDirection()
-        self.window.worker.stick_state(self.stick, point=point)
+        self.parent.window.worker.stick_state(self.stick, point=point)
 
     def mouseMoveEvent(self, event):
-        if self.grab_outside:
-            currPos = self.mapToGlobal(self.pos())
-            globalPos = event.globalPos()
-            diff = globalPos - self._last_pos
-            newPos = self.mapFromGlobal(currPos + diff)
-            self.move(newPos)
-            self._last_pos = globalPos
-
         if self.grabCenter:
             self.movingOffset = self._boundJoystick(event.pos())
             self.update()
-        point = self.joystickDirection()
-        self.window.worker.stick_state(self.stick, point=point)
+            point = self.joystickDirection()
+            self.parent.window.worker.stick_state(self.stick, point=point)
+        else:
+            self.parent.mouseMoveEvent(event)
 
 
 class CTRLWindow(QtWidgets.QWidget):
@@ -227,7 +270,9 @@ class CTRLWindow(QtWidgets.QWidget):
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.addWidget(self.video_output)
-        self.joystick = Joystick(self, 'left')
+        self.joystick = JoystickWidget(self, left=True, right=True)
+        self.joystick.hide()
+        self.input_options = None
         self.fps_label = get_label("FPS: ", self)
         self.worker = CTRLWorker(self)
         self.av_worker = AVProcessor(self)
@@ -247,7 +292,8 @@ class CTRLWindow(QtWidgets.QWidget):
         self.av_thread.started.connect(self.start_timer)
         self.av_worker.frame.connect(self.new_frame)
 
-    def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None):
+    def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None):
+        self.input_options = input_options
         self.frame_mutex = QtCore.QMutex()
         self.video_output.hide()
         self.mapping = ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
@@ -272,7 +318,10 @@ class CTRLWindow(QtWidgets.QWidget):
         else:
             self.show()
         self.video_output.show()
-        self.joystick.show()
+        joysticks = self.input_options.get("joysticks")
+        if joysticks:
+            self.joystick.hide_sticks()
+            self.joystick.show_sticks(joysticks['left'], joysticks['right'])
 
 # Waiting on pyside6.2
 #    def init_audio(self):
@@ -526,6 +575,7 @@ class ControlsWidget(QtWidgets.QWidget):
         super().__init__(main_window)
         self.main_window = main_window
         self.mapping = None
+        self.options = None
         self.selected_map = ""
         self.layout = QtWidgets.QGridLayout(self, alignment=QtCore.Qt.AlignTop)
         self.layout.setColumnMinimumWidth(0, 30)
@@ -542,18 +592,24 @@ class ControlsWidget(QtWidgets.QWidget):
         header = self.table.horizontalHeader()       
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
         header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        self.left_joystick = QtWidgets.QCheckBox("Show Left Joystick", self)
+        self.right_joystick = QtWidgets.QCheckBox("Show Right Joystick", self)
         self.reset = QtWidgets.QPushButton("Reset to Default")
         self.clear = QtWidgets.QPushButton("Clear")
         self.cancel = QtWidgets.QPushButton("Cancel")
-        self.set_table()
+        self.init_controls()
         self.instructions()
-        self.layout.addWidget(self.table, 1, 0, 1, 3)
-        self.layout.addWidget(self.reset, 0, 0)
-        self.layout.addWidget(self.clear, 0, 1)
-        self.layout.addWidget(self.cancel, 0, 2)
-        self.layout.addWidget(self.label, 1, 3)
+        self.layout.addWidget(self.left_joystick, 0, 0)
+        self.layout.addWidget(self.right_joystick, 0, 1)
+        self.layout.addWidget(self.reset, 1, 0)
+        self.layout.addWidget(self.clear, 1, 1)
+        self.layout.addWidget(self.cancel, 1, 2)
+        self.layout.addWidget(self.table, 2, 0, 1, 3)
+        self.layout.addWidget(self.label, 2, 3)
         self.cancel.hide()
         self.clear.hide()
+        self.left_joystick.clicked.connect(lambda: self.click_joystick("left"))
+        self.right_joystick.clicked.connect(lambda: self.click_joystick("right"))
         self.cancel.clicked.connect(self.click_cancel)
         self.reset.clicked.connect(self.click_reset)
         self.clear.clicked.connect(self.click_clear)
@@ -565,28 +621,45 @@ class ControlsWidget(QtWidgets.QWidget):
         super().hide()
 
     def default_mapping(self):
+        self.options = {"joysticks": {"left": False, "right": False}}
         self.mapping = {
             "selected" : "keyboard",
             "maps": {
-                "keyboard": ControlsWidget.DEFAULT_MAPPING,
+                "keyboard": {
+                    "map": ControlsWidget.DEFAULT_MAPPING,
+                    "options": self.options,
+                }
             }
         }
         write_mapping(self.mapping)
 
-    def set_table(self):
-        self.table.clearContents()
-        self.click_cancel()
+    def init_controls(self):
         self.mapping = get_mapping()
         if not self.mapping:
             self.default_mapping()
         self.selected_map = self.mapping['selected']
-        self.map = self.mapping['maps'][self.selected_map]
+        self.set_options()
+        self.set_table()
+
+    def set_table(self):
+        self.table.clearContents()
+        self.click_cancel()
+        self.map = self.mapping['maps'][self.selected_map]['map']
         if self.selected_map == "keyboard":
             self.set_keyboard()
 
+    def set_options(self):
+        self.options = self.mapping['maps'][self.selected_map]['options']
+        joysticks = self.options['joysticks']
+        if joysticks['left']:
+            self.left_joystick.setChecked(True)
+        if joysticks['right']:
+            self.right_joystick.setChecked(True)
+
     def set_map(self):
         self.input = None
-        self.mapping['maps'][self.selected_map] = self.map
+        self.mapping['maps'][self.selected_map]["map"] = self.map
+        self.mapping['maps'][self.selected_map]["options"] = self.options
         write_mapping(self.mapping)
 
     def set_keyboard(self):
@@ -618,6 +691,12 @@ class ControlsWidget(QtWidgets.QWidget):
         )
         self.label = QtWidgets.QLabel(text)
         self.label.setWordWrap(True)
+
+    def click_joystick(self, stick):
+        value = not self.options['joysticks'][stick]
+        self.options['joysticks'][stick] = value
+        self.set_options()
+        self.set_map()
 
     def click_table(self, item):
         self.input = item.row()
@@ -654,7 +733,7 @@ class ControlsWidget(QtWidgets.QWidget):
 
     def table_keypress(self, event):
         if self.input is not None:
-            _map = self.mapping['maps']['keyboard'] 
+            _map = self.mapping['maps']['keyboard']['map']
             key = Qt.Key(event.key()).name.decode()
             item = self.table.item(self.input, 0)
             rp_key = self.table.item(self.input, 1).text()
@@ -1382,6 +1461,7 @@ class MainWidget(QtWidgets.QWidget):
             show_fps=show_fps,
             fullscreen=fullscreen,
             input_map=self.controls.map,
+            input_options=self.controls.options,
         )
         self._app.setActiveWindow(self.ctrl_window)
 

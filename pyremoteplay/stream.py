@@ -448,7 +448,7 @@ class StreamTest():
 
     def recv_mtu_in(self, mtu_req: int, mtu_sent: int):
         """Receive MTU Packet data."""
-        _LOGGER.debug("MTU Requested: %s Sent: %s RECV: %s", mtu_req, mtu_sent, self._last_mtu)
+        _LOGGER.info("MTU Requested: %s Sent: %s RECV: %s", mtu_req, mtu_sent, self._last_mtu)
         if mtu_req != mtu_sent:
             _LOGGER.error("MTU requested %s but received %s", mtu_req, mtu_sent)
             self.stop_mtu_in()

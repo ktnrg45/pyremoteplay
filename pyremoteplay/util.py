@@ -7,7 +7,7 @@ import select
 import time
 from binascii import hexlify
 
-from .const import OPTIONS_FILE, PROFILE_DIR, PROFILE_FILE, MAPPING_FILE
+from .const import OPTIONS_FILE, PROFILE_DIR, PROFILE_FILE, CONTROLS_FILE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def get_mapping(path=None) -> dict:
     data = {}
     if not path:
         dir_path = check_dir()
-        path = dir_path / MAPPING_FILE
+        path = dir_path / CONTROLS_FILE
     else:
         path = pathlib.Path(path)
     check_file(path)
@@ -43,7 +43,7 @@ def get_mapping(path=None) -> dict:
 def write_mapping(mapping: dict, path=None):
     """Write mapping."""
     if not path:
-        path = pathlib.Path.home() / PROFILE_DIR / MAPPING_FILE
+        path = pathlib.Path.home() / PROFILE_DIR / CONTROLS_FILE
     else:
         path = pathlib.Path(path)
     with open(path, "w") as _file:
