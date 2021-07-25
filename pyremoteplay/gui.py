@@ -139,7 +139,7 @@ class Joystick(QtWidgets.QLabel):
         super().__init__(window)
         self.window = window
         self.stick = stick
-        self.setMinimumSize(150, 150)
+        self.setMinimumSize(175, 175)
         self.movingOffset = QtCore.QPointF(0, 0)
         self.grabCenter = False
         self.grab_outside = False
@@ -158,8 +158,8 @@ class Joystick(QtWidgets.QLabel):
 
     def _centerEllipse(self):
         if self.grabCenter:
-            return QtCore.QRectF(-20, -20, 40, 40).translated(self.movingOffset)
-        return QtCore.QRectF(-20, -20, 40, 40).translated(self._center())
+            return QtCore.QRectF(-40, -40, 80, 80).translated(self.movingOffset)
+        return QtCore.QRectF(-40, -40, 80, 80).translated(self._center())
 
     def _center(self):
         return QtCore.QPointF(self.width()/2, self.height()/2)
@@ -174,8 +174,6 @@ class Joystick(QtWidgets.QLabel):
         if not self.grabCenter:
             return (0.0, 0.0)
         vector = QtCore.QLineF(self._center(), self.movingOffset)
-        distance = vector.length()
-        angle = vector.angle()
         point = vector.p2()
         point_x = (point.x() - self._center().x()) / self.__maxDistance
         point_y = (point.y() - self._center().y()) / self.__maxDistance
