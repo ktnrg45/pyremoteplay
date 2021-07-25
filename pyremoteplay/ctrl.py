@@ -411,7 +411,7 @@ class CTRL():
         """Stop test and get MTU and RTT and start stream."""
         mtu = self._stream.mtu
         rtt = self._stream.rtt
-        _LOGGER.info("Tested network and got MTU: %s; RTT: %sms", mtu, rtt * 1000)
+        _LOGGER.info("Using MTU: %s; RTT: %sms", mtu, rtt * 1000)
         self._stream = None
         self.start_stream(test=False, mtu=mtu, rtt=rtt)
 
@@ -563,6 +563,15 @@ class CTRLAsync(CTRL):
             self.loop.create_task(self.receiver_started.wait())
         self._stream = RPStream(self, stop_event, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
         self.loop.create_task(self._stream.async_connect())
+        if test:
+            self.loop.create_task(self.wait_for_test(stop_event))
+
+    async def wait_for_test(self, stop_event):
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=3.0)
+        except asyncio.exceptions.TimeoutError:
+            _LOGGER.warning("Network Test timed out. Using Default MTU and RTT")
+            self._stream.disconnect()
 
     def init_av_handler(self):
         self._tasks.append(self.loop.create_task(self.async_run_av_handler()))

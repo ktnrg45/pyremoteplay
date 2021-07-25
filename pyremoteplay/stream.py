@@ -351,7 +351,6 @@ class StreamTest():
         self._stream.send_data(data, chunk_flag, channel)
 
     def _send_mtu_in(self):
-        _LOGGER.info("Sending MTU Packet")
         chunk_flag = 1
         channel = 8
         self._index += 1
@@ -380,6 +379,7 @@ class StreamTest():
         """Stop Tests."""
         self._stream.rtt = self._results["rtt"]
         self._stream.mtu = self._results["mtu"]
+        _LOGGER.info("Tested network and got MTU: %s; RTT: %sms", self._results["mtu"], self._results["rtt"] * 1000)
         self._stream.disconnect()
 
     def run_rtt(self):
@@ -448,7 +448,6 @@ class StreamTest():
 
     def recv_mtu_in(self, mtu_req: int, mtu_sent: int):
         """Receive MTU Packet data."""
-        _LOGGER.info("MTU Requested: %s Sent: %s RECV: %s", mtu_req, mtu_sent, self._last_mtu)
         if mtu_req != mtu_sent:
             _LOGGER.error("MTU requested %s but received %s", mtu_req, mtu_sent)
             self.stop_mtu_in()
