@@ -16,7 +16,6 @@ from .util import log_bytes, timeit
 
 try:
     import av
-    import cv2
     import ffmpeg
 except ModuleNotFoundError as err:
     print(err)
@@ -233,7 +232,7 @@ class AVReceiver(abc.ABC):
 
     def video_frame(buf, codec, to_rgb=True, width=None, height=None):
         """Decode H264 Frame to raw image.
-        Return Numpy Array.
+        Return AV Frame.
 
         Frame Format:
         AV_PIX_FMT_YUV420P (libavutil)
@@ -248,10 +247,9 @@ class AVReceiver(abc.ABC):
         if frame.is_corrupt:
             _LOGGER.error("Corrupt Frame: %s", frame)
             return None
-        #_LOGGER.info(f"Frame: Key:{frame.key_frame}, Interlaced:{frame.interlaced_frame} Pict:{frame.pict_type}")
-        frame = frame.to_ndarray(width=width, height=height)
+        #_LOGGER.debug(f"Frame: Key:{frame.key_frame}, Interlaced:{frame.interlaced_frame} Pict:{frame.pict_type}")
         if to_rgb:
-            frame = cv2.cvtColor(frame, cv2.COLOR_YUV2RGB_I420)
+            frame = frame.reformat(frame.width, frame.height, "rgb24", 'itu709')
         return frame
 
     def video_codec(width=None, height=None):
