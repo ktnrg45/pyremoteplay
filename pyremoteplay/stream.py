@@ -351,6 +351,7 @@ class StreamTest():
         self._stream.send_data(data, chunk_flag, channel)
 
     def _send_mtu_in(self):
+        _LOGGER.info("Sending MTU Packet")
         chunk_flag = 1
         channel = 8
         self._index += 1
@@ -419,6 +420,7 @@ class StreamTest():
 
     def run_mtu_in(self):
         """Run MTU In Test."""
+        _LOGGER.info("Running MTU Test")
         self._index = 0
         self._cur_mtu = DEFAULT_MTU
         self._send_mtu_in()
@@ -460,5 +462,7 @@ class StreamTest():
                 if self._index < 3:
                     self._last_mtu = 0
                     self._send_mtu_in()
+                else:
+                    self.stop_mtu_in()
             else:
                 self.stop_mtu_in()

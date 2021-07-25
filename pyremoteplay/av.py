@@ -194,10 +194,8 @@ class AVStream():
             # Packet is in order
             if packet.unit_index == self.last_unit + 1:
                 self._last_unit += 1
-                if packet.has_nalu:  # Slight decoding error when this is present
-                    _LOGGER.debug(packet)
-                    _LOGGER.debug(packet.data[:32].hex())
-                self._buf.write(packet.data)
+                # Don't include first two decrypted bytes 
+                self._buf.write(packet.data[2:])
             else:
                 _LOGGER.debug("Received unit out of order: %s, expected: %s", packet.unit_index, self.last_unit + 1)
                 if self._lost > 65535:
@@ -262,9 +260,9 @@ class AVReceiver(abc.ABC):
         # codec.width = width
         # codec.height = height
         codec.pix_fmt = "yuv420p"
-        # codec.flags = av.codec.context.Flags.LOW_DELAY
-        # codec.flags2 = av.codec.context.Flags2.FAST
-        # codec.thread_type = av.codec.context.ThreadType.NONE
+        codec.flags = av.codec.context.Flags.TRUNCATED
+        codec.flags2 = av.codec.context.Flags2.IGNORE_CROP
+        #codec.thread_type = av.codec.context.ThreadType.AUTO
         return codec
 
     def __init__(self, ctrl):

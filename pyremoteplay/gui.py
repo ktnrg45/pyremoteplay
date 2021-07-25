@@ -110,8 +110,6 @@ class AVProcessor(QtCore.QObject):
         super().__init__()
         self.window = window
         self.pixmap = None
-        self.next_pixmap = None
-
 
     def next_frame(self):
         frame = self.window.worker.ctrl.av_receiver.get_video_frame()
@@ -119,7 +117,7 @@ class AVProcessor(QtCore.QObject):
             return
         img = QtGui.QImage(frame, frame.shape[1], frame.shape[0], QtGui.QImage.Format_RGB888)
         self.window.frame_mutex.lock()
-        self.next_pixmap = QtGui.QPixmap.fromImage(img)
+        self.pixmap = QtGui.QPixmap.fromImage(img)
         self.window.frame_mutex.unlock()
         # Clear Queue if behind. Try to use latest frame.
         if self.window.worker.ctrl.av_receiver.queue_size > 3:
@@ -291,8 +289,7 @@ class CTRLWindow(QtWidgets.QWidget):
 
     def new_frame(self):
         self.frame_mutex.lock()
-        if self.av_worker.next_pixmap is not None:
-            self.av_worker.pixmap = self.av_worker.next_pixmap
+        if self.av_worker.pixmap is not None:
             self.video_output.setPixmap(self.av_worker.pixmap)
         self.frame_mutex.unlock()
         self.set_fps()
