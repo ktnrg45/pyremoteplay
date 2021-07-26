@@ -164,6 +164,18 @@ class JoystickWidget(QtWidgets.QFrame):
         self.resize(width, Joystick.SIZE)
         self.show()
 
+    def default_pos(self):
+        if self.window.fullscreen:
+            width = self.window.main_window.screen.virtualSize().width()
+            height = self.window.main_window.screen.virtualSize().height()
+        else:
+            width = self.window.size().width()
+            height = self.window.size().height()
+        x_pos = width / 2 - self.size().width() / 2
+        y_pos = height - self.size().height()
+        new_pos = QtCore.QPoint(x_pos, y_pos)
+        self.move(new_pos)
+
     def mousePressEvent(self, event):
         self.grab_outside = True
         self._last_pos = event.globalPos()
@@ -173,12 +185,21 @@ class JoystickWidget(QtWidgets.QFrame):
 
     def mouseMoveEvent(self, event):
         if self.grab_outside:
-            curPos = self.mapToGlobal(self.pos())
-            globalPos = event.globalPos()
-            diff = globalPos - self._last_pos
-            newPos = self.mapFromGlobal(curPos + diff)
-            self.move(newPos)
-            self._last_pos = globalPos
+            cur_pos = self.mapToGlobal(self.pos())
+            global_pos = event.globalPos()
+            diff = global_pos - self._last_pos
+            new_pos = self.mapFromGlobal(cur_pos + diff)
+            if self.window.fullscreen:
+                max_x = self.window.main_window.screen.virtualSize().width()
+                max_y = self.window.main_window.screen.virtualSize().height()
+            else:
+                max_x = self.window.size().width()
+                max_y = self.window.size().height()
+            x_pos = min(max(new_pos.x(), 0), max_x - self.size().width())
+            y_pos = min(max(new_pos.y(), 0), max_y - self.size().height())
+            new_pos = QtCore.QPoint(x_pos, y_pos)
+            self.move(new_pos)
+            self._last_pos = global_pos
 
 
 class Joystick(QtWidgets.QLabel):
@@ -321,7 +342,7 @@ class CTRLWindow(QtWidgets.QWidget):
     def show_video(self):
         self.resize(self.worker.ctrl.resolution['width'], self.worker.ctrl.resolution['height'])
         if self.fullscreen:
-            self.showMaximized()
+            self.showFullScreen()
         else:
             self.show()
         self.video_output.show()
@@ -329,6 +350,7 @@ class CTRLWindow(QtWidgets.QWidget):
         if joysticks:
             self.joystick.hide_sticks()
             self.joystick.show_sticks(joysticks['left'], joysticks['right'])
+            self.joystick.default_pos()
 
 # Waiting on pyside6.2
 #    def init_audio(self):
