@@ -258,7 +258,7 @@ class AVReceiver(abc.ABC):
         # codec.width = width
         # codec.height = height
         codec.pix_fmt = "yuv420p"
-        codec.flags = av.codec.context.Flags.TRUNCATED
+        codec.flags = av.codec.context.Flags.LOW_DELAY
         codec.flags2 = av.codec.context.Flags2.FAST
         codec.thread_type = av.codec.context.ThreadType.AUTO
         return codec

@@ -141,7 +141,7 @@ class JoystickWidget(QtWidgets.QFrame):
         self.layout = QtWidgets.QHBoxLayout(self)
         self.layout.setAlignment(QtCore.Qt.AlignCenter)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        self.setStyleSheet("background-color: rgba(255, 255, 255, 0.4)")
+        self.setStyleSheet("background-color: rgba(255, 255, 255, 0.4); border-radius:25%;")
         for joystick in [self.left, self.right]:
             self.layout.addWidget(joystick)
             joystick.show()
