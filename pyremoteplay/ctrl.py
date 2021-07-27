@@ -4,7 +4,7 @@ import socket
 import threading
 import time
 from base64 import b64decode, b64encode
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from enum import IntEnum
 from functools import partial
 from struct import pack_into
@@ -15,8 +15,9 @@ from Cryptodome.Random import get_random_bytes
 from pyps4_2ndscreen.ddp import get_status
 
 from .av import AVFileReceiver, AVHandler
-from .const import (FPS, OS_TYPE, RP_CRYPT_SIZE, RP_PORT, RP_VERSION, TYPE_PS4,
-                    TYPE_PS5, USER_AGENT, Resolution, DDP_PORT, DDP_VERSION)
+from .const import (DDP_PORT, DDP_VERSION, FPS, OS_TYPE, RP_CRYPT_SIZE,
+                    RP_PORT, RP_VERSION, TYPE_PS4, TYPE_PS5, USER_AGENT,
+                    Resolution)
 from .crypt import RPCipher
 from .errors import RemotePlayError, RPErrorHandler
 from .feedback import Controller

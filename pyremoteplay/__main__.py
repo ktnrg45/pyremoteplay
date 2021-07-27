@@ -13,7 +13,7 @@ from pyps4_2ndscreen.ddp import get_status
 from .ctrl import CTRL, CTRLAsync
 from .oauth import prompt as oauth_prompt
 from .register import register
-from .util import add_regist_data, add_profile, get_profiles, write_profiles
+from .util import add_profile, add_regist_data, get_profiles, write_profiles
 
 NEW_PROFILE = "New Profile"
 CANCEL = "Cancel"
@@ -156,8 +156,9 @@ def async_start(ctrl, cb: callable):
 async def async_start_ctrl(ctrl, cb: callable):
     status = await ctrl.start()
     if status:
-        await ctrl.controller_ready_event.wait()
-    cb(ctrl, status)
+        cb(ctrl, status)
+    else:
+        asyncio.get_event_loop().stop()
 
 
 def start(stdscr, instance):
