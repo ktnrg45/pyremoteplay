@@ -2,10 +2,16 @@
 """Setup for pyremoteplay."""
 
 from setuptools import find_packages, setup
+from pathlib import Path
 
-VERSION = "0.0.2"
+SRC_DIR = "pyremoteplay"
+version_data = {}
+version_path = Path.cwd() / SRC_DIR / "__version__.py"
+with open(version_path, encoding="utf-8") as fp:
+    exec(fp.read(), version_data)
 
-MIN_PY_VERSION = "3.8"
+VERSION = version_data["VERSION"]
+MIN_PY_VERSION = version_data["MIN_PY_VERSION"]
 
 REQUIRES = list(open('requirements.txt'))
 REQUIRES_GUI = list(open('requirements-gui.txt'))
@@ -30,11 +36,11 @@ with open('README.md') as f:
 setup(
     name='pyremoteplay',
     version=VERSION,
-    description='Remote Play Library',
+    description='Remote Play Library and API',
     long_description=readme,
     long_description_content_type='text/markdown',
     author='ktnrg45',
-    author_email='ktnrg45@github.com',
+    author_email='ktnrg45-dev@gmail.com',
     packages=find_packages(exclude=['tests']),
     url='https://github.com/ktnrg45/pyps4-2ndscreen',
     license='GPLv3',

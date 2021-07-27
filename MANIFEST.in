@@ -1,0 +1,4 @@
+include requirements.txt
+include requirements-gui.txt
+include README.md
+include LICENSE
