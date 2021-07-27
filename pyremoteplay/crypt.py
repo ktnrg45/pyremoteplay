@@ -8,11 +8,13 @@ from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
+# from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from .errors import CryptError
 from .keys import HMAC_KEY
-from .util import from_b, log_bytes, to_b
+from .util import from_b, log_bytes, timeit, to_b
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,10 +67,11 @@ def get_gmac_cipher(key: bytes, iv: bytes) -> bytes:
 def get_gmac_tag(
         data: bytes, key: bytes, iv: bytes) -> bytes:
     """Return GMAC tag of packet."""
-    cipher = get_gmac_cipher(key, iv)
-    cipher.update(data)
-    tag = cipher.digest()
-    return tag
+    cipher = AESGCM(key)
+    return cipher.encrypt(iv, b'', data)[:4]
+    # cipher = get_gmac_cipher(key, iv)
+    # cipher.update(data)
+    # return cipher.digest()
 
 
 def gen_iv_stream(buf: bytearray, iv: bytes, key_pos: int):
@@ -95,10 +98,16 @@ def get_key_stream(
 
     key_stream = bytearray(key_stream_len)
     gen_iv_stream(key_stream, iv, key_pos)
-    key_stream = bytes(key_stream)
+
+    # cipher = Cipher(algorithms.AES(key), modes.ECB())
+    # encryptor = cipher.encryptor()
+    # buf = bytearray(len(key_stream) + 15)
+    # len_encrypted = encryptor.update_into(key_stream, buf)
+    # key_stream = buf[:len_encrypted] + encryptor.finalize()
+
     cipher = AES.new(key, AES.MODE_ECB)
     key_stream = cipher.encrypt(key_stream)
-    key_stream = bytearray(key_stream)
+
     key_stream = key_stream[padding:]  # Align to the overflow of the block.
     key_stream = key_stream[:data_len]  # Truncate to match packet size.
     return key_stream
