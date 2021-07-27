@@ -144,6 +144,6 @@ class MainWidget(QtWidgets.QWidget):
         self.center_text.setText(text)
         self.center_text.show()
 
-    def close(self, event):
+    def closeEvent(self, event):
         self.device_grid.stop_update()
         event.accept()

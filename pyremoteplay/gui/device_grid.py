@@ -219,6 +219,7 @@ class DeviceGridWidget(QtWidgets.QWidget):
         self.searcher = DeviceSearch(self.main_window)
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.discover)
+        self.wait_timer = None
         self.thread = QtCore.QThread(self)
         self.searcher.moveToThread(self.thread)
         self.thread.started.connect(self.searcher.get_hosts)
@@ -272,7 +273,7 @@ class DeviceGridWidget(QtWidgets.QWidget):
     def session_stop(self):
         if self.main_window.toolbar.refresh.isChecked():
             self.start_timer()
-        QtCore.QTimer.singleShot(10000, self.enable_buttons)
+        self.wait_timer = QtCore.QTimer.singleShot(10000, self.enable_buttons)
 
     def enable_buttons(self):
         for button in self.widgets:
@@ -280,4 +281,6 @@ class DeviceGridWidget(QtWidgets.QWidget):
 
     def stop_update(self):
         self.timer.stop()
+        if self.wait_timer:
+            self.wait_timer.stop()
         self.thread.quit()

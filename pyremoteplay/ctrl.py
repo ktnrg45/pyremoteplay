@@ -10,7 +10,6 @@ from functools import partial
 from struct import pack_into
 
 import requests
-from Cryptodome.Hash import SHA256
 from Cryptodome.Random import get_random_bytes
 from pyps4_2ndscreen.ddp import get_status
 
@@ -102,6 +101,7 @@ def _gen_did() -> bytes:
     log_bytes("Device ID", did)
     return did
 
+
 def get_wakeup_packet(regist_key: str) -> bytes:
     regist_key = int.from_bytes(bytes.fromhex(bytes.fromhex(regist_key).decode()), "big")
 
@@ -115,6 +115,7 @@ def get_wakeup_packet(regist_key: str) -> bytes:
         f"device-discovery-protocol-version:{DDP_VERSION}\n"
     )
     return data.encode()
+
 
 def send_wakeup(host: str, regist_key: str):
     """Send Wakeup Packet."""
@@ -182,7 +183,6 @@ class CTRL():
         self._ready_event = None
         self._stop_event = None
         self.receiver_started = None
-
 
     def _init_profile(self, mac_address):
         """Init profile."""
@@ -357,7 +357,7 @@ class CTRL():
     def send(self, data: bytes):
         """Send Data."""
         self._sock.send(data)
-        log_bytes(f"CTRL Send", data)
+        log_bytes("CTRL Send", data)
 
     def wakeup(self):
         """Wakeup Host."""
@@ -571,7 +571,7 @@ class CTRLAsync(CTRL):
             await asyncio.wait_for(stop_event.wait(), timeout=3.0)
         except asyncio.exceptions.TimeoutError:
             _LOGGER.warning("Network Test timed out. Using Default MTU and RTT")
-            self._stream.disconnect()
+            self._stream.stop()
 
     def init_av_handler(self):
         self._tasks.append(self.loop.create_task(self.run_io(self.av_handler.worker)))
@@ -581,9 +581,8 @@ class CTRLAsync(CTRL):
         if self.state == CTRL.STATE_STOP:
             _LOGGER.debug("CTRL already stopping")
             return
-        if self._stream:
-            self._stream.disconnect()
         _LOGGER.info("CTRL Received Stop Signal")
+        self._stream.stop()
         self._stop_event.set()
         if self._tasks:
             for task in self._tasks:

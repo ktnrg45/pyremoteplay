@@ -5,8 +5,8 @@ import logging
 import socket
 import threading
 import time
-from struct import pack_into
 from concurrent.futures import ThreadPoolExecutor
+from struct import pack_into
 
 from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
@@ -283,23 +283,23 @@ class RPStream():
         if self.av_handler.has_receiver:
             self.av_handler.set_cipher(self.cipher)
 
-    def disconnect(self):
+    def _disconnect(self):
         """Disconnect Stream."""
         _LOGGER.info("Stream Disconnecting")
         chunk_flag = channel = 1
         data = ProtoHandler.disconnect_payload()
         self._advance_sequence()
         self.send_data(data, chunk_flag, channel)
-        if self._cb_stop is not None:
-            self._cb_stop()
-        self.stop()
 
     def stop(self):
         """Stop Stream."""
         _LOGGER.info("Stopping Stream")
+        self._disconnect()
         self._stop_event.set()
         if self._protocol:
             self._protocol.close()
+        if self._cb_stop is not None:
+            self._cb_stop()
 
     def recv_stream_info(self, info: dict):
         """Receive stream info."""
@@ -380,7 +380,7 @@ class StreamTest():
         self._stream.rtt = self._results["rtt"]
         self._stream.mtu = self._results["mtu"]
         _LOGGER.info("Tested network and got MTU: %s; RTT: %sms", self._results["mtu"], self._results["rtt"] * 1000)
-        self._stream.disconnect()
+        self._stream.stop()
 
     def run_rtt(self):
         """Start RTT Test."""
