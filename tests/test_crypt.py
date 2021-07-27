@@ -209,9 +209,8 @@ def test_encrypt_decrypt():
         0x5f, 0x78, 0xec, 0xf5, 0x4e, 0x37, 0x20, 0xb0,
         0x76, 0x81, 0x07, 0x67, 0x9a,
     ])
-    #key_pos = 0x11
-    key_pos = 1  # In implementation, key_pos is advanced by 16
 
+    key_pos = 1
     local = crypt.LocalCipher(handshake_key, secret)
     remote = crypt.RemoteCipher(handshake_key, secret)
     local._base_index = remote._base_index = 42
@@ -224,7 +223,6 @@ def test_encrypt_decrypt():
     stream = crypt.StreamCipher(local, remote)
     stream.advance_key_pos(key_pos)
     mock_enc = stream.encrypt(data)
-    print(mock_enc.hex())
     mock_data = stream.decrypt(enc_data, key_pos)
     assert mock_enc == enc_data
     assert mock_data == data
