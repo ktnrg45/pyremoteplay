@@ -142,7 +142,7 @@ def parse_response(cipher, response: bytes) -> dict:
             info[item[0]] = item[1]
     else:
         _LOGGER.error("Failed to register, Status: %s", response[0])
-    _LOGGER.info("Register Info: %s", info)
+    _LOGGER.debug("Register Info: %s", info)
     return info
 
 

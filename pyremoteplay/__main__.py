@@ -95,6 +95,7 @@ def register_profile(host: str):
             print("Could not parse user data")
             return
         write_profiles(profiles)
+        name = user_data["online_id"]
 
     user_id = profiles[name]["id"]
     if not user_id:
@@ -276,3 +277,5 @@ class CLIInstance():
                 sys.exit()
             elif key == "STANDBY":
                 self._ctrl.standby()
+                self._ctrl.loop.stop()
+                sys.exit()

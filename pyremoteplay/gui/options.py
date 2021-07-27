@@ -528,7 +528,7 @@ class OptionsWidget(QtWidgets.QWidget):
         if not url:
             return
         account = get_user_account(url)
-        profiles = add_profile(self.main_window.profiles, account)
+        profiles = add_profile(self.profiles, account)
         if not profiles:
             text = "Error getting account data"
             level = "critical"
@@ -587,3 +587,4 @@ class OptionsWidget(QtWidgets.QWidget):
                 level = "info"
 
         message(self, title, text, level)
+        self.main_window.session_stop()

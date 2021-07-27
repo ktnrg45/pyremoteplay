@@ -7,7 +7,7 @@ import select
 import time
 from binascii import hexlify
 
-from .const import OPTIONS_FILE, PROFILE_DIR, PROFILE_FILE, CONTROLS_FILE
+from .const import CONTROLS_FILE, OPTIONS_FILE, PROFILE_DIR, PROFILE_FILE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ def check_file(path: pathlib.Path):
     if not path.is_file():
         with open(path, "w") as _file:
             json.dump({}, _file)
+
 
 def get_mapping(path=None) -> dict:
     """Return dict of key mapping."""
@@ -115,7 +116,7 @@ def add_profile(profiles: dict, user_data: dict) -> dict:
     return profiles
 
 
-def add_regist_data(profile: dict, host: dict, data:dict) -> dict:
+def add_regist_data(profile: dict, host: dict, data: dict) -> dict:
     """Add regist data to profile and return profile."""
     mac_address = host['host-id']
     host_type = host['host-type']

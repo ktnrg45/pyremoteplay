@@ -294,9 +294,9 @@ class RPStream():
     def stop(self):
         """Stop Stream."""
         _LOGGER.info("Stopping Stream")
-        self._disconnect()
         self._stop_event.set()
         if self._protocol:
+            self._disconnect()
             self._protocol.close()
         if self._cb_stop is not None:
             self._cb_stop()
