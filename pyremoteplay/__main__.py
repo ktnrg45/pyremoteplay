@@ -122,10 +122,9 @@ def register_profile(host: str):
 
 
 def cli(host: str, resolution: str, fps: str):
-    print(fps)
     profiles = get_profiles()
     if profiles:
-        name = select_profile(profiles, True, True)
+        name = select_profile(profiles, True, False)
         profile = profiles[name]
         ctrl = CTRLAsync(host, profile, resolution=resolution, fps=fps)
         async_start(ctrl, cb_curses)
