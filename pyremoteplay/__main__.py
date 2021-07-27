@@ -141,7 +141,6 @@ def cb_curses(ctrl, status: bool):
             args=(start, instance)
         )
         worker.start()
-        worker.join()
     else:
         _LOGGER.error("CTRL Failed to Start: %s", ctrl.error)
 

@@ -9,7 +9,7 @@ from .device_grid import DeviceGridWidget
 from .options import ControlsWidget, OptionsWidget
 from .stream_window import StreamWindow
 from .toolbar import ToolbarWidget
-from .util import message
+from .util import Popup, message
 
 _LOGGER = logging.getLogger(__name__)
 

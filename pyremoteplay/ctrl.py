@@ -560,11 +560,12 @@ class CTRLAsync(CTRL):
             self.av_handler.add_receiver(self.av_receiver)
             _LOGGER.info("Waiting for Receiver...")
             self.loop.create_task(self.receiver_started.wait())
-            self._tasks.append(self.loop.create_task(self.run_io(self.controller.worker)))
         self._stream = RPStream(self, stop_event, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
         self.loop.create_task(self._stream.async_connect())
         if test:
             self.loop.create_task(self.wait_for_test(stop_event))
+        else:
+            self._tasks.append(self.loop.create_task(self.run_io(self.controller.worker)))
 
     async def wait_for_test(self, stop_event):
         try:
