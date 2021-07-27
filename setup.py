@@ -53,6 +53,6 @@ setup(
     include_package_data=True,
     entry_points={"console_scripts": [
         "pyremoteplay = pyremoteplay.__main__:main",
-        "pyremoteplay-gui = pyremoteplay.gui:gui [GUI]",
+        "pyremoteplay-gui = pyremoteplay.gui.__init__:run [GUI]",
     ]}
 )
