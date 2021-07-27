@@ -30,11 +30,23 @@ class Controller():
         self._buttons = {}
         self._params = kwargs
         self._started = False
+        self._should_send = threading.Event()
 
         self._stick_state = {
             "left": {"x": 0, "y": 0},
             "right": {"x": 0, "y": 0},
         }
+
+    def worker(self):
+        """Worker for sending feedback packets. Run in thread."""
+        while not self._ctrl.is_stopped:
+            try:
+                self._should_send.wait(timeout=1.0)
+            except RuntimeError:
+                continue
+            self.send_state()
+            self.send_event()
+            self._should_send.clear()
 
     def send_state(self):
         self._ctrl._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
@@ -72,7 +84,7 @@ class Controller():
             elif action == self.ACTION_TAP:
                 self.add_event_queue(FeedbackEvent(button, is_active=True))
                 self.add_event_queue(FeedbackEvent(button, is_active=False))
-            self.send_event()
+            self._should_send.set()
 
     def stick(self, stick: str, axis: str = None, value: float = None, point=None):
         """Set Stick Value."""
@@ -105,7 +117,7 @@ class Controller():
             val_y = scale_value(val_y)
             self._stick_state[stick]["x"] = val_x
             self._stick_state[stick]["y"] = val_y
-            self.send_state()
+            self._should_send.set()
             return
 
         if axis is None or value is None:
@@ -118,7 +130,7 @@ class Controller():
         current = self._stick_state[stick][axis]
         if current != value:
             self._stick_state[stick][axis] = value
-            self.send_state()
+            self._should_send.set()
 
     @property
     def sequence_event(self) -> int:

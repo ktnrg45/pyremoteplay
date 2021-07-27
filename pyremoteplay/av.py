@@ -68,7 +68,7 @@ class AVHandler():
             try:
                 msg = self._queue.popleft()
             except IndexError:
-                time.sleep(0.01)
+                time.sleep(0.001)
                 continue
             packet = Packet.parse(msg)
             packet.decrypt(self._cipher)

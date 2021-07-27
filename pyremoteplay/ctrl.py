@@ -181,7 +181,6 @@ class CTRL():
         self._ready_event = None
         self._stop_event = None
         self.receiver_started = None
-        self.controller_ready_event = None
 
 
     def _init_profile(self, mac_address):
@@ -368,7 +367,6 @@ class CTRL():
         self._ready_event = threading.Event()
         self._stop_event = threading.Event()
         self.receiver_started = threading.Event()
-        self.controller_ready_event = threading.Event()
         status = self._check_host()
         if not status[0]:
             self.error = f"Host @ {self._host} is not reachable."
@@ -439,7 +437,6 @@ class CTRL():
 
     def init_controller(self):
         self.controller.start()
-        self.controller_ready_event.set()
 
     @property
     def host(self) -> str:
@@ -510,9 +507,10 @@ class CTRLAsync(CTRL):
         self._protocol = None
         self._transport = None
         self._tasks = []
+        self._thread_executor = ThreadPoolExecutor(max_workers=8)
 
     async def run_io(self, func, *args, **kwargs):
-        return await self.loop.run_in_executor(None, partial(func, *args, **kwargs))
+        return await self.loop.run_in_executor(self._thread_executor, partial(func, *args, **kwargs))
 
     async def start(self, wakeup=True, autostart=True) -> bool:
         """Start CTRL/RP Session."""
@@ -520,7 +518,7 @@ class CTRLAsync(CTRL):
         self._ready_event = asyncio.Event()
         self._stop_event = asyncio.Event()
         self.receiver_started = asyncio.Event()
-        self.controller_ready_event = asyncio.Event()
+
         _LOGGER.debug("Running Async")
         status = await self.run_io(self._check_host)
         if not status[0]:
@@ -561,6 +559,7 @@ class CTRLAsync(CTRL):
             self.av_handler.add_receiver(self.av_receiver)
             _LOGGER.info("Waiting for Receiver...")
             self.loop.create_task(self.receiver_started.wait())
+            self._tasks.append(self.loop.create_task(self.run_io(self.controller.worker)))
         self._stream = RPStream(self, stop_event, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt)
         self.loop.create_task(self._stream.async_connect())
         if test:
@@ -574,23 +573,7 @@ class CTRLAsync(CTRL):
             self._stream.disconnect()
 
     def init_av_handler(self):
-        self._tasks.append(self.loop.create_task(self.async_run_av_handler()))
-        #self._tasks.append(self.loop.create_task(self.async_run_av_receiver()))
-
-    async def async_run_av_handler(self):
-        executor = ThreadPoolExecutor(max_workers=8)
-        await self.loop.run_in_executor(
-            executor,
-            self.av_handler.worker,
-        )
-        _LOGGER.info("AV Stopped")
-
-    async def async_run_av_receiver(self):
-        executor = ProcessPoolExecutor(max_workers=1)
-        await self.loop.run_in_executor(
-            executor,
-            self.av_receiver.run,
-        )
+        self._tasks.append(self.loop.create_task(self.run_io(self.av_handler.worker)))
 
     def stop(self):
         """Stop Stream."""
