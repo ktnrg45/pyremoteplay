@@ -1,0 +1,17 @@
+#!/bin/bash
+
+SRC_FILE="takion.proto"
+SRC_DIR="$(pwd)/external" 
+
+DST_DIR="$(pwd)/pyremoteplay"
+
+protoc -I=$SRC_DIR --python_out=$DST_DIR $SRC_DIR/$SRC_FILE
+
+if [[ $? == 0 ]];
+then
+	echo "Protoc build successful"
+	exit 0
+else
+	echo "Protoc build failed"
+	exit 1
+fi
