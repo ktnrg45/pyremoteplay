@@ -136,7 +136,6 @@ class MainWidget(QtWidgets.QWidget):
 
     def session_stop(self):
         print("Detected Session Stop")
-        self.ctrl_window.hide()
         self._app.setActiveWindow(self)
         self.device_grid.session_stop()
 
@@ -146,4 +145,5 @@ class MainWidget(QtWidgets.QWidget):
 
     def closeEvent(self, event):
         self.device_grid.stop_update()
+        self.ctrl_window.close()
         event.accept()

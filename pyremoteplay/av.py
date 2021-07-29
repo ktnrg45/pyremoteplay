@@ -3,12 +3,12 @@ import abc
 import errno
 import logging
 import multiprocessing
+import sys
 import threading
 import time
 from collections import deque
 from io import BytesIO
 from struct import unpack_from
-import sys
 
 from .const import AV_CODEC_OPTIONS_H264
 from .stream_packets import AVPacket, Packet
@@ -260,7 +260,7 @@ class AVReceiver(abc.ABC):
         codec.pix_fmt = "yuv420p"
         codec.flags = av.codec.context.Flags.LOW_DELAY
         codec.flags2 = av.codec.context.Flags2.FAST
-        codec.thread_type = av.codec.context.ThreadType.AUTO
+        codec.thread_type = av.codec.context.ThreadType.NONE
         return codec
 
     def __init__(self, ctrl):

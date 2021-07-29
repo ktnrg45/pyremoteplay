@@ -583,7 +583,8 @@ class CTRLAsync(CTRL):
             _LOGGER.debug("CTRL already stopping")
             return
         _LOGGER.info("CTRL Received Stop Signal")
-        self._stream.stop()
+        if self._stream:
+            self._stream.stop()
         self._stop_event.set()
         if self._tasks:
             for task in self._tasks:

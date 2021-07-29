@@ -5,11 +5,12 @@ import threading
 import time
 from enum import Enum
 
-from pyremoteplay.av import ProcessReceiver, QueueReceiver
+from pyremoteplay.av import QueueReceiver
 from pyremoteplay.ctrl import CTRLAsync
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt
 
+from .options import ControlsWidget
 from .util import label, message
 
 
@@ -39,7 +40,6 @@ class CTRLWorker(QtCore.QObject):
             print(f"Stopping Session @ {self.ctrl.host}")
             self.ctrl.stop()
             self.ctrl.loop.stop()
-            del self.ctrl
         self.ctrl = None
         self.finished.emit()
 
@@ -91,32 +91,60 @@ class CTRLWorker(QtCore.QObject):
 
 
 class AVProcessor(QtCore.QObject):
-    frame = QtCore.Signal()
+    started = QtCore.Signal()
+    finished = QtCore.Signal()
 
     def __init__(self, window):
         super().__init__()
         self.window = window
-        self.pixmap = None
+        self._last_pixmap = 1
+        self.pixmaps = []
+        self.stop_event = threading.Event()
 
-    def next_frame(self):
-        frame = self.window.worker.ctrl.av_receiver.get_video_frame()
-        if frame is None:
+    def set_pixmap(self, output):
+        if not self.pixmaps:
             return
-        self.window.frame_mutex.lock()
-        self.pixmap = QtGui.QPixmap.fromImage(
-            QtGui.QImage(
+        if self._last_pixmap == 0:
+            index = 1
+        else:
+            index = 0
+        output.setPixmap(self.pixmaps[index])
+
+    def run(self):
+        self.stop_event.clear()
+        self._last_pixmap = 1
+        self.pixmaps = []
+        while not self.stop_event.is_set():
+            if not self.window.worker.ctrl:
+                break
+            frame = self.window.worker.ctrl.av_receiver.get_video_frame()
+            if frame is None:
+                time.sleep(0.0001)
+                continue
+            image = QtGui.QImage(
                 bytearray(frame.planes[0]),
                 frame.width,
                 frame.height,
                 frame.width * 3,
                 QtGui.QImage.Format_RGB888,
             )
-        )
-        self.window.frame_mutex.unlock()
-        # Clear Queue if behind. Try to use latest frame.
-        if self.window.worker.ctrl.av_receiver.queue_size > 3:
-            self.window.worker.ctrl.av_receiver.v_queue.clear()
-        self.frame.emit()
+
+            if self._last_pixmap == 0:
+                index = 1
+            else:
+                index = 0
+            if not self.pixmaps:
+                pixmap = QtGui.QPixmap.fromImage(image)
+                self.pixmaps = [pixmap, pixmap.copy()]
+            else:
+                self.pixmaps[index].convertFromImage(image)
+            self.window.frame_mutex.lock()
+            self._last_pixmap = index
+            self.window.frame_mutex.unlock()
+            # Clear Queue if behind. Try to use latest frame.
+            if self.window.worker.ctrl.av_receiver.queue_size > 3:
+                self.window.worker.ctrl.av_receiver.v_queue.clear()
+        self.finished.emit()
 
 
 class JoystickWidget(QtWidgets.QFrame):
@@ -139,15 +167,12 @@ class JoystickWidget(QtWidgets.QFrame):
 
     def show_sticks(self, left=False, right=False):
         width = 0
-        should_show = False
         if left:
             width += Joystick.SIZE
             self.left.show()
-            should_show = True
         if right:
             width += Joystick.SIZE
             self.right.show()
-            should_show = True
         self.resize(width, Joystick.SIZE)
         self.show()
 
@@ -205,9 +230,15 @@ class Joystick(QtWidgets.QLabel):
         self.stick = stick
         self.setMinimumSize(Joystick.SIZE, Joystick.SIZE)
         self.movingOffset = QtCore.QPointF(0, 0)
-        self.grabCenter = False
+        self.grabbed = False
         self.__maxDistance = 50
         self.setStyleSheet("background-color: rgba(0, 0, 0, 0.0)")
+        self.set_default_cursor()
+
+    def set_default_cursor(self):
+        cursor = QtGui.QCursor()
+        cursor.setShape(Qt.SizeAllCursor)
+        self.setCursor(cursor)
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
@@ -219,7 +250,7 @@ class Joystick(QtWidgets.QLabel):
         painter.drawEllipse(self._centerEllipse())
 
     def _centerEllipse(self):
-        if self.grabCenter:
+        if self.grabbed:
             return QtCore.QRectF(-40, -40, 80, 80).translated(self.movingOffset)
         return QtCore.QRectF(-40, -40, 80, 80).translated(self._center())
 
@@ -233,7 +264,7 @@ class Joystick(QtWidgets.QLabel):
         return limitLine.p2()
 
     def joystickDirection(self):
-        if not self.grabCenter:
+        if not self.grabbed:
             return (0.0, 0.0)
         vector = QtCore.QLineF(self._center(), self.movingOffset)
         point = vector.p2()
@@ -244,24 +275,24 @@ class Joystick(QtWidgets.QLabel):
     def mousePressEvent(self, event):
         is_center = self._centerEllipse().contains(event.pos())
         if is_center:
-            self.grabCenter = True
+            self.grabbed = True
             self.movingOffset = self._boundJoystick(event.pos())
             self.update()
-        if not self.grabCenter:
+        if not self.grabbed:
             self.parent.mousePressEvent(event)
         return super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if not self.grabCenter:
+        if not self.grabbed:
             self.parent.mouseMoveEvent(event)
-        self.grabCenter = False
+        self.grabbed = False
         self.movingOffset = QtCore.QPointF(0, 0)
         self.update()
         point = self.joystickDirection()
         self.parent.window.worker.stick_state(self.stick, point=point)
 
     def mouseMoveEvent(self, event):
-        if self.grabCenter:
+        if self.grabbed:
             self.movingOffset = self._boundJoystick(event.pos())
             self.update()
             point = self.joystickDirection()
@@ -280,7 +311,8 @@ class StreamWindow(QtWidgets.QWidget):
         self.setMaximumHeight(self.main_window.screen.virtualSize().height())
         self.setStyleSheet("background-color: black")
         self.video_output = QtWidgets.QLabel(self, alignment=Qt.AlignCenter)
-        #self.video_output.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
+        self.video_output.setScaledContents(True)
+        self.video_output.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
         self.audio_output = None
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -293,7 +325,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.av_worker = AVProcessor(self)
         self.timer = QtCore.QTimer()
         self.timer.setTimerType(Qt.PreciseTimer)
-        self.timer.timeout.connect(self.av_worker.next_frame)
+        self.timer.timeout.connect(self.new_frame)
         self.ms_refresh = 0
 
         self.thread = QtCore.QThread()
@@ -304,8 +336,8 @@ class StreamWindow(QtWidgets.QWidget):
 
         self.av_thread = QtCore.QThread()
         self.av_worker.moveToThread(self.av_thread)
+        self.worker.started.connect(self.av_worker.run)
         self.av_thread.started.connect(self.start_timer)
-        self.av_worker.frame.connect(self.new_frame)
 
     def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None):
         self.input_options = input_options
@@ -353,10 +385,7 @@ class StreamWindow(QtWidgets.QWidget):
 #        self.audio_output = output.start()
 
     def new_frame(self):
-        self.frame_mutex.lock()
-        if self.av_worker.pixmap is not None:
-            self.video_output.setPixmap(self.av_worker.pixmap)
-        self.frame_mutex.unlock()
+        self.av_worker.set_pixmap(self.video_output)
         self.set_fps()
 
     def init_fps(self):
@@ -380,12 +409,6 @@ class StreamWindow(QtWidgets.QWidget):
         if self.audio_output is None:
             self.init_audio()
         self.audio_output.write()
-
-    # def resizeEvent(self, event):
-    #     self.worker.ctrl.max_width = self.geometry().width()
-    #     self.worker.ctrl.max_height = self.geometry().height()
-    #     self.video_output.resize(self.geometry().width(), self.geometry().height())
-    #     event.accept()
 
     def keyPressEvent(self, event):
         key = Qt.Key(event.key()).name.decode()
@@ -440,6 +463,10 @@ class StreamWindow(QtWidgets.QWidget):
     def cleanup(self):
         print("Cleaning up window")
         self.timer.stop()
+        pixmap = QtGui.QPixmap()
+        pixmap.fill(Qt.black)
+        self.video_output.setPixmap(pixmap)
+        self.av_worker.stop_event.set()
         self.thread.quit()
         self.av_thread.quit()
         self.main_window.session_stop()

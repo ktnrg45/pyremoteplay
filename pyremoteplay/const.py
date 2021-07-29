@@ -78,7 +78,7 @@ class Resolution(IntEnum):
 AV_CODEC_OPTIONS_H264 = {
     #"profile": "0",
     # "level": "3.2",
-    "tune": "film",
+    "tune": "fastdecode",
     "preset": "ultrafast",
 }
 
