@@ -92,59 +92,31 @@ class CTRLWorker(QtCore.QObject):
 
 class AVProcessor(QtCore.QObject):
     started = QtCore.Signal()
-    finished = QtCore.Signal()
+    frame = QtCore.Signal()
 
     def __init__(self, window):
         super().__init__()
         self.window = window
-        self._last_pixmap = 1
-        self.pixmaps = []
-        self.stop_event = threading.Event()
+        self.pixmap = None
 
-    def set_pixmap(self, output):
-        if not self.pixmaps:
+    def next_frame(self):
+        frame = self.window.worker.ctrl.av_receiver.get_video_frame()
+        if frame is None:
             return
-        if self._last_pixmap == 0:
-            index = 1
-        else:
-            index = 0
-        output.setPixmap(self.pixmaps[index])
-
-    def run(self):
-        self.stop_event.clear()
-        self._last_pixmap = 1
-        self.pixmaps = []
-        while not self.stop_event.is_set():
-            if not self.window.worker.ctrl:
-                break
-            frame = self.window.worker.ctrl.av_receiver.get_video_frame()
-            if frame is None:
-                time.sleep(0.0001)
-                continue
-            image = QtGui.QImage(
-                bytearray(frame.planes[0]),
-                frame.width,
-                frame.height,
-                frame.width * 3,
-                QtGui.QImage.Format_RGB888,
-            )
-
-            if self._last_pixmap == 0:
-                index = 1
-            else:
-                index = 0
-            if not self.pixmaps:
-                pixmap = QtGui.QPixmap.fromImage(image)
-                self.pixmaps = [pixmap, pixmap.copy()]
-            else:
-                self.pixmaps[index].convertFromImage(image)
-            self.window.frame_mutex.lock()
-            self._last_pixmap = index
-            self.window.frame_mutex.unlock()
-            # Clear Queue if behind. Try to use latest frame.
-            if self.window.worker.ctrl.av_receiver.queue_size > 3:
-                self.window.worker.ctrl.av_receiver.v_queue.clear()
-        self.finished.emit()
+        image = QtGui.QImage(
+            bytearray(frame.planes[0]),
+            frame.width,
+            frame.height,
+            frame.width * 3,
+            QtGui.QImage.Format_RGB888,
+        )
+        self.window.frame_mutex.lock()
+        self.pixmap = QtGui.QPixmap.fromImage(image)
+        self.window.frame_mutex.unlock()
+        # Clear Queue if behind. Try to use latest frame.
+        if self.window.worker.ctrl.av_receiver.queue_size > 3:
+            self.window.worker.ctrl.av_receiver.v_queue.clear()
+        self.frame.emit()
 
 
 class JoystickWidget(QtWidgets.QFrame):
@@ -325,19 +297,18 @@ class StreamWindow(QtWidgets.QWidget):
         self.av_worker = AVProcessor(self)
         self.timer = QtCore.QTimer()
         self.timer.setTimerType(Qt.PreciseTimer)
-        self.timer.timeout.connect(self.new_frame)
+        self.timer.timeout.connect(self.av_worker.next_frame)
         self.ms_refresh = 0
 
         self.thread = QtCore.QThread()
+        self.av_thread = QtCore.QThread()
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.finished.connect(self.cleanup)
         self.worker.started.connect(self.show_video)
-
-        self.av_thread = QtCore.QThread()
         self.av_worker.moveToThread(self.av_thread)
-        self.worker.started.connect(self.av_worker.run)
         self.av_thread.started.connect(self.start_timer)
+        self.av_worker.frame.connect(self.new_frame)
 
     def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None):
         self.input_options = input_options
@@ -385,7 +356,7 @@ class StreamWindow(QtWidgets.QWidget):
 #        self.audio_output = output.start()
 
     def new_frame(self):
-        self.av_worker.set_pixmap(self.video_output)
+        self.video_output.setPixmap(self.av_worker.pixmap)
         self.set_fps()
 
     def init_fps(self):
@@ -465,10 +436,9 @@ class StreamWindow(QtWidgets.QWidget):
         self.timer.stop()
         pixmap = QtGui.QPixmap()
         pixmap.fill(Qt.black)
-        self.video_output.setPixmap(pixmap)
-        self.av_worker.stop_event.set()
         self.thread.quit()
         self.av_thread.quit()
+        self.video_output.setPixmap(pixmap)
         self.main_window.session_stop()
 
     def start_timer(self):
