@@ -225,6 +225,7 @@ class DeviceGridWidget(QtWidgets.QWidget):
         self.thread.started.connect(self.searcher.get_hosts)
         self.searcher.finished.connect(lambda: self.create_grid(self.searcher.hosts))
         self.searcher.finished.connect(self.thread.quit)
+        self._is_startup = True
 
     def add(self, button, row, col):
         self.layout.setRowStretch(row, 6)
@@ -263,6 +264,9 @@ class DeviceGridWidget(QtWidgets.QWidget):
                     and not self.main_window.toolbar.controls.isChecked():
                 self.show()
             self.main_window.center_text.hide()
+        elif not self._is_startup:
+            self.main_window.startup_check_grid()
+            self._is_startup = False
 
     def discover(self):
         self.thread.start()

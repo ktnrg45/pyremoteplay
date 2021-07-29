@@ -52,7 +52,7 @@ class RPWorker(QtCore.QObject):
             self.finished.disconnect()
             self.started.disconnect()
         except RuntimeError as error:
-            print(error)
+            pass
 
     def setup(self, window, host, profile, resolution, fps):
         self.window = window

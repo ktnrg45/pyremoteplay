@@ -133,6 +133,7 @@ class AVStream():
         self._lost = 0
         self._received = 0
         self._last_index = -1
+        self._frame_bad_order = False
 
         if self._type not in [AVStream.TYPE_VIDEO, AVStream.TYPE_AUDIO]:
             raise ValueError("Invalid Type")
@@ -184,6 +185,7 @@ class AVStream():
             return
         # New Video Frame
         if packet.frame_index != self.frame:
+            self._frame_bad_order = False
             # First packet of Frame
             if packet.unit_index == 0:
                 self._frame = packet.frame_index
@@ -202,7 +204,9 @@ class AVStream():
                 # Don't include first two decrypted bytes 
                 self._buf.write(packet.data[2:])
             else:
-                _LOGGER.warning("Received unit out of order: %s, expected: %s", packet.unit_index, self.last_unit + 1)
+                if not self._frame_bad_order:
+                    _LOGGER.warning("Received unit out of order: %s, expected: %s", packet.unit_index, self.last_unit + 1)
+                    self._frame_bad_order = True
                 if self._lost > 65535:
                     self._lost = 0
                 self._lost += (packet.index - self._last_index - 1)

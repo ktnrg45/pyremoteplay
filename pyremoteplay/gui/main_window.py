@@ -60,7 +60,7 @@ class MainWindow(QtWidgets.QWidget):
 
     def startup_check_grid(self):
         if not self.device_grid.widgets:
-            self.main_window.set_center_text(
+            self.set_center_text(
                 "No Devices Found.\n"
                 "Try adding a device in options."
             )
