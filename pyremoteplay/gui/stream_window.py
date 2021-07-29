@@ -14,21 +14,25 @@ from .options import ControlsWidget
 from .util import label, message
 
 
-class CTRLWorker(QtCore.QObject):
+class RPWorker(QtCore.QObject):
     finished = QtCore.Signal()
     started = QtCore.Signal()
 
-    def __init__(self, window):
+    def __init__(self, main_window):
         super().__init__()
-        self.window = window
+        self.main_window = main_window
+        self.window = None
         self.ctrl = None
         self.thread = None
 
     def run(self):
         if not self.ctrl:
             print("No CTRL")
-            self.ctrl = None
-            self.finished.emit()
+            self.stop()
+            return
+        if not self.window:
+            print("No Stream Window")
+            self.stop()
             return
         self.thread = threading.Thread(
             target=self.worker,
@@ -41,9 +45,11 @@ class CTRLWorker(QtCore.QObject):
             self.ctrl.stop()
             self.ctrl.loop.stop()
         self.ctrl = None
+        self.window = None
         self.finished.emit()
 
-    def get_ctrl(self, host, profile, resolution, fps):
+    def setup(self, window, host, profile, resolution, fps):
+        self.window = window
         self.ctrl = CTRLAsync(host, profile, resolution=resolution, fps=fps, av_receiver=QueueReceiver)
         # self.ctrl.av_receiver.add_audio_cb(self.handle_audio)
 
@@ -100,7 +106,7 @@ class AVProcessor(QtCore.QObject):
         self.pixmap = None
 
     def next_frame(self):
-        frame = self.window.worker.ctrl.av_receiver.get_video_frame()
+        frame = self.window.rp_worker.ctrl.av_receiver.get_video_frame()
         if frame is None:
             return
         image = QtGui.QImage(
@@ -114,8 +120,8 @@ class AVProcessor(QtCore.QObject):
         self.pixmap = QtGui.QPixmap.fromImage(image)
         self.window.frame_mutex.unlock()
         # Clear Queue if behind. Try to use latest frame.
-        if self.window.worker.ctrl.av_receiver.queue_size > 3:
-            self.window.worker.ctrl.av_receiver.v_queue.clear()
+        if self.window.rp_worker.ctrl.av_receiver.queue_size > 3:
+            self.window.rp_worker.ctrl.av_receiver.v_queue.clear()
         self.frame.emit()
 
 
@@ -261,19 +267,21 @@ class Joystick(QtWidgets.QLabel):
         self.movingOffset = QtCore.QPointF(0, 0)
         self.update()
         point = self.joystickDirection()
-        self.parent.window.worker.stick_state(self.stick, point=point)
+        self.parent.window.rp_worker.stick_state(self.stick, point=point)
 
     def mouseMoveEvent(self, event):
         if self.grabbed:
             self.movingOffset = self._boundJoystick(event.pos())
             self.update()
             point = self.joystickDirection()
-            self.parent.window.worker.stick_state(self.stick, point=point)
+            self.parent.window.rp_worker.stick_state(self.stick, point=point)
         else:
             self.parent.mouseMoveEvent(event)
 
 
 class StreamWindow(QtWidgets.QWidget):
+    started = QtCore.Signal()
+
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
@@ -293,22 +301,19 @@ class StreamWindow(QtWidgets.QWidget):
         self.joystick.hide()
         self.input_options = None
         self.fps_label = label(self, "FPS: ")
-        self.worker = CTRLWorker(self)
         self.av_worker = AVProcessor(self)
         self.timer = QtCore.QTimer()
         self.timer.setTimerType(Qt.PreciseTimer)
         self.timer.timeout.connect(self.av_worker.next_frame)
         self.ms_refresh = 0
 
-        self.thread = QtCore.QThread()
+        self.rp_worker = self.main_window.rp_worker
         self.av_thread = QtCore.QThread()
-        self.worker.moveToThread(self.thread)
-        self.thread.started.connect(self.worker.run)
-        self.worker.finished.connect(self.cleanup)
-        self.worker.started.connect(self.show_video)
+        self.rp_worker.finished.connect(self.cleanup)
+        self.rp_worker.started.connect(self.show_video)
+        self.av_worker.frame.connect(self.new_frame)
         self.av_worker.moveToThread(self.av_thread)
         self.av_thread.started.connect(self.start_timer)
-        self.av_worker.frame.connect(self.new_frame)
 
     def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None):
         self.input_options = input_options
@@ -319,18 +324,19 @@ class StreamWindow(QtWidgets.QWidget):
         self.fullscreen = fullscreen
         self.ms_refresh = 1000.0/self.fps
         self.setWindowTitle(f"Session {name} @ {host}")
-        self.worker.get_ctrl(host, profile, resolution, fps)
+        self.rp_worker.setup(self, host, profile, resolution, fps)
 
         if show_fps:
             self.init_fps()
             self.fps_label.show()
         else:
             self.fps_label.hide()
-        self.thread.start()
         self.av_thread.start()
+        self.started.connect(self.main_window.session_start)
+        self.started.emit()
 
     def show_video(self):
-        self.setGeometry(0, 0, self.worker.ctrl.resolution['width'], self.worker.ctrl.resolution['height'])
+        self.resize(self.rp_worker.ctrl.resolution['width'], self.rp_worker.ctrl.resolution['height'])
         if self.fullscreen:
             self.showFullScreen()
         else:
@@ -399,9 +405,9 @@ class StreamWindow(QtWidgets.QWidget):
             button = button.split("_")
             stick = button[1]
             direction = button[2]
-            self.worker.stick_state(stick, direction, 1.0)
+            self.rp_worker.stick_state(stick, direction, 1.0)
         else:
-            self.worker.send_button(button, "press")
+            self.rp_worker.send_button(button, "press")
         event.accept()
 
     def keyReleaseEvent(self, event):
@@ -418,17 +424,17 @@ class StreamWindow(QtWidgets.QWidget):
             button = button.split("_")
             stick = button[1]
             direction = button[2]
-            self.worker.stick_state(stick, direction, 0.0)
+            self.rp_worker.stick_state(stick, direction, 0.0)
         else:
-            self.worker.send_button(button, "release")
+            self.rp_worker.send_button(button, "release")
         event.accept()
 
     def send_standby(self):
-        if self.worker.ctrl is not None:
-            self.worker.ctrl.standby()
+        if self.rp_worker.ctrl is not None:
+            self.rp_worker.ctrl.standby()
 
     def closeEvent(self, event):
-        self.worker.stop()
+        self.cleanup()
         event.accept()
 
     def cleanup(self):
@@ -436,8 +442,9 @@ class StreamWindow(QtWidgets.QWidget):
         self.timer.stop()
         pixmap = QtGui.QPixmap()
         pixmap.fill(Qt.black)
-        self.thread.quit()
         self.av_thread.quit()
+        self.rp_worker.finished.disconnect(self.cleanup)
+        self.rp_worker.started.disconnect(self.show_video)
         self.video_output.setPixmap(pixmap)
         self.main_window.session_stop()
 

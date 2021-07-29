@@ -36,7 +36,7 @@ class AVHandler():
         self._receiver = None
         self._v_stream = None
         self._a_stream = None
-        self._queue = deque()
+        self._queue = deque(maxlen=1000)
         self._worker = None
         self._last_congestion = 0
 
@@ -61,7 +61,10 @@ class AVHandler():
 
     def add_packet(self, packet):
         """Add Packet."""
-        self._queue.append(packet)
+        try:
+            self._queue.append(packet)
+        except IndexError:
+            _LOGGER.warning("AV Handler max queue size exceeded")
 
     def worker(self):
         while not self._ctrl._stop_event.is_set():
@@ -260,7 +263,7 @@ class AVReceiver(abc.ABC):
         codec.pix_fmt = "yuv420p"
         codec.flags = av.codec.context.Flags.LOW_DELAY
         codec.flags2 = av.codec.context.Flags2.FAST
-        codec.thread_type = av.codec.context.ThreadType.NONE
+        codec.thread_type = av.codec.context.ThreadType.AUTO
         return codec
 
     def __init__(self, ctrl):
@@ -276,6 +279,11 @@ class AVReceiver(abc.ABC):
 
     def start(self):
         self.notify_started()
+
+    def decode_video_frame(self, buf: bytes) -> bytes:
+        """Decode Video Frame."""
+        frame = AVReceiver.video_frame(buf, self.codec, width=self._ctrl.max_width, height=self._ctrl.max_height)
+        return frame
 
     def get_video_frame(self):
         """Return Video Frame."""
@@ -298,7 +306,7 @@ class AVReceiver(abc.ABC):
 class QueueReceiver(AVReceiver):
     def __init__(self, ctrl):
         super().__init__(ctrl)
-        self.v_queue = deque()
+        self.v_queue = deque(maxlen=10)
         self.get_video_codec()
         self.lock = threading.Lock()
 
@@ -320,10 +328,13 @@ class QueueReceiver(AVReceiver):
             return None
 
     def handle_video(self, buf):
-        frame = AVReceiver.video_frame(buf, self.codec, width=self._ctrl.max_width, height=self._ctrl.max_height)
+        frame = self.decode_video_frame(buf)
         if frame is None:
             return
-        self.v_queue.append(frame)
+        try:
+            self.v_queue.append(frame)
+        except IndexError:
+            _LOGGER.warning("AV Receiver max queue size exceeded")
 
     def handle_audio(self, buf):
         if self.a_cb is not None:

@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt
 
 from .device_grid import DeviceGridWidget
 from .options import ControlsWidget, OptionsWidget
-from .stream_window import StreamWindow
+from .stream_window import RPWorker, StreamWindow
 from .toolbar import ToolbarWidget
 from .util import Popup, message
 
@@ -20,11 +20,12 @@ class MainWidget(QtWidgets.QWidget):
         self._app = app
         self.screen = self._app.primaryScreen()
         self.idle = True
-        self.thread = None
-        self.ctrl_window = StreamWindow(self)
         self.toolbar = None
         self.device_grid = None
+        self.rp_thread = QtCore.QThread()
+        self._stream_window = None
         self._init_window()
+        self._init_rp_worker()
 
     def _init_window(self):
         self.setWindowTitle("PyRemotePlay")
@@ -48,6 +49,11 @@ class MainWidget(QtWidgets.QWidget):
         self.device_grid.discover()
         self.toolbar.refresh.setChecked(True)
         self.toolbar.refresh_click()
+
+    def _init_rp_worker(self):
+        self.rp_worker = RPWorker(self)
+        self.rp_thread.started.connect(self.rp_worker.run)
+        self.rp_worker.moveToThread(self.rp_thread)
 
     def startup_check_grid(self):
         if not self.device_grid.widgets:
@@ -121,7 +127,8 @@ class MainWidget(QtWidgets.QWidget):
         fps = options['fps']
         show_fps = options['show_fps']
         fullscreen = options['fullscreen']
-        self.ctrl_window.start(
+        self._stream_window = StreamWindow(self)
+        self._stream_window.start(
             ip_address,
             name,
             profile,
@@ -132,10 +139,17 @@ class MainWidget(QtWidgets.QWidget):
             input_map=self.controls.get_map(),
             input_options=self.controls.get_options(),
         )
-        self._app.setActiveWindow(self.ctrl_window)
+        self._app.setActiveWindow(self._stream_window)
+
+    def session_start(self):
+        self.rp_thread.start()
 
     def session_stop(self):
         print("Detected Session Stop")
+        self.rp_worker.stop()
+        self.rp_thread.quit()
+        self._stream_window.deleteLater()
+        self._stream_window = None
         self._app.setActiveWindow(self)
         self.device_grid.session_stop()
 
@@ -145,5 +159,6 @@ class MainWidget(QtWidgets.QWidget):
 
     def closeEvent(self, event):
         self.device_grid.stop_update()
-        self.ctrl_window.close()
+        if self._stream_window:
+            self._stream_window.close()
         event.accept()
