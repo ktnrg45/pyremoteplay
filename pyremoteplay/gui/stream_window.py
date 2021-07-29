@@ -330,7 +330,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.av_thread.start()
 
     def show_video(self):
-        self.resize(self.worker.ctrl.resolution['width'], self.worker.ctrl.resolution['height'])
+        self.setGeometry(0, 0, self.worker.ctrl.resolution['width'], self.worker.ctrl.resolution['height'])
         if self.fullscreen:
             self.showFullScreen()
         else:
