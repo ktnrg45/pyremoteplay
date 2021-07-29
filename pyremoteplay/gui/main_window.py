@@ -14,7 +14,9 @@ from .util import Popup, message
 _LOGGER = logging.getLogger(__name__)
 
 
-class MainWidget(QtWidgets.QWidget):
+class MainWindow(QtWidgets.QWidget):
+    session_finished = QtCore.Signal()
+
     def __init__(self, app):
         super().__init__()
         self._app = app
@@ -49,6 +51,7 @@ class MainWidget(QtWidgets.QWidget):
         self.device_grid.discover()
         self.toolbar.refresh.setChecked(True)
         self.toolbar.refresh_click()
+        self.session_finished.connect(self.check_error_finish)
 
     def _init_rp_worker(self):
         self.rp_worker = RPWorker(self)
@@ -148,10 +151,15 @@ class MainWidget(QtWidgets.QWidget):
         print("Detected Session Stop")
         self.rp_worker.stop()
         self.rp_thread.quit()
-        self._stream_window.deleteLater()
         self._stream_window = None
         self._app.setActiveWindow(self)
         self.device_grid.session_stop()
+        self.session_finished.emit()
+
+    def check_error_finish(self):
+        if self.rp_worker.error:
+            message(self, "Error", self.rp_worker.error)
+        self.rp_worker.error = ""
 
     def set_center_text(self, text):
         self.center_text.setText(text)

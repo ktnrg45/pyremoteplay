@@ -61,10 +61,13 @@ class AVHandler():
 
     def add_packet(self, packet):
         """Add Packet."""
-        try:
-            self._queue.append(packet)
-        except IndexError:
-            _LOGGER.warning("AV Handler max queue size exceeded")
+        if len(self._queue) >= self._queue.maxlen:
+            _LOGGER.debug("AV Handler max queue size exceeded")
+            self._ctrl.error = "Decoder could not keep up. Try lowering framerate / resolution"
+            _LOGGER.error(self._ctrl.error)
+            self._ctrl.stop()
+            return
+        self._queue.append(packet)
 
     def worker(self):
         while not self._ctrl._stop_event.is_set():
@@ -199,7 +202,7 @@ class AVStream():
                 # Don't include first two decrypted bytes 
                 self._buf.write(packet.data[2:])
             else:
-                _LOGGER.debug("Received unit out of order: %s, expected: %s", packet.unit_index, self.last_unit + 1)
+                _LOGGER.warning("Received unit out of order: %s, expected: %s", packet.unit_index, self.last_unit + 1)
                 if self._lost > 65535:
                     self._lost = 0
                 self._lost += (packet.index - self._last_index - 1)
@@ -331,9 +334,8 @@ class QueueReceiver(AVReceiver):
         frame = self.decode_video_frame(buf)
         if frame is None:
             return
-        try:
-            self.v_queue.append(frame)
-        except IndexError:
+        self.v_queue.append(frame)
+        if self.queue_size >= self.v_queue.maxlen:
             _LOGGER.warning("AV Receiver max queue size exceeded")
 
     def handle_audio(self, buf):

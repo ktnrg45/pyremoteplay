@@ -24,6 +24,7 @@ class RPWorker(QtCore.QObject):
         self.window = None
         self.ctrl = None
         self.thread = None
+        self.error = ""
 
     def run(self):
         if not self.ctrl:
@@ -47,6 +48,11 @@ class RPWorker(QtCore.QObject):
         self.ctrl = None
         self.window = None
         self.finished.emit()
+        try:
+            self.finished.disconnect()
+            self.started.disconnect()
+        except RuntimeError as error:
+            print(error)
 
     def setup(self, window, host, profile, resolution, fps):
         self.window = window
@@ -99,13 +105,20 @@ class RPWorker(QtCore.QObject):
 class AVProcessor(QtCore.QObject):
     started = QtCore.Signal()
     frame = QtCore.Signal()
+    slow = QtCore.Signal()
 
     def __init__(self, window):
         super().__init__()
         self.window = window
         self.pixmap = None
+        self._set_slow = False
 
     def next_frame(self):
+        if self.window.rp_worker.ctrl.is_stopped:
+            if not self.window.rp_worker.error:
+                self.window.rp_worker.error = self.window.rp_worker.ctrl.error
+                self.window.rp_worker.stop()
+            return
         frame = self.window.rp_worker.ctrl.av_receiver.get_video_frame()
         if frame is None:
             return
@@ -122,6 +135,9 @@ class AVProcessor(QtCore.QObject):
         # Clear Queue if behind. Try to use latest frame.
         if self.window.rp_worker.ctrl.av_receiver.queue_size > 3:
             self.window.rp_worker.ctrl.av_receiver.v_queue.clear()
+            if not self._set_slow:
+                self.slow.emit()
+                self._set_slow = True
         self.frame.emit()
 
 
@@ -291,8 +307,6 @@ class StreamWindow(QtWidgets.QWidget):
         self.setMaximumHeight(self.main_window.screen.virtualSize().height())
         self.setStyleSheet("background-color: black")
         self.video_output = QtWidgets.QLabel(self, alignment=Qt.AlignCenter)
-        self.video_output.setScaledContents(True)
-        self.video_output.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
         self.audio_output = None
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -306,12 +320,14 @@ class StreamWindow(QtWidgets.QWidget):
         self.timer.setTimerType(Qt.PreciseTimer)
         self.timer.timeout.connect(self.av_worker.next_frame)
         self.ms_refresh = 0
+        self._video_transform_mode = Qt.SmoothTransformation
 
         self.rp_worker = self.main_window.rp_worker
         self.av_thread = QtCore.QThread()
-        self.rp_worker.finished.connect(self.cleanup)
+        self.rp_worker.finished.connect(self.close)
         self.rp_worker.started.connect(self.show_video)
         self.av_worker.frame.connect(self.new_frame)
+        self.av_worker.slow.connect(self.av_slow)
         self.av_worker.moveToThread(self.av_thread)
         self.av_thread.started.connect(self.start_timer)
 
@@ -362,8 +378,17 @@ class StreamWindow(QtWidgets.QWidget):
 #        self.audio_output = output.start()
 
     def new_frame(self):
-        self.video_output.setPixmap(self.av_worker.pixmap)
+        self.frame_mutex.lock()
+        if self.fullscreen:
+            pixmap = self.av_worker.pixmap.scaled(self.video_output.size(), aspectMode=Qt.KeepAspectRatio, mode=self._video_transform_mode)
+        else:
+            pixmap = self.av_worker.pixmap
+        self.frame_mutex.unlock()
+        self.video_output.setPixmap(pixmap)
         self.set_fps()
+
+    def av_slow(self):
+        self._video_transform_mode = Qt.FastTransformation
 
     def init_fps(self):
         self.fps_label.move(20, 20)
@@ -394,7 +419,7 @@ class StreamWindow(QtWidgets.QWidget):
             print(f"Button Invalid: {key}")
             return
         if button == "QUIT":
-            self.close()
+            self.rp_worker.finished.emit()
             return
         if button == "STANDBY":
             message(self, "Standby", "Set host to standby?", level="info", cb=self.send_standby, escape=True)
@@ -443,8 +468,6 @@ class StreamWindow(QtWidgets.QWidget):
         pixmap = QtGui.QPixmap()
         pixmap.fill(Qt.black)
         self.av_thread.quit()
-        self.rp_worker.finished.disconnect(self.cleanup)
-        self.rp_worker.started.disconnect(self.show_video)
         self.video_output.setPixmap(pixmap)
         self.main_window.session_stop()
 
