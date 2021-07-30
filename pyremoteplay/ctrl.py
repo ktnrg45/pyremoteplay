@@ -592,5 +592,6 @@ class CTRLAsync(CTRL):
         if self._tasks:
             for task in self._tasks:
                 task.cancel()
+        self._thread_executor.shutdown()
         if self._protocol:
             self._protocol.close()
