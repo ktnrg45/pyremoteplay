@@ -53,7 +53,7 @@ class Controller():
         self._sequence_state += 1
 
     def send_event(self):
-        if self._event_queue:
+        while self._event_queue:
             self.add_event_buffer(self._event_queue.pop(0))
             data = b"".join(self._event_buf)
             self._ctrl._stream.send_feedback(FeedbackHeader.Type.EVENT, self.sequence_event, data=data)
