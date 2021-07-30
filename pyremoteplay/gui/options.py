@@ -357,7 +357,7 @@ class OptionsWidget(QtWidgets.QWidget):
 
     def default_options(self) -> dict:
         options = {
-            "fps": 60,
+            "fps": 30,
             "show_fps": False,
             "resolution": "720p",
             "fullscreen": False,
