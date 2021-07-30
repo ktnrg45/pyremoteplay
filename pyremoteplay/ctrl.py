@@ -508,10 +508,13 @@ class CTRLAsync(CTRL):
         self._protocol = None
         self._transport = None
         self._tasks = []
-        self._thread_executor = ThreadPoolExecutor(max_workers=8)
+        self._thread_executor = ThreadPoolExecutor()
 
     async def run_io(self, func, *args, **kwargs):
         return await self.loop.run_in_executor(self._thread_executor, partial(func, *args, **kwargs))
+
+    def sync_run_io(self, func, *args, **kwargs):
+        asyncio.ensure_future(self.run_io(func, *args, **kwargs))
 
     async def start(self, wakeup=True, autostart=True) -> bool:
         """Start CTRL/RP Session."""

@@ -5,17 +5,15 @@ import logging
 import socket
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from struct import pack_into
 
 from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
 
 from .crypt import StreamECDH
-from .stream_packets import (AVPacket, Chunk, CongestionPacket, FeedbackPacket,
-                             Header, Packet, ProtoHandler, UnexpectedMessage,
-                             get_launch_spec)
-from .util import from_b, listener, log_bytes, to_b
+from .stream_packets import (Chunk, CongestionPacket, FeedbackPacket, Header,
+                             Packet, ProtoHandler, get_launch_spec)
+from .util import listener, log_bytes, to_b
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,18 +43,16 @@ class RPStream():
         def __init__(self, stream):
             self.transport = None
             self.stream = stream
-            self.executor = ThreadPoolExecutor(max_workers=8)
 
         def connection_made(self, transport):
             _LOGGER.debug("Connected Stream")
             self.transport = transport
 
         def datagram_received(self, data, addr):
-            asyncio.ensure_future(self.stream._ctrl.loop.run_in_executor(
-                self.executor,
+            self.stream._ctrl.sync_run_io(
                 self.stream._handle,
                 data,
-            ))
+            )
 
         def sendto(self, data, addr):
             self.transport.sendto(data, addr)
