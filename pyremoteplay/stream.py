@@ -49,10 +49,7 @@ class RPStream():
             self.transport = transport
 
         def datagram_received(self, data, addr):
-            self.stream._ctrl.sync_run_io(
-                self.stream._handle,
-                data,
-            )
+            self.stream._handle(data)
 
         def sendto(self, data, addr):
             self.transport.sendto(data, addr)
@@ -257,8 +254,8 @@ class RPStream():
         )
         if format_type == "raw":
             return launch_spec
-        launch_size = len(launch_spec)
-        launch_spec_enc = to_b(0x00, launch_size)
+
+        launch_spec_enc = bytearray(len(launch_spec))
         launch_spec_enc = self._ctrl._cipher.encrypt(launch_spec_enc, counter=0)
 
         if format_type == "encrypted":
