@@ -384,7 +384,6 @@ class StreamWindow(QtWidgets.QWidget):
             return
         if self.fullscreen:
             pixmap = pixmap.scaled(self.video_output.size(), aspectMode=Qt.KeepAspectRatio, mode=self._video_transform_mode)
-        self.frame_mutex.unlock()
         self.video_output.setPixmap(pixmap)
         self.set_fps()
 
