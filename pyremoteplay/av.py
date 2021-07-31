@@ -39,6 +39,7 @@ class AVHandler():
         self._queue = deque(maxlen=1000)
         self._worker = None
         self._last_congestion = 0
+        self._waiting = False
 
     def add_receiver(self, receiver):
         if self._receiver:
@@ -61,25 +62,32 @@ class AVHandler():
 
     def add_packet(self, packet):
         """Add Packet."""
+        packet = Packet.parse(packet)
         if len(self._queue) >= self._queue.maxlen:
-            _LOGGER.debug("AV Handler max queue size exceeded")
+            self._queue.clear()
+            self._waiting = True
+            _LOGGER.warning("AV Handler max queue size exceeded")
             self._session.error = "Decoder could not keep up. Try lowering framerate / resolution"
-            _LOGGER.error(self._session.error)
             self._session.stop()
             return
-        self._queue.append(packet)
+        if self._waiting and packet.unit_index == 0:
+            self._waiting = False
+        if not self._waiting:
+            self._queue.append(packet)
+
+    def process_packet(self):
+        try:
+            packet = self._queue.popleft()
+        except IndexError:
+            time.sleep(0.0001)
+            return
+        packet.decrypt(self._cipher)
+        self._handle(packet)
+        #self._send_congestion()
 
     def worker(self):
         while not self._session._stop_event.is_set():
-            try:
-                msg = self._queue.popleft()
-            except IndexError:
-                time.sleep(0.001)
-                continue
-            packet = Packet.parse(msg)
-            packet.decrypt(self._cipher)
-            self._handle(packet)
-            #self._send_congestion()
+            self.process_packet()
         _LOGGER.info("Closing AV Receiver")
         self._receiver.close()
         self._queue.clear()
@@ -212,6 +220,7 @@ class AVStream():
                 self._lost += (packet.index - self._last_index - 1)
                 if self._lost > 65535:
                     self._lost = 1
+                self._last_unit = packet.unit_index
             if packet.is_last_src:
                 _LOGGER.debug("Frame: %s finished with length: %s", self.frame, self._buf.tell())
                 self._callback(self._buf.getvalue())
@@ -239,8 +248,7 @@ class AVStream():
 
 class AVReceiver(abc.ABC):
     """Base Class for AV Receiver."""
-
-    def video_frame(buf, codec, to_rgb=True, width=None, height=None):
+    def video_frame(buf, codec, to_rgb=True):
         """Decode H264 Frame to raw image.
         Return AV Frame.
 
@@ -262,11 +270,9 @@ class AVReceiver(abc.ABC):
             frame = frame.reformat(frame.width, frame.height, "rgb24", 'itu709')
         return frame
 
-    def video_codec(width=None, height=None):
+    def video_codec():
         codec = av.codec.Codec("h264", "r").create()
         codec.options = AV_CODEC_OPTIONS_H264
-        # codec.width = width
-        # codec.height = height
         codec.pix_fmt = "yuv420p"
         codec.flags = av.codec.context.Flags.LOW_DELAY
         codec.flags2 = av.codec.context.Flags2.FAST
@@ -279,7 +285,7 @@ class AVReceiver(abc.ABC):
         self.codec = None
 
     def get_video_codec(self):
-        self.codec = AVReceiver.video_codec(self._session.resolution['width'], self._session.resolution['height'])
+        self.codec = AVReceiver.video_codec()
 
     def notify_started(self):
         self._session.receiver_started.set()
@@ -289,7 +295,7 @@ class AVReceiver(abc.ABC):
 
     def decode_video_frame(self, buf: bytes) -> bytes:
         """Decode Video Frame."""
-        frame = AVReceiver.video_frame(buf, self.codec, width=self._session.max_width, height=self._session.max_height)
+        frame = AVReceiver.video_frame(buf, self.codec)
         return frame
 
     def get_video_frame(self):

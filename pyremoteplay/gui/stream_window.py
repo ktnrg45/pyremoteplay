@@ -3,10 +3,12 @@ import asyncio
 import sys
 import threading
 import time
+from collections import deque
 from enum import Enum
 
 from pyremoteplay.av import QueueReceiver
 from pyremoteplay.session import SessionAsync
+from pyremoteplay.util import timeit
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt
 
@@ -44,7 +46,6 @@ class RPWorker(QtCore.QObject):
         if self.session:
             print(f"Stopping Session @ {self.session.host}")
             self.session.stop()
-            self.session.loop.stop()
         self.session = None
         self.window = None
         self.finished.emit()
@@ -110,35 +111,34 @@ class AVProcessor(QtCore.QObject):
     def __init__(self, window):
         super().__init__()
         self.window = window
-        self.pixmap = None
+        self.pixmaps = deque()
         self._set_slow = False
 
     def next_frame(self):
-        if self.window.rp_worker.session.is_stopped:
-            if not self.window.rp_worker.error:
-                self.window.rp_worker.error = self.window.rp_worker.session.error
-                self.window.rp_worker.stop()
-            return
-        frame = self.window.rp_worker.session.av_receiver.get_video_frame()
-        if frame is None:
-            return
-        image = QtGui.QImage(
-            bytearray(frame.planes[0]),
-            frame.width,
-            frame.height,
-            frame.width * 3,
-            QtGui.QImage.Format_RGB888,
-        )
-        self.window.frame_mutex.lock()
-        self.pixmap = QtGui.QPixmap.fromImage(image)
-        self.window.frame_mutex.unlock()
-        # Clear Queue if behind. Try to use latest frame.
-        if self.window.rp_worker.session.av_receiver.queue_size > 3:
-            self.window.rp_worker.session.av_receiver.v_queue.clear()
-            if not self._set_slow:
-                self.slow.emit()
-                self._set_slow = True
-        self.frame.emit()
+        while not self.window.rp_worker.session.is_stopped:
+            frame = self.window.rp_worker.session.av_receiver.get_video_frame()
+            if frame is None:
+                self.window.av_thread.yieldCurrentThread()
+                continue
+            image = QtGui.QImage(
+                bytearray(frame.planes[0]),
+                frame.width,
+                frame.height,
+                frame.width * 3,
+                QtGui.QImage.Format_RGB888,
+            )
+            self.pixmaps.append(QtGui.QPixmap.fromImage(image))
+            # Clear Queue if behind. Try to use latest frame.
+            if self.window.rp_worker.session.av_receiver.queue_size > 3:
+                self.window.rp_worker.session.av_receiver.v_queue.clear()
+                if not self._set_slow:
+                    self.slow.emit()
+                    self._set_slow = True
+            self.window.av_thread.yieldCurrentThread()
+
+        if not self.window.rp_worker.error:
+            self.window.rp_worker.error = self.window.rp_worker.session.error
+            self.window.rp_worker.stop()
 
 
 class JoystickWidget(QtWidgets.QFrame):
@@ -318,7 +318,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.av_worker = AVProcessor(self)
         self.timer = QtCore.QTimer()
         self.timer.setTimerType(Qt.PreciseTimer)
-        self.timer.timeout.connect(self.av_worker.next_frame)
+        self.timer.timeout.connect(self.new_frame)
         self.ms_refresh = 0
         self._video_transform_mode = Qt.SmoothTransformation
 
@@ -326,10 +326,10 @@ class StreamWindow(QtWidgets.QWidget):
         self.av_thread = QtCore.QThread()
         self.rp_worker.finished.connect(self.close)
         self.rp_worker.started.connect(self.show_video)
-        self.av_worker.frame.connect(self.new_frame)
         self.av_worker.slow.connect(self.av_slow)
         self.av_worker.moveToThread(self.av_thread)
         self.av_thread.started.connect(self.start_timer)
+        self.av_thread.started.connect(self.av_worker.next_frame)
 
     def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None):
         self.input_options = input_options
@@ -378,11 +378,12 @@ class StreamWindow(QtWidgets.QWidget):
 #        self.audio_output = output.start()
 
     def new_frame(self):
-        self.frame_mutex.lock()
+        try:
+            pixmap = self.av_worker.pixmaps.popleft()
+        except IndexError:
+            return
         if self.fullscreen:
-            pixmap = self.av_worker.pixmap.scaled(self.video_output.size(), aspectMode=Qt.KeepAspectRatio, mode=self._video_transform_mode)
-        else:
-            pixmap = self.av_worker.pixmap
+            pixmap = pixmap.scaled(self.video_output.size(), aspectMode=Qt.KeepAspectRatio, mode=self._video_transform_mode)
         self.frame_mutex.unlock()
         self.video_output.setPixmap(pixmap)
         self.set_fps()
@@ -465,10 +466,7 @@ class StreamWindow(QtWidgets.QWidget):
     def cleanup(self):
         print("Cleaning up window")
         self.timer.stop()
-        pixmap = QtGui.QPixmap()
-        pixmap.fill(Qt.black)
         self.av_thread.quit()
-        self.video_output.setPixmap(pixmap)
         self.main_window.session_stop()
 
     def start_timer(self):
