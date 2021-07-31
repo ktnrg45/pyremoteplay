@@ -270,8 +270,33 @@ class AVReceiver(abc.ABC):
             frame = frame.reformat(frame.width, frame.height, "rgb24", 'itu709')
         return frame
 
-    def video_codec():
-        codec = av.codec.Codec("h264", "r").create()
+    def find_video_decoder(video_format="h264"):
+        decoders = {
+            "h264": [
+                "h264_amf",
+                "h264_nvenc",
+                "h264_qsv",
+                "h264_videotoolbox",
+                "h264_omx",
+                "h264_vaapi",
+                "h264_v4l2m2m",
+                "h264"
+            ]
+        }
+
+        for decoder in decoders.get(video_format):
+            try:
+                av.codec.Codec(decoder, "r")
+            except (av.codec.codec.UnknownCodecError, av.error.PermissionError):
+                _LOGGER.info("Could not find Decoder: %s", decoder)
+                continue
+            break
+        _LOGGER.info("Found Decoder: %s", decoder)
+        return decoder
+
+    def video_codec(video_format="h264"):
+        decoder = AVReceiver.find_video_decoder(video_format)
+        codec = av.codec.Codec(decoder, "r").create()
         codec.options = AV_CODEC_OPTIONS_H264
         codec.pix_fmt = "yuv420p"
         codec.flags = av.codec.context.Flags.LOW_DELAY
