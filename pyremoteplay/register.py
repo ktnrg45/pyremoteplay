@@ -5,7 +5,7 @@ import socket
 from Cryptodome.Random import get_random_bytes
 
 from .const import RP_PORT, RP_VERSION, USER_AGENT
-from .crypt import RPCipher
+from .crypt import SessionCipher
 from .keys import REG_KEY_0, REG_KEY_1
 from .util import log_bytes
 
@@ -155,7 +155,7 @@ def register(host: str, psn_id: str, pin: str, timeout: float = 2.0) -> dict:
     key_0 = gen_key_0(int(pin))
     key_1 = gen_key_1(nonce)
     payload = get_regist_payload(key_1)
-    cipher = RPCipher(key_0, nonce, counter=0)
+    cipher = SessionCipher(key_0, nonce, counter=0)
     enc_payload = encrypt_payload(cipher, psn_id)
     payload = b''.join([payload, enc_payload])
     headers = get_regist_headers(len(payload))

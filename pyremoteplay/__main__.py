@@ -10,9 +10,9 @@ from collections import OrderedDict
 
 from pyps4_2ndscreen.ddp import get_status
 
-from .ctrl import CTRL, CTRLAsync
 from .oauth import prompt as oauth_prompt
 from .register import register
+from .session import Session, SessionAsync
 from .util import add_profile, add_regist_data, get_profiles, write_profiles
 
 NEW_PROFILE = "New Profile"
@@ -126,36 +126,36 @@ def cli(host: str, resolution: str, fps: str):
     if profiles:
         name = select_profile(profiles, True, False)
         profile = profiles[name]
-        ctrl = CTRLAsync(host, profile, resolution=resolution, fps=fps)
-        async_start(ctrl, cb_curses)
+        session = SessionAsync(host, profile, resolution=resolution, fps=fps)
+        async_start(session, cb_curses)
     else:
         _LOGGER.info("No Profiles")
 
 
-def cb_curses(ctrl, status: bool):
+def cb_curses(session, status: bool):
     if status:
-        instance = CLIInstance(ctrl)
+        instance = CLIInstance(session)
         worker = threading.Thread(
             target=curses.wrapper,
             args=(start, instance)
         )
         worker.start()
     else:
-        _LOGGER.error("CTRL Failed to Start: %s", ctrl.error)
+        _LOGGER.error("Session Failed to Start: %s", session.error)
 
 
-def async_start(ctrl, cb: callable):
+def async_start(session, cb: callable):
     loop = asyncio.get_event_loop()
-    ctrl.loop = loop
-    task = loop.create_task(async_start_ctrl(ctrl, cb))
+    session.loop = loop
+    task = loop.create_task(async_start_session(session, cb))
     loop.run_until_complete(task)
     loop.run_forever()
 
 
-async def async_start_ctrl(ctrl, cb: callable):
-    status = await ctrl.start()
+async def async_start_session(session, cb: callable):
+    status = await session.start()
     if status:
-        cb(ctrl, status)
+        cb(session, status)
     else:
         asyncio.get_event_loop().stop()
 
@@ -191,8 +191,8 @@ class CLIInstance():
         "y": "TOUCHPAD",
     }
 
-    def __init__(self, ctrl: CTRL):
-        self._ctrl = ctrl
+    def __init__(self, session: Session):
+        self._session = session
         self.stdscr = None
         self.last_key = None
         self.map = self.MAP
@@ -248,13 +248,13 @@ class CLIInstance():
         self._init_window()
         timeout = 50
         self.stdscr.timeout(timeout)
-        while not self._ctrl.state == CTRL.STATE_STOP:
+        while not self._session.state == Session.STATE_STOP:
             self.stdscr.refresh()
             try:
                 self._handle_key(self.stdscr.getkey())
             except curses.error:
                 if self.last_key is not None:
-                    self._ctrl.controller.button(self.last_key, "release")
+                    self._session.controller.button(self.last_key, "release")
                     self.last_key = None
 
     def _write_str(self, text, color=1):
@@ -268,12 +268,12 @@ class CLIInstance():
         if key and self.last_key is None:
             self._write_str(key, 5)
             self.last_key = key
-            self._ctrl.controller.button(key, "press")
+            self._session.controller.button(key, "press")
             if key == "QUIT":
-                self._ctrl.stop()
-                self._ctrl.loop.stop()
+                self._session.stop()
+                self._session.loop.stop()
                 sys.exit()
             elif key == "STANDBY":
-                self._ctrl.standby()
-                self._ctrl.loop.stop()
+                self._session.standby()
+                self._session.loop.stop()
                 sys.exit()

@@ -31,8 +31,8 @@ _LOGGER = logging.getLogger(__name__)
 class AVHandler():
     """AV Handler."""
 
-    def __init__(self, ctrl):
-        self._ctrl = ctrl
+    def __init__(self, session):
+        self._session = session
         self._receiver = None
         self._v_stream = None
         self._a_stream = None
@@ -49,7 +49,7 @@ class AVHandler():
 
     def set_cipher(self, cipher):
         self._cipher = cipher
-        self._ctrl.init_av_handler()
+        self._session.init_av_handler()
 
     def set_headers(self, v_header, a_header):
         """Set headers."""
@@ -63,14 +63,14 @@ class AVHandler():
         """Add Packet."""
         if len(self._queue) >= self._queue.maxlen:
             _LOGGER.debug("AV Handler max queue size exceeded")
-            self._ctrl.error = "Decoder could not keep up. Try lowering framerate / resolution"
-            _LOGGER.error(self._ctrl.error)
-            self._ctrl.stop()
+            self._session.error = "Decoder could not keep up. Try lowering framerate / resolution"
+            _LOGGER.error(self._session.error)
+            self._session.stop()
             return
         self._queue.append(packet)
 
     def worker(self):
-        while not self._ctrl._stop_event.is_set():
+        while not self._session._stop_event.is_set():
             try:
                 msg = self._queue.popleft()
             except IndexError:
@@ -88,7 +88,7 @@ class AVHandler():
     def _send_congestion(self):
         now = time.time()
         if now - self._last_congestion > 0.2:
-            self._ctrl._stream.send_congestion(self.received, self.lost)
+            self._session._stream.send_congestion(self.received, self.lost)
             self._last_congestion = now
 
     def _handle(self, packet: AVPacket):
@@ -273,23 +273,23 @@ class AVReceiver(abc.ABC):
         codec.thread_type = av.codec.context.ThreadType.AUTO
         return codec
 
-    def __init__(self, ctrl):
-        self._ctrl = ctrl
+    def __init__(self, session):
+        self._session = session
         self.a_cb = None
         self.codec = None
 
     def get_video_codec(self):
-        self.codec = AVReceiver.video_codec(self._ctrl.resolution['width'], self._ctrl.resolution['height'])
+        self.codec = AVReceiver.video_codec(self._session.resolution['width'], self._session.resolution['height'])
 
     def notify_started(self):
-        self._ctrl.receiver_started.set()
+        self._session.receiver_started.set()
 
     def start(self):
         self.notify_started()
 
     def decode_video_frame(self, buf: bytes) -> bytes:
         """Decode Video Frame."""
-        frame = AVReceiver.video_frame(buf, self.codec, width=self._ctrl.max_width, height=self._ctrl.max_height)
+        frame = AVReceiver.video_frame(buf, self.codec, width=self._session.max_width, height=self._session.max_height)
         return frame
 
     def get_video_frame(self):
@@ -311,8 +311,8 @@ class AVReceiver(abc.ABC):
 
 
 class QueueReceiver(AVReceiver):
-    def __init__(self, ctrl):
-        super().__init__(ctrl)
+    def __init__(self, session):
+        super().__init__(session)
         self.v_queue = deque(maxlen=10)
         self.get_video_codec()
         self.lock = threading.Lock()
@@ -366,8 +366,8 @@ class ProcessReceiver(AVReceiver):
             output.put_nowait(frame)
             frame = None
 
-    def __init__(self, ctrl):
-        super().__init__(ctrl)
+    def __init__(self, session):
+        super().__init__(session)
         self.pipe1, self.pipe2 = multiprocessing.Pipe()
         self.manager = multiprocessing.Manager()
         self.v_queue = self.manager.Queue()
@@ -441,9 +441,9 @@ class AVFileReceiver(AVReceiver):
         pipe.close()
         process.wait()
 
-    def __init__(self, ctrl):
-        super().__init__(ctrl)
-        self._ctrl = ctrl
+    def __init__(self, session):
+        super().__init__(session)
+        self._session = session
         self._worker = None
         self._pipe = None
         self.file = None
@@ -476,11 +476,11 @@ class AVFileReceiver(AVReceiver):
         try:
             self._pipe.send_bytes(data)
         except Exception as error:
-            if error.errno != errno.EPIPE and not self._ctrl.is_running:
+            if error.errno != errno.EPIPE and not self._session.is_running:
                 _LOGGER.error("File Receiver error: %s", error)
                 _LOGGER.info("File Receiver closing pipe")
                 self._pipe.close()
-                self._ctrl.stop()
+                self._session.stop()
 
     def close(self):
         if self._worker:

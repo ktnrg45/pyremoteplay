@@ -21,8 +21,8 @@ class Controller():
     STICK_STATE_MAX = 0x7fff
     STICK_STATE_MIN = -0x7fff
 
-    def __init__(self, ctrl, **kwargs):
-        self._ctrl = ctrl
+    def __init__(self, session, **kwargs):
+        self._session = session
         self._sequence_event = 0
         self._sequence_state = 0
         self._event_buf = deque([], Controller.MAX_EVENTS)
@@ -39,7 +39,7 @@ class Controller():
 
     def worker(self):
         """Worker for sending feedback packets. Run in thread."""
-        while not self._ctrl.is_stopped:
+        while not self._session.is_stopped:
             try:
                 self._should_send.wait(timeout=1.0)
             except RuntimeError:
@@ -49,14 +49,14 @@ class Controller():
             self._should_send.clear()
 
     def send_state(self):
-        self._ctrl._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
+        self._session._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
         self._sequence_state += 1
 
     def send_event(self):
         while self._event_queue:
             self.add_event_buffer(self._event_queue.pop(0))
             data = b"".join(self._event_buf)
-            self._ctrl._stream.send_feedback(FeedbackHeader.Type.EVENT, self.sequence_event, data=data)
+            self._session._stream.send_feedback(FeedbackHeader.Type.EVENT, self.sequence_event, data=data)
             self._sequence_event += 1
 
     def add_event_buffer(self, event: FeedbackEvent):

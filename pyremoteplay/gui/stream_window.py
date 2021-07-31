@@ -6,7 +6,7 @@ import time
 from enum import Enum
 
 from pyremoteplay.av import QueueReceiver
-from pyremoteplay.ctrl import CTRLAsync
+from pyremoteplay.session import SessionAsync
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt
 
@@ -22,13 +22,13 @@ class RPWorker(QtCore.QObject):
         super().__init__()
         self.main_window = main_window
         self.window = None
-        self.ctrl = None
+        self.session = None
         self.thread = None
         self.error = ""
 
     def run(self):
-        if not self.ctrl:
-            print("No CTRL")
+        if not self.session:
+            print("No Session")
             self.stop()
             return
         if not self.window:
@@ -41,11 +41,11 @@ class RPWorker(QtCore.QObject):
         self.thread.start()
 
     def stop(self):
-        if self.ctrl:
-            print(f"Stopping Session @ {self.ctrl.host}")
-            self.ctrl.stop()
-            self.ctrl.loop.stop()
-        self.ctrl = None
+        if self.session:
+            print(f"Stopping Session @ {self.session.host}")
+            self.session.stop()
+            self.session.loop.stop()
+        self.session = None
         self.window = None
         self.finished.emit()
         try:
@@ -56,38 +56,38 @@ class RPWorker(QtCore.QObject):
 
     def setup(self, window, host, profile, resolution, fps):
         self.window = window
-        self.ctrl = CTRLAsync(host, profile, resolution=resolution, fps=fps, av_receiver=QueueReceiver)
-        # self.ctrl.av_receiver.add_audio_cb(self.handle_audio)
+        self.session = SessionAsync(host, profile, resolution=resolution, fps=fps, av_receiver=QueueReceiver)
+        # self.session.av_receiver.add_audio_cb(self.handle_audio)
 
     def worker(self):
         if sys.platform == "win32":
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        self.ctrl.loop = asyncio.new_event_loop()
-        task = self.ctrl.loop.create_task(self.start())
-        print("CTRL Start")
-        self.ctrl.loop.run_until_complete(task)
-        if self.ctrl:
-            self.ctrl.loop.run_forever()
-        print("CTRL Finished")
+        self.session.loop = asyncio.new_event_loop()
+        task = self.session.loop.create_task(self.start())
+        print("Session Start")
+        self.session.loop.run_until_complete(task)
+        if self.session:
+            self.session.loop.run_forever()
+        print("Session Finished")
         task.cancel()
         self.stop()
 
     async def start(self):
-        status = await self.ctrl.start()
+        status = await self.session.start()
         if not status:
-            print("CTRL Failed to Start")
-            message(None, "Error", self.ctrl.error)
+            print("Session Failed to Start")
+            message(None, "Error", self.session.error)
             self.stop()
         else:
             self.started.emit()
 
     def send_standby(self):
-        self.ctrl.standby()
+        self.session.standby()
         self.stop()
 
     def stick_state(self, stick: str, direction: str = None, value: float = None, point=None):
         if point is not None:
-            self.ctrl.controller.stick(stick, point=point)
+            self.session.controller.stick(stick, point=point)
             return
 
         if direction in ("LEFT", "RIGHT"):
@@ -96,10 +96,10 @@ class RPWorker(QtCore.QObject):
             axis = "Y"
         if direction in ("UP", "LEFT") and value != 0.0:
             value *= -1.0
-        self.ctrl.controller.stick(stick, axis, value)
+        self.session.controller.stick(stick, axis, value)
 
     def send_button(self, button, action):
-        self.ctrl.controller.button(button, action)
+        self.session.controller.button(button, action)
 
 
 class AVProcessor(QtCore.QObject):
@@ -114,12 +114,12 @@ class AVProcessor(QtCore.QObject):
         self._set_slow = False
 
     def next_frame(self):
-        if self.window.rp_worker.ctrl.is_stopped:
+        if self.window.rp_worker.session.is_stopped:
             if not self.window.rp_worker.error:
-                self.window.rp_worker.error = self.window.rp_worker.ctrl.error
+                self.window.rp_worker.error = self.window.rp_worker.session.error
                 self.window.rp_worker.stop()
             return
-        frame = self.window.rp_worker.ctrl.av_receiver.get_video_frame()
+        frame = self.window.rp_worker.session.av_receiver.get_video_frame()
         if frame is None:
             return
         image = QtGui.QImage(
@@ -133,8 +133,8 @@ class AVProcessor(QtCore.QObject):
         self.pixmap = QtGui.QPixmap.fromImage(image)
         self.window.frame_mutex.unlock()
         # Clear Queue if behind. Try to use latest frame.
-        if self.window.rp_worker.ctrl.av_receiver.queue_size > 3:
-            self.window.rp_worker.ctrl.av_receiver.v_queue.clear()
+        if self.window.rp_worker.session.av_receiver.queue_size > 3:
+            self.window.rp_worker.session.av_receiver.v_queue.clear()
             if not self._set_slow:
                 self.slow.emit()
                 self._set_slow = True
@@ -352,7 +352,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.started.emit()
 
     def show_video(self):
-        self.resize(self.rp_worker.ctrl.resolution['width'], self.rp_worker.ctrl.resolution['height'])
+        self.resize(self.rp_worker.session.resolution['width'], self.rp_worker.session.resolution['height'])
         if self.fullscreen:
             self.showFullScreen()
         else:
@@ -455,8 +455,8 @@ class StreamWindow(QtWidgets.QWidget):
         event.accept()
 
     def send_standby(self):
-        if self.rp_worker.ctrl is not None:
-            self.rp_worker.ctrl.standby()
+        if self.rp_worker.session is not None:
+            self.rp_worker.session.standby()
 
     def closeEvent(self, event):
         self.cleanup()

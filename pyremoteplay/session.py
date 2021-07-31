@@ -17,17 +17,17 @@ from .av import AVFileReceiver, AVHandler
 from .const import (DDP_PORT, DDP_VERSION, FPS, OS_TYPE, RP_CRYPT_SIZE,
                     RP_PORT, RP_VERSION, TYPE_PS4, TYPE_PS5, USER_AGENT,
                     Resolution)
-from .crypt import RPCipher
+from .crypt import SessionCipher
 from .errors import RemotePlayError, RPErrorHandler
 from .feedback import Controller
-from .keys import CTRL_KEY_0, CTRL_KEY_1
+from .keys import SESSION_KEY_0, SESSION_KEY_1
 from .stream import RPStream
 from .util import listener, log_bytes
 
 _LOGGER = logging.getLogger(__name__)
 
 RP_INIT_URL = "/sie/ps4/rp/sess/init"
-RP_CTRL_URL = "/sie/ps4/rp/sess/ctrl"
+RP_SESSION_URL = "/sie/ps4/rp/sess/ctrl"
 
 DID_PREFIX = b'\x00\x18\x00\x00\x00\x07\x00\x40\x00\x80'
 
@@ -49,7 +49,7 @@ def _get_headers(host: str, regist_key: str) -> dict:
     return headers
 
 
-def _get_ctrl_headers(host: str, auth: str, did: str, os_type: str, bitrate: str):
+def _get_session_headers(host: str, auth: str, did: str, os_type: str, bitrate: str):
     """Return Connect Headers."""
     headers = {
         "Host": f"{host}:{RP_PORT}",
@@ -65,14 +65,14 @@ def _get_ctrl_headers(host: str, auth: str, did: str, os_type: str, bitrate: str
         "RP-ConPath": "1",
         "RP-StartBitrate": bitrate,
     }
-    _LOGGER.debug("CTRL Headers: %s", headers)
+    _LOGGER.debug("Session Headers: %s", headers)
     return headers
 
 
 def _get_rp_nonce(nonce: bytes) -> bytes:
     """Return RP nonce."""
     rp_nonce = bytearray(RP_CRYPT_SIZE)
-    key = CTRL_KEY_0[((nonce[0] >> 3) * 112):]
+    key = SESSION_KEY_0[((nonce[0] >> 3) * 112):]
     for index in range(0, RP_CRYPT_SIZE):
         shift = nonce[index] + 54 + index
         shift ^= key[index]
@@ -85,7 +85,7 @@ def _get_rp_nonce(nonce: bytes) -> bytes:
 def _get_aes_key(nonce: bytes, rp_key: bytes) -> bytes:
     """Return AES key."""
     aes_key = bytearray(16)
-    key = CTRL_KEY_1[((nonce[7] >> 3) * 112):]
+    key = SESSION_KEY_1[((nonce[7] >> 3) * 112):]
     for index in range(0, RP_CRYPT_SIZE):
         shift = (key[index] ^ rp_key[index]) + 33 + index
         shift ^= nonce[index]
@@ -126,7 +126,7 @@ def send_wakeup(host: str, regist_key: str):
     sock.close()
 
 
-class CTRL():
+class Session():
     """Controller for RP Session."""
     STATE_INIT = "init"
     STATE_READY = "ready"
@@ -151,7 +151,7 @@ class CTRL():
 
     def __repr__(self):
         return (
-            f"<RP CTRL host={self._host} "
+            f"<RP Session host={self._host} "
             f"resolution={self.resolution} "
             f"fps={self.fps}>"
         )
@@ -170,7 +170,7 @@ class CTRL():
         self._sock = None
         self._hb_last = 0
         self._cipher = None
-        self._state = CTRL.STATE_INIT
+        self._state = Session.STATE_INIT
         self._stream = None
         self.max_width = self.max_height = None
         self.fps = FPS.preset(fps)
@@ -214,10 +214,10 @@ class CTRL():
         return (True, True, mac_address)
 
     def _get_rp_url(self, request_type: str) -> str:
-        valid_types = ["init", "ctrl"]
+        valid_types = ["init", "session"]
         if request_type not in valid_types:
             raise ValueError("Unknown ")
-        url_slug = RP_INIT_URL if request_type == "init" else RP_CTRL_URL
+        url_slug = RP_INIT_URL if request_type == "init" else RP_SESSION_URL
         url = f"http://{self.host}:{RP_PORT}{url_slug}"
         return url
 
@@ -239,7 +239,7 @@ class CTRL():
             reason = int.from_bytes(bytes.fromhex(reason), "big")
             reason = RP_ERROR(reason)
             _LOGGER.error(
-                "Failed to Init CTRL; Reason: %s",
+                "Failed to Init Session; Reason: %s",
                 reason,
             )
             self.error = reason
@@ -249,26 +249,26 @@ class CTRL():
             log_bytes("Nonce", nonce)
         return nonce
 
-    def _get_ctrl_headers(self, nonce: bytes) -> dict:
-        """Return CTRL headers."""
+    def _get_session_headers(self, nonce: bytes) -> dict:
+        """Return Session headers."""
         rp_nonce = _get_rp_nonce(nonce)
         aes_key = _get_aes_key(nonce, self._rp_key)
-        self._cipher = RPCipher(aes_key, rp_nonce, counter=0)
+        self._cipher = SessionCipher(aes_key, rp_nonce, counter=0)
 
         regist_key = b''.join([bytes.fromhex(self._regist_key), bytes(8)])
         auth = b64encode(self._cipher.encrypt(regist_key)).decode()
         did = b64encode(self._cipher.encrypt(_gen_did())).decode()
         os_type = b64encode(self._cipher.encrypt(OS_TYPE.encode().ljust(10, b'\x00'))).decode()
         bitrate = b64encode(self._cipher.encrypt(bytes(4))).decode()
-        return _get_ctrl_headers(self.host, auth, did, os_type, bitrate)
+        return _get_session_headers(self.host, auth, did, os_type, bitrate)
 
     def _authenticate(self, nonce: bytes) -> bool:
-        """Return True if successful. Send CTRL Auth."""
-        headers = self._get_ctrl_headers(nonce)
-        response = self._send_auth_request("ctrl", headers, stream=True)
+        """Return True if successful. Send Session Auth."""
+        headers = self._get_session_headers(nonce)
+        response = self._send_auth_request("session", headers, stream=True)
         if response is None:
             return False
-        _LOGGER.debug("CTRL Auth Headers: %s", response.headers)
+        _LOGGER.debug("Session Auth Headers: %s", response.headers)
         server_type = response.headers.get("RP-Server-Type")
         if response.status_code != 200 or server_type is None:
             return False
@@ -296,23 +296,23 @@ class CTRL():
             log_bytes("New Session ID", new_id)
             return new_id
 
-        log_bytes("CTRL RECV Data", data)
+        log_bytes("Session RECV Data", data)
         payload = data[8:]
         if payload:
             payload = self._cipher.decrypt(payload)
-            log_bytes("CTRL PAYLOAD", payload)
+            log_bytes("Session PAYLOAD", payload)
         try:
-            msg_type = CTRL.MessageType(data[5])
-            _LOGGER.debug("RECV %s", CTRL.MessageType(msg_type).name)
+            msg_type = Session.MessageType(data[5])
+            _LOGGER.debug("RECV %s", Session.MessageType(msg_type).name)
         except ValueError:
-            _LOGGER.debug("CTRL RECV invalid Message Type: %s", data[5])
+            _LOGGER.debug("Session RECV invalid Message Type: %s", data[5])
             return
-        if msg_type == CTRL.MessageType.HEARTBEAT_REQUEST:
+        if msg_type == Session.MessageType.HEARTBEAT_REQUEST:
             self._hb_last = time.time()
             self._send_hb_response()
-        if msg_type == CTRL.MessageType.HEARTBEAT_RESPONSE:
+        if msg_type == Session.MessageType.HEARTBEAT_RESPONSE:
             self._hb_last = time.time()
-        elif msg_type == CTRL.MessageType.SESSION_ID:
+        elif msg_type == Session.MessageType.SESSION_ID:
             if self.session_id:
                 _LOGGER.warning("RECV Session ID again")
                 return
@@ -321,35 +321,35 @@ class CTRL():
             try:
                 session_id.decode()
             except UnicodeDecodeError:
-                _LOGGER.warning("CTRL RECV Malformed Session ID")
+                _LOGGER.warning("Session RECV Malformed Session ID")
                 session_id = invalid_session_id(session_id)
             finally:
                 self._session_id = session_id
             self._ready_event.set()
 
         if time.time() - self._hb_last > 5:
-            _LOGGER.info("CTRL HB Timeout. Sending HB")
+            _LOGGER.info("Session HB Timeout. Sending HB")
             self._send_hb_request()
 
     def _build_msg(self, msg_type: int, payload=b'') -> bytes:
         """Return Message."""
         payload_size = len(payload)
         self._cipher.encrypt(payload)
-        buf = bytearray(CTRL.HEADER_LENGTH + payload_size)
+        buf = bytearray(Session.HEADER_LENGTH + payload_size)
         pack_into(f"!IHxx{payload_size}s", buf, 0, payload_size, msg_type, payload)
         return bytes(buf)
 
     def _send_hb_response(self):
-        msg = self._build_msg(CTRL.MessageType.HEARTBEAT_RESPONSE, HEARTBEAT_RESPONSE)
+        msg = self._build_msg(Session.MessageType.HEARTBEAT_RESPONSE, HEARTBEAT_RESPONSE)
         self.send(msg)
 
     def _send_hb_request(self):
-        msg = self._build_msg(CTRL.MessageType.HEARTBEAT_REQUEST)
+        msg = self._build_msg(Session.MessageType.HEARTBEAT_REQUEST)
         self.send(msg)
 
     def standby(self):
         """Set host to standby."""
-        msg = self._build_msg(CTRL.MessageType.STANDBY)
+        msg = self._build_msg(Session.MessageType.STANDBY)
         self.send(msg)
         _LOGGER.info("Sending Standby")
         self.stop()
@@ -357,14 +357,14 @@ class CTRL():
     def send(self, data: bytes):
         """Send Data."""
         self._sock.send(data)
-        log_bytes("CTRL Send", data)
+        log_bytes("Session Send", data)
 
     def wakeup(self):
         """Wakeup Host."""
         send_wakeup(self._host, self._regist_key)
 
     def start(self, wakeup=True, autostart=True) -> bool:
-        """Start CTRL/RP Session."""
+        """Start Session/RP Session."""
         self._ready_event = threading.Event()
         self._stop_event = threading.Event()
         self.receiver_started = threading.Event()
@@ -381,13 +381,13 @@ class CTRL():
                 self.error = "Host is in Standby. Attempting to wakeup."
             return False
         if not self.connect():
-            _LOGGER.error("CTRL Auth Failed")
+            _LOGGER.error("Session Auth Failed")
             return False
-        _LOGGER.info("CTRL Auth Success")
-        self._state = CTRL.STATE_READY
+        _LOGGER.info("Session Auth Success")
+        self._state = Session.STATE_READY
         self._worker = threading.Thread(
             target=listener,
-            args=("CTRL", self._sock, self._handle, self._stop_event),
+            args=("Session", self._sock, self._handle, self._stop_event),
         )
         self._worker.start()
         self._ready_event.wait()
@@ -430,10 +430,10 @@ class CTRL():
 
     def stop(self):
         """Stop Stream."""
-        if self.state == CTRL.STATE_STOP:
-            _LOGGER.debug("CTRL already stopping")
+        if self.state == Session.STATE_STOP:
+            _LOGGER.debug("Session already stopping")
             return
-        _LOGGER.info("CTRL Received Stop Signal")
+        _LOGGER.info("Session Received Stop Signal")
         self._stop_event.set()
 
     def init_controller(self):
@@ -465,18 +465,18 @@ class CTRL():
         if self._stop_event is None:
             return self._state
         if self._stop_event.is_set():
-            return CTRL.STATE_STOP
+            return Session.STATE_STOP
         return self._state
 
     @property
     def is_running(self) -> bool:
         """Return True if running."""
-        return self.state != CTRL.STATE_STOP
+        return self.state != Session.STATE_STOP
 
     @property
     def is_stopped(self) -> bool:
         """Return True if stopped."""
-        return self.state == CTRL.STATE_STOP
+        return self.state == Session.STATE_STOP
 
     @property
     def session_id(self) -> bytes:
@@ -484,20 +484,20 @@ class CTRL():
         return self._session_id
 
 
-class CTRLAsync(CTRL):
+class SessionAsync(Session):
 
     class Protocol(asyncio.Protocol):
 
-        def __init__(self, ctrl):
+        def __init__(self, session):
             self.transport = None
-            self.ctrl = ctrl
+            self.session = session
 
         def connection_made(self, transport):
             _LOGGER.debug("Connected")
             self.transport = transport
 
         def data_received(self, data):
-            self.ctrl._handle(data)
+            self.session._handle(data)
 
         def close(self):
             self.transport.close()
@@ -517,8 +517,8 @@ class CTRLAsync(CTRL):
         asyncio.ensure_future(self.run_io(func, *args, **kwargs))
 
     async def start(self, wakeup=True, autostart=True) -> bool:
-        """Start CTRL/RP Session."""
-        _LOGGER.info("CTRL Started")
+        """Start Session/RP Session."""
+        _LOGGER.info("Session Started")
         self._ready_event = asyncio.Event()
         self._stop_event = asyncio.Event()
         self.receiver_started = asyncio.Event()
@@ -537,11 +537,11 @@ class CTRLAsync(CTRL):
                 self.error = "Host is in Standby. Attempting to wakeup."
             return False
         if not await self.run_io(self.connect):
-            _LOGGER.error("CTRL Auth Failed")
+            _LOGGER.error("Session Auth Failed")
             return False
-        _LOGGER.info("CTRL Auth Success")
-        self._state = CTRL.STATE_READY
-        _, self._protocol = await self.loop.connect_accepted_socket(lambda: CTRLAsync.Protocol(self), self._sock)
+        _LOGGER.info("Session Auth Success")
+        self._state = Session.STATE_READY
+        _, self._protocol = await self.loop.connect_accepted_socket(lambda: SessionAsync.Protocol(self), self._sock)
         await self._ready_event.wait()
         if autostart:
             self.start_stream()
@@ -550,7 +550,7 @@ class CTRLAsync(CTRL):
     def send(self, data: bytes):
         """Send Data."""
         self._protocol.transport.write(data)
-        log_bytes(f"CTRL Send", data)
+        log_bytes(f"Session Send", data)
 
     def start_stream(self, test=True, mtu=None, rtt=None):
         """Start Stream."""
@@ -582,10 +582,10 @@ class CTRLAsync(CTRL):
 
     def stop(self):
         """Stop Stream."""
-        if self.state == CTRL.STATE_STOP:
-            _LOGGER.debug("CTRL already stopping")
+        if self.state == Session.STATE_STOP:
+            _LOGGER.debug("Session already stopping")
             return
-        _LOGGER.info("CTRL Received Stop Signal")
+        _LOGGER.info("Session Received Stop Signal")
         if self._stream:
             self._stream.stop()
         self._stop_event.set()

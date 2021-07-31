@@ -13,7 +13,7 @@ from Cryptodome.Util.strxor import strxor
 from .crypt import StreamECDH
 from .stream_packets import (Chunk, CongestionPacket, FeedbackPacket, Header,
                              Packet, ProtoHandler, get_launch_spec)
-from .util import listener, log_bytes, to_b
+from .util import listener, log_bytes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,10 +57,10 @@ class RPStream():
         def close(self):
             self.transport.close()
 
-    def __init__(self, ctrl, stop_event, rtt=None, mtu=None, is_test=False, cb_stop=None):
-        self._host = ctrl.host
+    def __init__(self, session, stop_event, rtt=None, mtu=None, is_test=False, cb_stop=None):
+        self._host = session.host
         self._port = STREAM_PORT if not is_test else TEST_STREAM_PORT
-        self._ctrl = ctrl
+        self._session = session
         self._is_test = is_test
         self._test = StreamTest(self) if is_test else None
         self._state = None
@@ -77,9 +77,9 @@ class RPStream():
         self._verify_gmac = False
         self.cipher = None
         self.proto = ProtoHandler(self)
-        self.av_handler = ctrl.av_handler
-        self.resolution = ctrl.resolution
-        self.max_fps = ctrl.fps
+        self.av_handler = session.av_handler
+        self.resolution = session.resolution
+        self.max_fps = session.fps
         self.rtt = rtt if rtt is not None else DEFAULT_RTT
         self.mtu = mtu if mtu is not None else DEFAULT_MTU
         self.stream_info = None
@@ -103,7 +103,7 @@ class RPStream():
 
     async def async_connect(self):
         """Connect Async."""
-        _, self._protocol = await self._ctrl.loop.create_datagram_endpoint(lambda: RPStream.Protocol(self), local_addr=("0.0.0.0", 0))
+        _, self._protocol = await self._session.loop.create_datagram_endpoint(lambda: RPStream.Protocol(self), local_addr=("0.0.0.0", 0))
         self._send_init()
 
     def ready(self):
@@ -235,7 +235,7 @@ class RPStream():
 
         data = ProtoHandler.big_payload(
             client_version=client_version,
-            session_key=self._ctrl.session_id,
+            session_key=self._session.session_id,
             launch_spec=launch_spec,
             encrypted_key=encrypted_key,
             ecdh_pub_key=ecdh_pub_key,
@@ -256,7 +256,7 @@ class RPStream():
             return launch_spec
 
         launch_spec_enc = bytearray(len(launch_spec))
-        launch_spec_enc = self._ctrl._cipher.encrypt(launch_spec_enc, counter=0)
+        launch_spec_enc = self._session._cipher.encrypt(launch_spec_enc, counter=0)
 
         if format_type == "encrypted":
             return launch_spec_enc

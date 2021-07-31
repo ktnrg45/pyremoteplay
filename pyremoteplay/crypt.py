@@ -298,7 +298,7 @@ def get_cipher(key: bytes, nonce: bytes, counter=0):
     return cipher
 
 
-class RPCipher():
+class SessionCipher():
     """AES CFB-128 Cipher pair."""
 
     def __init__(self, key: bytes, nonce: bytes, counter=0):

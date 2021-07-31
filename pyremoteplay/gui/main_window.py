@@ -1,6 +1,6 @@
 import logging
 
-from pyremoteplay.ctrl import CTRL, send_wakeup
+from pyremoteplay.session import Session, send_wakeup
 from pyremoteplay.util import timeit
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtCore import Qt
@@ -97,13 +97,13 @@ class MainWindow(QtWidgets.QWidget):
         if not profile:
             return
         ip_address = host["host-ip"]
-        ctrl = CTRL(ip_address, profile)
-        status = ctrl.start(autostart=False)
+        session = Session(ip_address, profile)
+        status = session.start(autostart=False)
         if status:
-            ctrl.standby()
-        ctrl.stop()
+            session.standby()
+        session.stop()
         if not status:
-            message(self, "Standby Error", ctrl.error)
+            message(self, "Standby Error", session.error)
         else:
             message(self, "Standby Success", f"Set device at {ip_address} to Standby", "info")
 
