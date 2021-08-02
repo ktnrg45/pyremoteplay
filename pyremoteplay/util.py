@@ -7,9 +7,13 @@ import select
 import time
 from binascii import hexlify
 
+from pyee import ExecutorEventEmitter
+
 from .const import CONTROLS_FILE, OPTIONS_FILE, PROFILE_DIR, PROFILE_FILE
 
 _LOGGER = logging.getLogger(__name__)
+
+event_emitter = ExecutorEventEmitter()
 
 
 def check_dir() -> pathlib.Path:

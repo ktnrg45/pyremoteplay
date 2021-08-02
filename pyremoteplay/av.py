@@ -10,9 +10,8 @@ from collections import deque
 from io import BytesIO
 from struct import unpack_from
 
-from .const import AV_CODEC_OPTIONS_H264
 from .stream_packets import AVPacket, Packet
-from .util import log_bytes, timeit
+from .util import event_emitter, log_bytes, timeit
 
 try:
     import av
@@ -68,8 +67,8 @@ class AVHandler():
             self._waiting = True
             _LOGGER.warning("AV Handler max queue size exceeded")
             self._session.error = "Decoder could not keep up. Try lowering framerate / resolution"
-            self._session.stop()
-            return
+            # self._session.stop()
+            # return
         if self._waiting and packet.unit_index == 0:
             self._waiting = False
         if not self._waiting:
@@ -248,6 +247,14 @@ class AVStream():
 
 class AVReceiver(abc.ABC):
     """Base Class for AV Receiver."""
+
+    AV_CODEC_OPTIONS_H264 = {
+        #"profile": "0",
+        # "level": "3.2",
+        "tune": "zerolatency",
+        "preset": "ultrafast",
+    }
+
     def video_frame(buf, codec, to_rgb=True):
         """Decode H264 Frame to raw image.
         Return AV Frame.
@@ -288,7 +295,7 @@ class AVReceiver(abc.ABC):
             try:
                 av.codec.Codec(decoder, "r")
             except (av.codec.codec.UnknownCodecError, av.error.PermissionError):
-                _LOGGER.info("Could not find Decoder: %s", decoder)
+                _LOGGER.debug("Could not find Decoder: %s", decoder)
                 continue
             break
         _LOGGER.info("Found Decoder: %s", decoder)
@@ -297,10 +304,10 @@ class AVReceiver(abc.ABC):
     def video_codec(video_format="h264"):
         decoder = AVReceiver.find_video_decoder(video_format)
         codec = av.codec.Codec(decoder, "r").create()
-        codec.options = AV_CODEC_OPTIONS_H264
+        codec.options = AVReceiver.AV_CODEC_OPTIONS_H264
         codec.pix_fmt = "yuv420p"
-        codec.flags = av.codec.context.Flags.LOW_DELAY
-        codec.flags2 = av.codec.context.Flags2.FAST
+        #codec.flags = av.codec.context.Flags.LOW_DELAY
+        #codec.flags2 = av.codec.context.Flags2.FAST
         codec.thread_type = av.codec.context.ThreadType.AUTO
         return codec
 
@@ -372,6 +379,7 @@ class QueueReceiver(AVReceiver):
         self.v_queue.append(frame)
         if self.queue_size >= self.v_queue.maxlen:
             _LOGGER.warning("AV Receiver max queue size exceeded")
+        event_emitter.emit('frame')
 
     def handle_audio(self, buf):
         if self.a_cb is not None:

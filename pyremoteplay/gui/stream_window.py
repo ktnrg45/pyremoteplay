@@ -8,7 +8,7 @@ from enum import Enum
 
 from pyremoteplay.av import QueueReceiver
 from pyremoteplay.session import SessionAsync
-from pyremoteplay.util import timeit
+from pyremoteplay.util import event_emitter, timeit
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt
 
@@ -113,32 +113,31 @@ class AVProcessor(QtCore.QObject):
         self.window = window
         self.pixmaps = deque()
         self._set_slow = False
+        event_emitter.on("frame", self.next_frame)
 
     def next_frame(self):
-        while not self.window.rp_worker.session.is_stopped:
-            frame = self.window.rp_worker.session.av_receiver.get_video_frame()
-            if frame is None:
-                self.window.av_thread.yieldCurrentThread()
-                continue
-            image = QtGui.QImage(
-                bytearray(frame.planes[0]),
-                frame.width,
-                frame.height,
-                frame.width * 3,
-                QtGui.QImage.Format_RGB888,
-            )
-            self.pixmaps.append(QtGui.QPixmap.fromImage(image))
-            # Clear Queue if behind. Try to use latest frame.
-            if self.window.rp_worker.session.av_receiver.queue_size > 3:
-                self.window.rp_worker.session.av_receiver.v_queue.clear()
-                if not self._set_slow:
-                    self.slow.emit()
-                    self._set_slow = True
-            self.window.av_thread.yieldCurrentThread()
+        frame = self.window.rp_worker.session.av_receiver.get_video_frame()
+        if frame is None:
+            return
+        image = QtGui.QImage(
+            bytearray(frame.planes[0]),
+            frame.width,
+            frame.height,
+            frame.width * 3,
+            QtGui.QImage.Format_RGB888,
+        )
+        self.pixmaps.append(QtGui.QPixmap.fromImage(image))
+        # Clear Queue if behind. Try to use latest frame.
+        if self.window.rp_worker.session.av_receiver.queue_size > 3:
+            self.window.rp_worker.session.av_receiver.v_queue.clear()
+            if not self._set_slow:
+                self.slow.emit()
+                self._set_slow = True
 
-        if not self.window.rp_worker.error:
-            self.window.rp_worker.error = self.window.rp_worker.session.error
-            self.window.rp_worker.stop()
+        if self.window.rp_worker.session.is_stopped:
+            if self.window.rp_worker.error:
+                self.window.rp_worker.error = self.window.rp_worker.session.error
+                self.window.rp_worker.stop()
 
 
 class JoystickWidget(QtWidgets.QFrame):
@@ -329,7 +328,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.av_worker.slow.connect(self.av_slow)
         self.av_worker.moveToThread(self.av_thread)
         self.av_thread.started.connect(self.start_timer)
-        self.av_thread.started.connect(self.av_worker.next_frame)
+        # self.av_thread.started.connect(self.av_worker.next_frame)
 
     def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None):
         self.input_options = input_options

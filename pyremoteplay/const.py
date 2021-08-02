@@ -75,13 +75,6 @@ class Resolution(IntEnum):
         if isinstance(resolution, int):
             return RESOLUTION_PRESETS[Resolution(index).name.replace("RESOLUTION_", "").lower()]
 
-AV_CODEC_OPTIONS_H264 = {
-    #"profile": "0",
-    # "level": "3.2",
-    "tune": "zerolatency",
-    "preset": "ultrafast",
-}
-
 # AV_CODEC_OPTIONS_H264 = {
 #     # "profile": "high",
 #     # "level": "3.2",

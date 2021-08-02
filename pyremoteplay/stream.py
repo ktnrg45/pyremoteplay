@@ -170,25 +170,28 @@ class RPStream():
                 else:
                     self._test.recv_mtu(msg)
         else:
-            packet = Packet.parse(msg)
-            _LOGGER.debug(packet)
-            log_bytes(f"Stream RECV", msg)
-            if self.cipher:
-                gmac = packet.header.gmac
-                _gmac = int.to_bytes(gmac, 4, "big")
-                key_pos = packet.header.key_pos
-                packet.header.gmac = packet.header.key_pos = 0
-                if self._verify_gmac:
-                    gmac = self.cipher.verify_gmac(packet.bytes(), key_pos, _gmac)
+            self._session.sync_run_io(self._handle_later, msg)
 
-            if packet.chunk.type == Chunk.Type.INIT_ACK:
-                self._recv_init(packet)
-            elif packet.chunk.type == Chunk.Type.COOKIE_ACK:
-                self._recv_cookie_ack()
-            elif packet.chunk.type == Chunk.Type.DATA_ACK:
-                self._recv_data_ack(packet)
-            elif packet.chunk.type == Chunk.Type.DATA:
-                self._recv_data(packet)
+    def _handle_later(self, msg):
+        packet = Packet.parse(msg)
+        _LOGGER.debug(packet)
+        log_bytes(f"Stream RECV", msg)
+        if self.cipher:
+            gmac = packet.header.gmac
+            _gmac = int.to_bytes(gmac, 4, "big")
+            key_pos = packet.header.key_pos
+            packet.header.gmac = packet.header.key_pos = 0
+            if self._verify_gmac:
+                gmac = self.cipher.verify_gmac(packet.bytes(), key_pos, _gmac)
+
+        if packet.chunk.type == Chunk.Type.INIT_ACK:
+            self._recv_init(packet)
+        elif packet.chunk.type == Chunk.Type.COOKIE_ACK:
+            self._recv_cookie_ack()
+        elif packet.chunk.type == Chunk.Type.DATA_ACK:
+            self._recv_data_ack(packet)
+        elif packet.chunk.type == Chunk.Type.DATA:
+            self._recv_data(packet)
 
     def _recv_init(self, packet):
         """Handle Init."""

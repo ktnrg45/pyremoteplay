@@ -132,6 +132,7 @@ class BaseCipher():
         self.base_iv = None
         self.current_key = None
         self.index = 0
+        self.key_streams = []
 
     def _init_cipher(self):
         self.base_key, self.base_iv = get_base_key_iv(
