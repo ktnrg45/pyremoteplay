@@ -290,7 +290,8 @@ class AVReceiver(abc.ABC):
                 "h264"
             ]
         }
-        if use_hw:
+        _LOGGER.debug("Using HW: %s", use_hw)
+        if not use_hw:
             return decoders.get(video_format)[-1]
         for decoder in decoders.get(video_format):
             try:
