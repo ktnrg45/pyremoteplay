@@ -162,7 +162,6 @@ class BaseCipher():
             ks_index = key_stream[0]
             if key_pos // BaseCipher.KEYSTREAM_LEN > ks_index:
                 self.keystreams.pop(index)
-                _LOGGER.info("Removed KEystream")
             else:
                 break
         key_stream = b''

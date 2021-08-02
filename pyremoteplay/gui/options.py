@@ -313,6 +313,8 @@ class OptionsWidget(QtWidgets.QWidget):
         self.fps_show.stateChanged.connect(self.change_fps_show)
         self.fullscreen = QtWidgets.QCheckBox("Show Fullscreen", self)
         self.fullscreen.stateChanged.connect(self.change_fullscreen)
+        self.use_hw = QtWidgets.QCheckBox("Use Hardware Decoding", self)
+        self.use_hw.stateChanged.connect(self.change_use_hw)
         self.resolution = QtWidgets.QComboBox(self)
         self.resolution.addItems(list(RESOLUTION_PRESETS.keys()))
         self.resolution.currentTextChanged.connect(self.change_resolution)
@@ -325,7 +327,8 @@ class OptionsWidget(QtWidgets.QWidget):
         self.add(self.resolution, 1, 1, label=label(self, "Resolution:"))
         self.add(self.fullscreen, 1, 2)
         res_label = label(self, "**1080p is for PS4 Pro only**", wrap=True)
-        self.layout.addWidget(res_label, 2, 0, 1, 2)
+        self.layout.addWidget(res_label, 2, 0)
+        self.layout.addWidget(self.use_hw, 2, 2)
         self.layout.addItem(spacer(), 3, 0)
         self.add(set_account, 4, 0)
         self.add(add_account, 4, 1)
@@ -347,6 +350,7 @@ class OptionsWidget(QtWidgets.QWidget):
         try:
             self.fps.setCurrentText(str(self.options["fps"]))
             self.fps_show.setChecked(self.options["show_fps"])
+            self.use_hw.setChecked(self.options["use_hw"])
             self.resolution.setCurrentText(self.options["resolution"])
             self.fullscreen.setChecked(self.options["fullscreen"])
             self.profile = self.options["profile"]
@@ -360,6 +364,7 @@ class OptionsWidget(QtWidgets.QWidget):
             "fps": 30,
             "show_fps": False,
             "resolution": "720p",
+            "use_hw": False,
             "fullscreen": False,
             "profile": "",
             "devices": [],
@@ -424,6 +429,10 @@ class OptionsWidget(QtWidgets.QWidget):
 
     def change_resolution(self, text):
         self.options["resolution"] = text
+        write_options(self.options)
+
+    def change_use_hw(self):
+        self.options["use_hw"] = self.use_hw.isChecked()
         write_options(self.options)
 
     def change_fullscreen(self):

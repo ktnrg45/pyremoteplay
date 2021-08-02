@@ -55,9 +55,9 @@ class RPWorker(QtCore.QObject):
         except RuntimeError as error:
             pass
 
-    def setup(self, window, host, profile, resolution, fps):
+    def setup(self, window, host, profile, resolution, fps, use_hw):
         self.window = window
-        self.session = SessionAsync(host, profile, resolution=resolution, fps=fps, av_receiver=QueueReceiver)
+        self.session = SessionAsync(host, profile, resolution=resolution, fps=fps, av_receiver=QueueReceiver, use_hw=use_hw)
         # self.session.av_receiver.add_audio_cb(self.handle_audio)
 
     def worker(self):
@@ -332,7 +332,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.av_thread.started.connect(self.start_timer)
         # self.av_thread.started.connect(self.av_worker.next_frame)
 
-    def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None):
+    def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None, use_hw=False):
         self.input_options = input_options
         self.frame_mutex = QtCore.QMutex()
         self.video_output.hide()
@@ -341,7 +341,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.fullscreen = fullscreen
         self.ms_refresh = 1000.0/self.fps
         self.setWindowTitle(f"Session {name} @ {host}")
-        self.rp_worker.setup(self, host, profile, resolution, fps)
+        self.rp_worker.setup(self, host, profile, resolution, fps, use_hw)
 
         if show_fps:
             self.init_fps()
