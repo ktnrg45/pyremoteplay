@@ -465,6 +465,7 @@ class StreamWindow(QtWidgets.QWidget):
         print("Cleaning up window")
         self.timer.stop()
         self.av_thread.quit()
+        event_emitter.remove_all_listeners("frame")
         self.main_window.session_stop()
 
     def start_timer(self):
