@@ -170,7 +170,11 @@ class RPStream():
                 else:
                     self._test.recv_mtu(msg)
         else:
-            self._session.sync_run_io(self._handle_later, msg)
+            if not self.av_handler.has_receiver:
+                self._handle_later(msg)
+            else:
+                # Run in Executor if processing av.
+                self._session.sync_run_io(self._handle_later, msg)
 
     def _handle_later(self, msg):
         packet = Packet.parse(msg)

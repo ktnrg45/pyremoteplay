@@ -1,5 +1,6 @@
 """Common Crypto Methods."""
 import logging
+import threading
 from struct import pack_into
 
 from Cryptodome.Cipher import AES
@@ -113,15 +114,17 @@ def get_key_stream(
     return key_stream
 
 
-def decrypt_encrypt(key: bytes, iv: bytes, key_pos: int, data: bytes):
+def decrypt_encrypt(key: bytes, iv: bytes, key_pos: int, data: bytes, key_stream=b''):
     """Return Decrypted or Encrypted packet. Two way."""
-    key_stream = get_key_stream(key, iv, key_pos, len(data))
+    if not key_stream:
+        key_stream = get_key_stream(key, iv, key_pos, len(data))
     enc_data = strxor(data, key_stream)
     return enc_data
 
 
 class BaseCipher():
     """Base AES CTR Cipher."""
+    KEYSTREAM_LEN = 0x1000
 
     def __init__(self, handshake_key, secret):
         self.handshake_key = handshake_key
@@ -132,12 +135,52 @@ class BaseCipher():
         self.base_iv = None
         self.current_key = None
         self.index = 0
-        self.key_streams = []
+        self.keystreams = []
+        self.keystream_index = 0
 
     def _init_cipher(self):
         self.base_key, self.base_iv = get_base_key_iv(
             self.secret, self.handshake_key, self._base_index)
         self.current_key = self.base_gmac_key = get_gmac_key(self.index, self.base_key, self.base_iv)
+
+    def _next_key_stream(self):
+        while len(self.keystreams) < 3:
+            key_pos = self.keystream_index * BaseCipher.KEYSTREAM_LEN
+            key_stream = get_key_stream(self.base_key, self.base_iv, key_pos, BaseCipher.KEYSTREAM_LEN)
+            self.keystreams.append((self.keystream_index, key_stream))
+            self.keystream_index += 1
+
+    def _gen_key_stream(self):
+        thread = threading.Thread(
+            target=self._next_keystream,
+        )
+        thread.start()
+
+    def get_key_stream(self, key_pos: int, data_len: int) -> bytes:
+        self._next_key_stream()
+        for index, key_stream in enumerate(self.keystreams):
+            ks_index = key_stream[0]
+            if key_pos // BaseCipher.KEYSTREAM_LEN > ks_index:
+                self.keystreams.pop(index)
+                _LOGGER.info("Removed KEystream")
+            else:
+                break
+        key_stream = b''
+        if self.keystreams:
+            requires_additional = False
+            start_pos = key_pos % BaseCipher.KEYSTREAM_LEN
+            if start_pos + data_len > BaseCipher.KEYSTREAM_LEN:
+                requires_additional = True
+            end_pos = (key_pos + data_len) % BaseCipher.KEYSTREAM_LEN
+            if requires_additional:
+                if len(self.keystreams) < 2:
+                    return key_stream
+                end_pos = data_len - (BaseCipher.KEYSTREAM_LEN - start_pos)
+                key_stream = self.keystreams.pop(0)[1][start_pos:]
+                key_stream += self.keystreams[0][1][:end_pos]
+            else:
+                key_stream = self.keystreams[0][1][start_pos:end_pos]
+        return key_stream
 
     def gen_new_key(self):
         if self.base_gmac_key is None:
@@ -176,7 +219,9 @@ class RemoteCipher(BaseCipher):
 
     def decrypt(self, data: bytes, key_pos: int) -> bytes:
         """Decrypt data."""
-        dec = decrypt_encrypt(self.base_key, self.base_iv, key_pos, data)
+        key_stream = b''
+        key_stream = self.get_key_stream(key_pos, len(data))
+        dec = decrypt_encrypt(self.base_key, self.base_iv, key_pos, data, key_stream)
         return dec
 
     def verify_gmac(self, data: bytes, key_pos: int, gmac: bytes) -> bool:
@@ -206,7 +251,9 @@ class LocalCipher(BaseCipher):
 
     def encrypt(self, data: bytes) -> bytes:
         """Encrypt data using key stream."""
-        enc = decrypt_encrypt(self.base_key, self.base_iv, self.key_pos, data)
+        key_stream = b''
+        key_stream = self.get_key_stream(self.key_pos, len(data))
+        enc = decrypt_encrypt(self.base_key, self.base_iv, self.key_pos, data, key_stream)
         return enc
 
     def advance_key_pos(self, advance_by: int):

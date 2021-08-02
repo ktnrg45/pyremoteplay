@@ -228,7 +228,7 @@ def test_regist_payload():
 def test_encrypt_payload():
     """Test Encrypt payload."""
     mock_id = "x3HEK6t1aw8="
-    cipher = register.RPCipher(KEY_0, NONCE, counter=0)
+    cipher = register.SessionCipher(KEY_0, NONCE, counter=0)
     mock_payload = register.encrypt_payload(cipher, mock_id)
     assert mock_payload == ENC_PAYLOAD
 

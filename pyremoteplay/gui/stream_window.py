@@ -126,6 +126,8 @@ class AVProcessor(QtCore.QObject):
             frame.width * 3,
             QtGui.QImage.Format_RGB888,
         )
+        if len(self.pixmaps) > 2:
+            self.pixmaps.clear()
         self.pixmaps.append(QtGui.QPixmap.fromImage(image))
         # Clear Queue if behind. Try to use latest frame.
         if self.window.rp_worker.session.av_receiver.queue_size > 3:
