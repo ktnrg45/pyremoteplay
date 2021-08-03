@@ -48,7 +48,7 @@ def main():
 
 def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
     """Return profile name."""
-    name = ""
+    name = NEW_PROFILE
     if len(profiles) == 1 and use_single:
         name = list(profiles.keys())[0]
         return name
@@ -75,6 +75,7 @@ def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
 
 def register_profile(host: str):
     """Register with host."""
+    name = ""
     status = get_status(host)
     if not status:
         print("Host is not reachable")
