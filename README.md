@@ -8,6 +8,7 @@ This project provides an API to programmatically connect to and control Remote P
 - Registering client for Remote Play on the host 
 - Interface for controlling the host, which emulates a DualShock controller
 - Ability to power off/on the host if standby is enabled
+- GUI which displays the live stream and supports keyboard/mouse input
 
 ## Requirements ##
 - Python 3.8+
@@ -26,6 +27,17 @@ It is recommended to install in a virtual environment.
 ```
   python3 -m venv .
   source bin/activate
+```
+
+### From pip ###
+To install core package run:
+```
+pip install pyremoteplay
+```
+
+To install with optional GUI run:
+```
+pip install pyremoteplay[gui]
 ```
 
 ### From Source ###
