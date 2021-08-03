@@ -5,10 +5,20 @@ from pyremoteplay.register import register
 from pyremoteplay.util import (add_profile, add_regist_data, get_mapping,
                                get_options, get_profiles, write_mapping,
                                write_options, write_profiles)
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 from PySide6.QtCore import Qt
 
 from .util import label, message, spacer
+
+
+class ControlsTable(QtWidgets.QTableWidget):
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        self.parent().table_mousePressEvent(event)
+
+    def keyPressEvent(self, event):
+        self.parent().keyPressEvent(event)
 
 
 class ControlsWidget(QtWidgets.QWidget):
@@ -83,7 +93,7 @@ class ControlsWidget(QtWidgets.QWidget):
         self.layout.setColumnStretch(2, 1)
         self.layout.setColumnStretch(3, 1)
         self.layout.setRowStretch(1, 1)
-        self.table = QtWidgets.QTableWidget(self)
+        self.table = ControlsTable(self)
         self.table.setRowCount(len(ControlsWidget.KEYS))
         self.table.setColumnCount(2)
         self.table.setHorizontalHeaderLabels(["Control", "Remote Play Control"])
@@ -113,7 +123,6 @@ class ControlsWidget(QtWidgets.QWidget):
         self.reset.clicked.connect(self.click_reset)
         self.clear.clicked.connect(self.click_clear)
         self.table.clicked.connect(self.click_table)
-        self.table.keyPressEvent = self.table_keypress
 
     def hide(self):
         self.click_cancel()
@@ -192,7 +201,7 @@ class ControlsWidget(QtWidgets.QWidget):
             if rp_key not in ControlsWidget.KEYS:
                 remove_keys.append(key)
                 continue
-            item = QtWidgets.QTableWidgetItem(key.replace("Key_", ""))
+            item = QtWidgets.QTableWidgetItem(key.replace("Key_", "").replace("Button", " Click"))
             item.setFlags(Qt.ItemIsEnabled)
             self.table.setItem(ControlsWidget.KEYS.index(rp_key), 0, item)
         if remove_keys:
@@ -229,7 +238,10 @@ class ControlsWidget(QtWidgets.QWidget):
         if self.input is None:
             return
         item = self.table.item(self.input, 0).text()
-        key = f"Key_{item}"
+        if "Click" in item:
+            key = item.replace(" Click", "Button")
+        else:
+            key = f"Key_{item}"
         _map = self.get_map()
         if key in _map:
             _map.pop(key)
@@ -249,9 +261,17 @@ class ControlsWidget(QtWidgets.QWidget):
         key = list(_map.keys())[index]
         return key
 
-    def table_keypress(self, event):
+    def table_mousePressEvent(self, event):
+        button = event.button().name.decode()
+        self.set_item(button)
+
+    def keyPressEvent(self, event):
         if self.input is not None:
             key = Qt.Key(event.key()).name.decode()
+            self.set_item(key)
+
+    def set_item(self, key):
+        if self.input is not None:
             item = self.table.item(self.input, 0)
             rp_key = self.table.item(self.input, 1).text()
             current = self.get_current_map_key(rp_key)

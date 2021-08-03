@@ -412,19 +412,38 @@ class StreamWindow(QtWidgets.QWidget):
             self.init_audio()
         self.audio_output.write()
 
+    def mousePressEvent(self, event):
+        button = event.button().name.decode()
+        self._handle_press(button)
+        event.accept()
+
+    def mouseReleaseEvent(self, event):
+        button = event.button().name.decode()
+        self._handle_release(button)
+        event.accept()
+
     def keyPressEvent(self, event):
         key = Qt.Key(event.key()).name.decode()
+        if not event.isAutoRepeat():
+            self._handle_press(key)
+        event.accept()
+
+    def keyReleaseEvent(self, event):
+        if event.isAutoRepeat():
+            return
+        key = Qt.Key(event.key()).name.decode()
+        self._handle_release(key)
+        event.accept()
+
+    def _handle_press(self, key):
         button = self.mapping.get(key)
         if button is None:
-            print(f"Button Invalid: {key}")
             return
         if button == "QUIT":
             self.rp_worker.finished.emit()
             return
         if button == "STANDBY":
             message(self, "Standby", "Set host to standby?", level="info", cb=self.send_standby, escape=True)
-            return
-        if event.isAutoRepeat():
             return
         if "STICK" in button:
             button = button.split("_")
@@ -433,12 +452,8 @@ class StreamWindow(QtWidgets.QWidget):
             self.rp_worker.stick_state(stick, direction, 1.0)
         else:
             self.rp_worker.send_button(button, "press")
-        event.accept()
 
-    def keyReleaseEvent(self, event):
-        if event.isAutoRepeat():
-            return
-        key = Qt.Key(event.key()).name.decode()
+    def _handle_release(self, key):
         button = self.mapping.get(key)
         if button is None:
             print(f"Button Invalid: {key}")
@@ -452,7 +467,6 @@ class StreamWindow(QtWidgets.QWidget):
             self.rp_worker.stick_state(stick, direction, 0.0)
         else:
             self.rp_worker.send_button(button, "release")
-        event.accept()
 
     def send_standby(self):
         if self.rp_worker.session is not None:
