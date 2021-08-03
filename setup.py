@@ -43,7 +43,7 @@ setup(
     author='ktnrg45',
     author_email='ktnrg45dev@gmail.com',
     packages=find_packages(exclude=['tests']),
-    url='https://github.com/ktnrg45/pyps4-2ndscreen',
+    url='https://github.com/ktnrg45/pyremoteplay',
     license='GPLv3',
     classifiers=CLASSIFIERS,
     keywords='playstation sony ps4 ps5 remote play remoteplay rp',
