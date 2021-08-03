@@ -1,0 +1,76 @@
+#!/bin/bash
+# Pushes a new version to PyPi. Run from root directory.
+DEV_BRANCH="dev"
+MASTER_BRANCH="master"
+CURRENT="Already up to date."
+VERSION="$(python -m pyremoteplay.__version__)"
+
+latest="$(gh release list | grep 'Latest' | head -c 5)"
+if [[ $VERSION == $latest ]];
+then
+    echo "Version: $VERSION is already latest."
+    exit 1
+fi
+
+git checkout dev
+git reset HEAD
+branch="$(git status | head -n 1 | tail -c 4)"
+if [[ $branch != $DEV_BRANCH ]];
+then
+    echo "Branch not on $DEV_BRANCH."
+    exit 1
+fi
+echo "Branch on $DEV_BRANCH."
+
+git_pull="$(git pull)"
+if [[ $git_pull != $CURRENT ]];
+then
+    echo "Branch not up to date."
+    exit 1
+fi
+echo "Branch up to date."
+
+python3 setup.py install
+
+
+git checkout master
+git reset HEAD
+
+branch="$(git status | head -n 1 | tail -c 7)"
+if [[ $branch != $MASTER_BRANCH ]];
+then
+    echo "Branch not on $MASTER_BRANCH."
+    exit 1
+fi
+echo "Branch on $MASTER_BRANCH."
+git_pull="$(git pull)"
+if [[ $git_pull != $CURRENT ]];
+then
+    echo "Branch not up to date."
+    exit 1
+fi
+echo "Branch up to date."
+
+echo "Merging dev into master."
+git merge dev
+git push
+
+read -p "Enter release message: " msg
+
+gh release create $VERSION -t $VERSION -n "$msg" --target $MASTER_BRANCH
+
+read -p "Upload to pypi?: y> " msg_pypi
+if [ "$msg_pypi" == "y" ];
+then
+    echo "Uploading to pypi."
+    rm -rf dist
+    rm -rf build
+    python3 setup.py sdist bdist_wheel
+    python3 -m twine check dist/*
+    python3 -m twine upload dist/* --skip-existing
+    echo "Uploaded to pypi."
+else
+    echo "Skipping upload to pypi."
+fi
+
+git checkout dev
