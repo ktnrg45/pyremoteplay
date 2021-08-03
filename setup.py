@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 """Setup for pyremoteplay."""
 
-from setuptools import find_packages, setup
 from pathlib import Path
+
+from setuptools import find_packages, setup
 
 SRC_DIR = "pyremoteplay"
 version_data = {}
@@ -40,7 +41,7 @@ setup(
     long_description=readme,
     long_description_content_type='text/markdown',
     author='ktnrg45',
-    author_email='ktnrg45-dev@gmail.com',
+    author_email='ktnrg45dev@gmail.com',
     packages=find_packages(exclude=['tests']),
     url='https://github.com/ktnrg45/pyps4-2ndscreen',
     license='GPLv3',
