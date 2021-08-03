@@ -55,7 +55,6 @@ class AVHandler():
         """Set headers."""
         if self._receiver:
             self._receiver._v_header = v_header
-            _LOGGER.info("Video Header: %s", v_header.hex())
             self._v_stream = AVStream("video", v_header, self._receiver.handle_video)
             self._a_stream = AVStream("audio", a_header, self._receiver.handle_audio)
 
@@ -67,8 +66,8 @@ class AVHandler():
             self._waiting = True
             _LOGGER.warning("AV Handler max queue size exceeded")
             self._session.error = "Decoder could not keep up. Try lowering framerate / resolution"
-            self._session.stop()
-            return
+            # self._session.stop()
+            # return
         if self._waiting and packet.unit_index == 0:
             self._waiting = False
         if not self._waiting:
@@ -286,7 +285,6 @@ class AVReceiver(abc.ABC):
                 "h264_videotoolbox",
                 "h264_omx",
                 "h264_vaapi",
-                "h264_v4l2m2m",
                 "h264"
             ]
         }
@@ -313,20 +311,19 @@ class AVReceiver(abc.ABC):
         codec.thread_type = av.codec.context.ThreadType.AUTO
         return codec
 
-    def __init__(self, session, video_format="h264", use_hw=False):
+    def __init__(self, session):
         self._session = session
         self.a_cb = None
         self.codec = None
-        self._use_hw = use_hw
-        self._video_format = video_format
 
     def get_video_codec(self):
-        self.codec = AVReceiver.video_codec(video_format=self._video_format, use_hw=self._use_hw)
+        self.codec = AVReceiver.video_codec(video_format=self._session.video_format, use_hw=self._session.use_hw)
 
     def notify_started(self):
         self._session.receiver_started.set()
 
     def start(self):
+        self.get_video_codec()
         self.notify_started()
 
     def decode_video_frame(self, buf: bytes) -> bytes:
@@ -353,16 +350,16 @@ class AVReceiver(abc.ABC):
 
 
 class QueueReceiver(AVReceiver):
-    def __init__(self, session, video_format="h264", use_hw=False):
-        super().__init__(session, video_format, use_hw)
+    def __init__(self, session):
+        super().__init__(session)
         self.v_queue = deque(maxlen=10)
-        self.get_video_codec()
         self.lock = threading.Lock()
 
     def add_audio_cb(self, cb):
         self.a_cb = cb
 
     def start(self):
+        self.get_video_codec()
         self.notify_started()
 
     def close(self):
@@ -409,8 +406,8 @@ class ProcessReceiver(AVReceiver):
             output.put_nowait(frame)
             frame = None
 
-    def __init__(self, session, video_format="h264", use_hw=False):
-        super().__init__(session, video_format, use_hw)
+    def __init__(self, session):
+        super().__init__(session)
         self.pipe1, self.pipe2 = multiprocessing.Pipe()
         self.manager = multiprocessing.Manager()
         self.v_queue = self.manager.Queue()
@@ -484,8 +481,8 @@ class AVFileReceiver(AVReceiver):
         pipe.close()
         process.wait()
 
-    def __init__(self, session, use_hw=False):
-        super().__init__(session, use_hw)
+    def __init__(self, session):
+        super().__init__(session)
         self._session = session
         self._worker = None
         self._pipe = None

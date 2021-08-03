@@ -156,7 +156,7 @@ class Session():
             f"fps={self.fps}>"
         )
 
-    def __init__(self, host: str, profile: dict, resolution="720p", fps="high", av_receiver=None, use_hw=False):
+    def __init__(self, host: str, profile: dict, resolution="720p", fps="high", av_receiver=None, use_hw=False, **kwargs):
         self._host = host
         self._profile = profile
         self._regist_data = {}
@@ -172,11 +172,13 @@ class Session():
         self._cipher = None
         self._state = Session.STATE_INIT
         self._stream = None
+        self._kwargs = kwargs
+        self.use_hw = use_hw
         self.max_width = self.max_height = None
         self.fps = FPS.preset(fps)
         self.resolution = Resolution.preset(resolution)
         self.error = ""
-        self.av_receiver = av_receiver(self, use_hw=use_hw) if av_receiver is not None else None
+        self.av_receiver = av_receiver(self) if av_receiver is not None else None
         self.av_handler = AVHandler(self)
         self.controller = Controller(self)
 
@@ -184,15 +186,32 @@ class Session():
         self._stop_event = None
         self.receiver_started = None
 
-    def _init_profile(self, mac_address):
-        """Init profile."""
-        regist_data = self._profile["hosts"].get(mac_address)
+    def _init_profile_kwargs(self, device: dict) -> bool:
+        """Return True if can init profile from kwargs."""
+        if not self._kwargs:
+            return False
+        self._regist_key = self._kwargs.get("regist_key")
+        try:
+            self._rp_key = bytes.fromhex(self._keargs.get("rp_key"))
+        except ValueError:
+            _LOGGER.error("Invalid RP Key")
+            return False
+        if not self._regist_key or not self._rp_key:
+            return False
+        self._type = device.get("host-type")
+        self._mac_address = device.get("host-id")
+        self._name = device.get("host-name")
+        return True
+
+    def _init_profile(self, device: dict) -> bool:
+        """Return True if Init profile."""
+        self._mac_address = device.get("host-id")
+        regist_data = self._profile["hosts"].get(self._mac_address)
         if not regist_data:
             return False
-        self._mac_address = mac_address
         self._regist_data = regist_data["data"]
-        self._type = regist_data["type"]
-        self._name = self._regist_data["Nickname"]
+        self._type = device.get("host-type")
+        self._name = device.get("host-name")
         self._regist_key = self._regist_data["RegistKey"]
         self._rp_key = bytes.fromhex(self._regist_data["RP-Key"])
         return True
@@ -207,11 +226,10 @@ class Session():
         if not device:
             _LOGGER.error("Could not detect host at: %s", self._host)
             return (False, False, None)
-        mac_address = device.get("host-id")
         if device.get("status_code") != 200:
             _LOGGER.info("Host: %s is not on", self._host)
-            return (True, False, mac_address)
-        return (True, True, mac_address)
+            return (True, False, device)
+        return (True, True, device)
 
     def _get_rp_url(self, request_type: str) -> str:
         valid_types = ["init", "session"]
@@ -374,7 +392,8 @@ class Session():
             return False
         if not self._init_profile(status[2]):
             self.error = "Profile is not registered with host"
-            return False
+            if not self._init_profile_kwargs(status[2]):
+                return False
         if not status[1]:
             if wakeup:
                 self.wakeup()
@@ -483,6 +502,14 @@ class Session():
         """Return Session ID."""
         return self._session_id
 
+    @property
+    def video_format(self):
+        formats = {
+            "ps4": "h264",
+            "ps5": "h265",
+        }
+        return formats.get(self.type.lower())
+    
 
 class SessionAsync(Session):
 
