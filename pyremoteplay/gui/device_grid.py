@@ -264,9 +264,10 @@ class DeviceGridWidget(QtWidgets.QWidget):
                     and not self.main_window.toolbar.controls.isChecked():
                 self.show()
             self.main_window.center_text.hide()
-        elif not self._is_startup:
-            self.main_window.startup_check_grid()
-            self._is_startup = False
+        else:
+            if self._is_startup:
+                self.main_window.startup_check_grid()
+                self._is_startup = False
 
     def discover(self):
         self.thread.start()

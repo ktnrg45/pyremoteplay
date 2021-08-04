@@ -38,7 +38,7 @@ class MainWindow(QtWidgets.QWidget):
         self.controls = ControlsWidget(self)
         self.options.hide()
         self.controls.hide()
-        self.center_text = QtWidgets.QLabel("", alignment=Qt.AlignCenter)
+        self.center_text = QtWidgets.QLabel("Searching for devices...", alignment=Qt.AlignCenter)
         self.center_text.setWordWrap(True)
         self.center_text.setObjectName("center-text")
         self.layout = QtWidgets.QVBoxLayout(self)
