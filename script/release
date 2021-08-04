@@ -51,8 +51,9 @@ then
 fi
 echo "Branch up to date."
 
-echo "Merging dev into master."
-git merge dev
+echo "Rebasing dev into master."
+git fetch origin dev
+git rebase origin/dev
 git push
 
 read -p "Enter release message: " msg
