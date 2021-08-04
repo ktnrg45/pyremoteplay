@@ -1,5 +1,6 @@
 import logging
 
+from pyremoteplay.__version__ import VERSION
 from pyremoteplay.session import Session, send_wakeup
 from pyremoteplay.util import timeit
 from PySide6 import QtCore, QtWidgets
@@ -47,6 +48,7 @@ class MainWindow(QtWidgets.QWidget):
         self.layout.addWidget(self.device_grid)
         self.layout.addWidget(self.controls)
         self.layout.setAlignment(self.toolbar, Qt.AlignTop)
+        self.layout.addWidget(QtWidgets.QLabel(f"v{VERSION}", alignment=Qt.AlignBottom))
         self.set_style()
         self.device_grid.discover()
         self.toolbar.refresh.setChecked(True)
