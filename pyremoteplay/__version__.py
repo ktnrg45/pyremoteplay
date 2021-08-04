@@ -1,4 +1,4 @@
-VERSION = "0.0.2"
+VERSION = "0.0.3"
 MIN_PY_VERSION = "3.8"
 
 if __name__ == "__main__":
