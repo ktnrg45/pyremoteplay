@@ -323,6 +323,7 @@ class OptionsWidget(QtWidgets.QWidget):
         del_device = QtWidgets.QPushButton("Remove Device")
         add_device.clicked.connect(self.new_device)
         del_device.clicked.connect(self.delete_device)
+        del_device.clicked.connect(del_device.hide)
         set_account.clicked.connect(self.change_profile)
         add_account.clicked.connect(self.new_profile)
         del_account.clicked.connect(self.delete_profile)
@@ -341,6 +342,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.accounts = QtWidgets.QTreeWidget()
         self.accounts.itemDoubleClicked.connect(self.change_profile)
         self.devices = QtWidgets.QTreeWidget()
+        self.devices.itemClicked.connect(del_device.show)
 
         self.add(self.fps, 0, 1, label=label(self, "FPS:"))
         self.add(self.fps_show, 0, 2)
@@ -365,6 +367,7 @@ class OptionsWidget(QtWidgets.QWidget):
             wrap=True,
         )
         self.layout.addWidget(devices_label, 3, 4, 1, 2)
+        del_device.hide()
 
     def set_options(self) -> bool:
         try:
@@ -492,9 +495,10 @@ class OptionsWidget(QtWidgets.QWidget):
         self.set_devices()
 
     def delete_device(self):
-        item = self.devices.selectedItems()[0]
-        if not item:
+        items = self.devices.selectedItems()
+        if not items:
             return
+        item = items[0]
         host = item.text(0)
         self.options["devices"].remove(host)
         write_options(self.options)
