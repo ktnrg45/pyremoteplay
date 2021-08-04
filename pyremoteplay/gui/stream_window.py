@@ -27,6 +27,7 @@ class RPWorker(QtCore.QObject):
         self.session = None
         self.thread = None
         self.error = ""
+        event_emitter.on("stop", self.stop)
 
     def run(self):
         if not self.session:
@@ -46,15 +47,10 @@ class RPWorker(QtCore.QObject):
         if self.session:
             print(f"Stopping Session @ {self.session.host}")
             self.session.stop()
-        self.error = self.session.error
+            self.error = self.session.error
         self.session = None
         self.window = None
         self.finished.emit()
-        try:
-            self.finished.disconnect()
-            self.started.disconnect()
-        except RuntimeError as error:
-            print(error)
 
     def setup(self, window, host, profile, resolution, fps, use_hw):
         self.window = window
@@ -136,9 +132,6 @@ class AVProcessor(QtCore.QObject):
             if not self._set_slow:
                 self.slow.emit()
                 self._set_slow = True
-
-        if self.window.rp_worker.session.is_stopped:
-            self.window.rp_worker.stop()
 
 
 class JoystickWidget(QtWidgets.QFrame):
@@ -324,8 +317,8 @@ class StreamWindow(QtWidgets.QWidget):
 
         self.rp_worker = self.main_window.rp_worker
         self.av_thread = QtCore.QThread()
-        self.rp_worker.finished.connect(self.close)
         self.rp_worker.started.connect(self.show_video)
+        self.rp_worker.finished.connect(self.close)
         self.av_worker.slow.connect(self.av_slow)
         self.av_worker.moveToThread(self.av_thread)
         self.av_thread.started.connect(self.start_timer)

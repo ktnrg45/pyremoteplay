@@ -66,8 +66,9 @@ class AVHandler():
             self._waiting = True
             _LOGGER.warning("AV Handler max queue size exceeded")
             self._session.error = "Decoder could not keep up. Try lowering framerate / resolution"
-            # self._session.stop()
-            # return
+            self._session.stop()
+            event_emitter.emit("stop")
+            return
         if self._waiting and packet.unit_index == 0:
             self._waiting = False
         if not self._waiting:
