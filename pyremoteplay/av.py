@@ -35,7 +35,7 @@ class AVHandler():
         self._receiver = None
         self._v_stream = None
         self._a_stream = None
-        self._queue = deque(maxlen=1000)
+        self._queue = deque(maxlen=5000)
         self._worker = None
         self._last_congestion = 0
         self._waiting = False
