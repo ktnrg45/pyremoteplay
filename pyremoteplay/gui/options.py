@@ -1,4 +1,5 @@
 from pyps4_2ndscreen.ddp import get_status
+from pyremoteplay.av import AVReceiver
 from pyremoteplay.const import RESOLUTION_PRESETS
 from pyremoteplay.oauth import LOGIN_URL, get_user_account
 from pyremoteplay.register import register
@@ -327,6 +328,11 @@ class OptionsWidget(QtWidgets.QWidget):
         set_account.clicked.connect(self.change_profile)
         add_account.clicked.connect(self.new_profile)
         del_account.clicked.connect(self.delete_profile)
+        res_label = label(self, "**1080p is for PS4 Pro, PS5 only**", wrap=False)
+        hw_label = QtWidgets.QLineEdit(self)
+        hw_label.setText(self.get_decoder())
+        hw_label.setAlignment(Qt.AlignCenter)
+        hw_label.setReadOnly(True)
         self.fps = QtWidgets.QComboBox(self)
         self.fps.addItems(["30", "60"])
         self.fps.currentTextChanged.connect(self.change_fps)
@@ -348,18 +354,18 @@ class OptionsWidget(QtWidgets.QWidget):
         self.add(self.fps_show, 0, 2)
         self.add(self.resolution, 1, 1, label=label(self, "Resolution:"))
         self.add(self.fullscreen, 1, 2)
-        res_label = label(self, "**1080p is for PS4 Pro only**", wrap=True)
-        self.layout.addWidget(res_label, 2, 0)
-        self.layout.addWidget(self.use_hw, 2, 2)
-        self.layout.addItem(spacer(), 3, 0)
-        self.add(set_account, 4, 0)
-        self.add(add_account, 4, 1)
-        self.add(del_account, 4, 2)
-        self.layout.addWidget(self.accounts, 5, 0, 3, 3)
-        self.layout.addItem(spacer(), 5, 3)
-        self.add(add_device, 4, 4)
-        self.add(del_device, 4, 5)
-        self.layout.addWidget(self.devices, 5, 4, 3, 2)
+        self.layout.addWidget(res_label, 2, 0, 1, 2)
+        self.add(hw_label, 3, 1, label=label(self, "Available Decoder:"))
+        self.layout.addWidget(self.use_hw, 3, 2)
+        self.layout.addItem(spacer(), 4, 0)
+        self.add(set_account, 5, 0)
+        self.add(add_account, 5, 1)
+        self.add(del_account, 5, 2)
+        self.add(add_device, 5, 4)
+        self.add(del_device, 5, 5)
+        self.layout.addWidget(self.accounts, 6, 0, 3, 3)
+        self.layout.addItem(spacer(), 6, 3)
+        self.layout.addWidget(self.devices, 6, 4, 3, 2)
         devices_label = label(
             self,
             "If your device is not showing up automatically, "
@@ -368,6 +374,13 @@ class OptionsWidget(QtWidgets.QWidget):
         )
         self.layout.addWidget(devices_label, 3, 4, 1, 2)
         del_device.hide()
+
+    def get_decoder(self):
+        decoder = AVReceiver.find_video_decoder(video_format="h264", use_hw=True)
+        decoder = decoder.replace("h264", "").replace("_", "")
+        if not decoder:
+            decoder = "CPU"
+        return decoder
 
     def set_options(self) -> bool:
         try:

@@ -433,10 +433,10 @@ class StreamWindow(QtWidgets.QWidget):
         if button is None:
             return
         if button == "QUIT":
-            self.rp_worker.finished.emit()
+            self.rp_worker.stop()
             return
         if button == "STANDBY":
-            message(self, "Standby", "Set host to standby?", level="info", cb=self.send_standby, escape=True)
+            message(self.main_window, "Standby", "Set host to standby?", level="info", cb=self.send_standby, escape=True)
             return
         if "STICK" in button:
             button = button.split("_")

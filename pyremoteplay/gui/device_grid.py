@@ -268,6 +268,8 @@ class DeviceGridWidget(QtWidgets.QWidget):
             if self._is_startup:
                 self.main_window.startup_check_grid()
                 self._is_startup = False
+            else:
+                self.main_window.center_text.hide()
 
     def discover(self):
         self.thread.start()
