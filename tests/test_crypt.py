@@ -214,6 +214,10 @@ def test_encrypt_decrypt():
     local = crypt.LocalCipher(handshake_key, secret)
     remote = crypt.RemoteCipher(handshake_key, secret)
     local._base_index = remote._base_index = 42
+    local.keystreams = []
+    local.keystream_index = 0
+    remote.keystreams = []
+    remote.keystream_index = 0
     local._init_cipher()
     remote._init_cipher()
     assert local.base_key == key

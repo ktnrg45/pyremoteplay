@@ -1,6 +1,5 @@
 """Common Crypto Methods."""
 import logging
-import threading
 from struct import pack_into
 
 from Cryptodome.Cipher import AES
@@ -142,6 +141,7 @@ class BaseCipher():
         self.base_key, self.base_iv = get_base_key_iv(
             self.secret, self.handshake_key, self._base_index)
         self.current_key = self.base_gmac_key = get_gmac_key(self.index, self.base_key, self.base_iv)
+        self._next_key_stream()
 
     def _next_key_stream(self):
         while len(self.keystreams) < 3:
@@ -149,12 +149,6 @@ class BaseCipher():
             key_stream = get_key_stream(self.base_key, self.base_iv, key_pos, BaseCipher.KEYSTREAM_LEN)
             self.keystreams.append((self.keystream_index, key_stream))
             self.keystream_index += 1
-
-    def _gen_key_stream(self):
-        thread = threading.Thread(
-            target=self._next_keystream,
-        )
-        thread.start()
 
     def get_key_stream(self, key_pos: int, data_len: int) -> bytes:
         self._next_key_stream()
