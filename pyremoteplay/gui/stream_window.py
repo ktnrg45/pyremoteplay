@@ -126,12 +126,6 @@ class AVProcessor(QtCore.QObject):
         if len(self.pixmaps) > 2:
             self.pixmaps.clear()
         self.pixmaps.append(QtGui.QPixmap.fromImage(image))
-        # Clear Queue if behind. Try to use latest frame.
-        if self.window.rp_worker.session.av_receiver.queue_size > 3:
-            self.window.rp_worker.session.av_receiver.v_queue.clear()
-            if not self._set_slow:
-                self.slow.emit()
-                self._set_slow = True
 
 
 class JoystickWidget(QtWidgets.QFrame):
@@ -468,6 +462,7 @@ class StreamWindow(QtWidgets.QWidget):
     def closeEvent(self, event):
         self.hide()
         self.cleanup()
+        self.deleteLater()
         event.accept()
 
     def cleanup(self):

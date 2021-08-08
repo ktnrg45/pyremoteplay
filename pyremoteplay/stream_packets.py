@@ -68,7 +68,7 @@ LAUNCH_SPEC = {
         'language': 'sp',
         'acceptButton': 'X',
         'connectedControllers': ['xinput', 'ds3', 'ds4'],
-        'yuvCoefficient': 'bt601',
+        'yuvCoefficient': 'bt709',  # Changed from bt601
         'videoEncoderProfile': 'hw4.1',
         'audioEncoderProfile': 'audio1'
     },
@@ -78,7 +78,11 @@ LAUNCH_SPEC = {
         'region': 'US',
         'languagesUsed': ['en', 'jp']
     },
-    'handshakeKey': None}
+    "adaptiveStreamMode": "resize",
+    "videoCodec": "avc",
+    "dynamicRange": "HDR",
+    'handshakeKey': None,
+}
 
 
 def get_launch_spec(

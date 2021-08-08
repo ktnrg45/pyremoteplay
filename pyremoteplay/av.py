@@ -3,6 +3,7 @@ import abc
 import errno
 import logging
 import multiprocessing
+import queue
 import sys
 import threading
 import time
@@ -274,7 +275,7 @@ class AVReceiver(abc.ABC):
             return None
         #_LOGGER.debug(f"Frame: Key:{frame.key_frame}, Interlaced:{frame.interlaced_frame} Pict:{frame.pict_type}")
         if to_rgb:
-            frame = frame.reformat(frame.width, frame.height, "rgb24", 'itu709')
+            frame = frame.reformat(frame.width, frame.height, "rgb24")
         return frame
 
     def find_video_decoder(video_format="h264", use_hw=False):
@@ -291,6 +292,7 @@ class AVReceiver(abc.ABC):
         }
         _LOGGER.debug("Using HW: %s", use_hw)
         if not use_hw:
+            _LOGGER.debug("%s - %s - %s", video_format, use_hw, decoders)
             return decoders.get(video_format)[-1]
         for decoder in decoders.get(video_format):
             try:
@@ -303,12 +305,12 @@ class AVReceiver(abc.ABC):
         return decoder
 
     def video_codec(video_format="h264", use_hw=False):
-        decoder = AVReceiver.find_video_decoder(video_format, use_hw)
+        decoder = AVReceiver.find_video_decoder(video_format=video_format, use_hw=use_hw)
         codec = av.codec.Codec(decoder, "r").create()
         codec.options = AVReceiver.AV_CODEC_OPTIONS_H264
         codec.pix_fmt = "yuv420p"
         #codec.flags = av.codec.context.Flags.LOW_DELAY
-        #codec.flags2 = av.codec.context.Flags2.FAST
+        codec.flags2 = av.codec.context.Flags2.FAST
         codec.thread_type = av.codec.context.ThreadType.AUTO
         return codec
 
@@ -378,9 +380,10 @@ class QueueReceiver(AVReceiver):
         frame = self.decode_video_frame(buf)
         if frame is None:
             return
-        self.v_queue.append(frame)
         if self.queue_size >= self.v_queue.maxlen:
             _LOGGER.warning("AV Receiver max queue size exceeded")
+            self.v_queue.clear()
+        self.v_queue.append(frame)
         event_emitter.emit('frame')
 
     def handle_audio(self, buf):
@@ -392,55 +395,84 @@ class QueueReceiver(AVReceiver):
         return len(self.v_queue)
 
 
-class ProcessReceiver(AVReceiver):
-    """Uses Multiprocessing. Seems to be slower than threaded."""
+# class ProcessReceiver(AVReceiver):
+#     """Uses Multiprocessing. Seems to be slower than threaded."""
+#     class FrameMinimal():
+#         def __init__(self, plane, width, height):
+#             self.planes = [plane]
+#             self.width = width
+#             self.height = height
 
-    def process(pipe_in, output, lock):
-        codec = AVReceiver.video_codec()
+#     def process(q_in, q_out, video_format="h264", use_hw=False):
+#         codec = AVReceiver.video_codec(video_format=video_format, use_hw=use_hw)
 
-        _LOGGER.info("Process Started")
-        while True:
-            buf = pipe_in.recv_bytes()
-            frame = AVReceiver.video_frame(buf, codec)
-            if frame is None:
-                continue
-            output.put_nowait(frame)
-            frame = None
+#         _LOGGER.info("Process Started")
+#         while True:
+#             frame = None
+#             try:
+#                 buf = q_in.get_nowait()
+#             except queue.Empty:
+#                 continue
+#             frame = AVReceiver.video_frame(buf, codec)
+#             if frame is None:
+#                 continue
+#             try:
+#                 q_out.put_nowait((bytearray(frame.planes[0]), frame.width, frame.height))
+#                 frame = None
+#                 event_emitter.emit("frame")
+#             except BrokenPipeError:
+#                 break
 
-    def __init__(self, session):
-        super().__init__(session)
-        self.pipe1, self.pipe2 = multiprocessing.Pipe()
-        self.manager = multiprocessing.Manager()
-        self.v_queue = self.manager.Queue()
-        self.lock = self.manager.Lock()
-        self._worker = None
+#     def listener(session, queue):
+#         while not session.is_stopped:
+#             if not queue.empty():
+#                 event_emitter.emit("frame")
+#                 break
+#             else:
+#                 time.sleep(0.001)
 
-    def run(self):
-        self._worker = multiprocessing.Process(
-            target=ProcessReceiver.process,
-            args=(self.pipe1, self.v_queue, self.lock),
-            daemon=True,
-        )
-        self._worker.start()
-        _LOGGER.info("Process Start")
+#     def __init__(self, session):
+#         super().__init__(session)
+#         self.pipe1, self.pipe2 = multiprocessing.Pipe()
+#         self.manager = multiprocessing.Manager()
+#         self.v_queue_in = self.manager.Queue(100)
+#         self.v_queue = self.manager.Queue(10)
+#         self.lock = self.manager.Lock()
+#         self._worker = None
 
-    def get_video_frame(self):
-        if not self.v_queue:
-            return None
-        return self.v_queue.get_nowait()
+#     def start(self):
+#         self._worker = multiprocessing.Process(
+#             target=ProcessReceiver.process,
+#             args=(self.v_queue_in, self.v_queue, self._session.video_format, self._session.use_hw),
+#             daemon=True,
+#         )
+#         self._worker.start()
+#         _LOGGER.info("Process Start")
+#         self._listener = threading.Thread(target=ProcessReceiver.listener, args=(self._session, self.v_queue))
+#         self._listener.start()
+#         self.notify_started()
 
-    def handle_video(self, buf):
-        self.pipe2.send_bytes(buf)
+#     def get_video_frame(self):
+#         frame = None
+#         try:  
+#             frame = self.v_queue.get_nowait()
+#             frame = ProcessReceiver.FrameMinimal(frame[0], frame[1], frame[2])
+#         except queue.Empty:
+#             pass
+#         return frame
 
-    def handle_audio(self, buf):
-        if self.a_cb is not None:
-            self.a_cb(buf)
+#     def handle_video(self, buf):
+#         self.v_queue_in.put_nowait(buf)
 
-    def close(self):
-        if self._worker:
-            self._worker.terminate()
-            self._worker.join()
-            self._worker.close()
+#     def handle_audio(self, buf):
+#         if self.a_cb is not None:
+#             self.a_cb(buf)
+
+#     def close(self):
+#         if self._worker:
+#             self._worker.terminate()
+#             self._worker.join()
+#             self._worker.close()
 
 
 class AVFileReceiver(AVReceiver):

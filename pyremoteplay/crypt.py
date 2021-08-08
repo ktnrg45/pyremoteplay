@@ -152,6 +152,7 @@ class BaseCipher():
 
     def get_key_stream(self, key_pos: int, data_len: int) -> bytes:
         self._next_key_stream()
+        # Remove block if key pos not in queue.
         for index, key_stream in enumerate(self.keystreams):
             ks_index = key_stream[0]
             if key_pos // BaseCipher.KEYSTREAM_LEN > ks_index:
