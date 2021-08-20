@@ -16,28 +16,37 @@ TYPE_PS5 = "PS5"
 RP_CRYPT_SIZE = 16
 
 
+class Quality(IntEnum):
+    """Enums for quality."""
+    VERY_LOW = 2000
+    LOW = 4000
+    MEDIUM = 6000
+    HIGH = 10000
+    VERY_HIGH = 15000
+
+
 RESOLUTION_360P = {
     'width': 640,
     'height': 360,
-    'bitrate': 2000,
+    'bitrate': int(Quality.VERY_LOW),
 }
 
 RESOLUTION_540P = {
     'width': 960,
     'height': 540,
-    'bitrate': 6000,
+    'bitrate': int(Quality.MEDIUM),
 }
 
 RESOLUTION_720P = {
     'width': 1280,
     'height': 720,
-    'bitrate': 10000,
+    'bitrate': int(Quality.HIGH),
 }
 
 RESOLUTION_1080P = {
     'width': 1920,
     'height': 1080,
-    'bitrate': 15000,
+    'bitrate': int(Quality.VERY_HIGH),
 }
 
 RESOLUTION_PRESETS = {
