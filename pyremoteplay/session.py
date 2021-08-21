@@ -156,7 +156,7 @@ class Session():
             f"fps={self.fps}>"
         )
 
-    def __init__(self, host: str, profile: dict, resolution="720p", fps="high", av_receiver=None, use_hw=False, **kwargs):
+    def __init__(self, host: str, profile: dict, resolution="720p", fps="high", av_receiver=None, use_hw=False, quality="default", **kwargs):
         self._host = host
         self._profile = profile
         self._regist_data = {}
@@ -173,6 +173,7 @@ class Session():
         self._state = Session.STATE_INIT
         self._stream = None
         self._kwargs = kwargs
+        self.quality = quality
         self.use_hw = use_hw
         self.max_width = self.max_height = None
         self.fps = FPS.preset(fps)
@@ -529,8 +530,8 @@ class SessionAsync(Session):
         def close(self):
             self.transport.close()
 
-    def __init__(self, host: str, profile: dict, resolution="720p", fps="high", av_receiver=None, use_hw=False, loop=None, **kwargs):
-        super().__init__(host, profile, resolution, fps, av_receiver, use_hw, **kwargs)
+    def __init__(self, host: str, profile: dict, resolution="720p", fps="high", av_receiver=None, use_hw=False, quality="default", loop=None, **kwargs):
+        super().__init__(host, profile, resolution, fps, av_receiver, use_hw, quality, **kwargs)
         self.loop = asyncio.get_event_loop() if loop is None else loop
         self._protocol = None
         self._transport = None

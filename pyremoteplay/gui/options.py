@@ -1,6 +1,6 @@
 from pyps4_2ndscreen.ddp import get_status
 from pyremoteplay.av import AVReceiver
-from pyremoteplay.const import RESOLUTION_PRESETS
+from pyremoteplay.const import RESOLUTION_PRESETS, Quality
 from pyremoteplay.oauth import LOGIN_URL, get_user_account
 from pyremoteplay.register import register
 from pyremoteplay.util import (add_profile, add_regist_data, get_mapping,
@@ -333,6 +333,15 @@ class OptionsWidget(QtWidgets.QWidget):
         hw_label.setText(self.get_decoder())
         hw_label.setAlignment(Qt.AlignCenter)
         hw_label.setReadOnly(True)
+        devices_label = label(
+            self,
+            "If your device is not showing up automatically, "
+            "try adding the IP Address below.",
+            wrap=True,
+        )
+        self.quality = QtWidgets.QComboBox(self)
+        self.quality.addItems([item.name for item in Quality])
+        self.quality.currentTextChanged.connect(self.change_quality)
         self.fps = QtWidgets.QComboBox(self)
         self.fps.addItems(["30", "60"])
         self.fps.currentTextChanged.connect(self.change_fps)
@@ -350,29 +359,24 @@ class OptionsWidget(QtWidgets.QWidget):
         self.devices = QtWidgets.QTreeWidget()
         self.devices.itemClicked.connect(del_device.show)
 
-        self.add(self.fps, 0, 1, label=label(self, "FPS:"))
-        self.add(self.fps_show, 0, 2)
-        self.add(self.resolution, 1, 1, label=label(self, "Resolution:"))
-        self.add(self.fullscreen, 1, 2)
-        self.layout.addWidget(res_label, 2, 0, 1, 2)
-        self.add(hw_label, 3, 1, label=label(self, "Available Decoder:"))
-        self.layout.addWidget(self.use_hw, 3, 2)
-        self.layout.addItem(spacer(), 4, 0)
-        self.add(set_account, 5, 0)
-        self.add(add_account, 5, 1)
-        self.add(del_account, 5, 2)
-        self.add(add_device, 5, 4)
-        self.add(del_device, 5, 5)
-        self.layout.addWidget(self.accounts, 6, 0, 3, 3)
-        self.layout.addItem(spacer(), 6, 3)
-        self.layout.addWidget(self.devices, 6, 4, 3, 2)
-        devices_label = label(
-            self,
-            "If your device is not showing up automatically, "
-            "try adding the IP Address below.",
-            wrap=True,
-        )
-        self.layout.addWidget(devices_label, 3, 4, 1, 2)
+        self.add(self.quality, 0, 1, label=label(self, "Quality:"))
+        self.add(self.fps, 1, 1, label=label(self, "FPS:"))
+        self.add(self.fps_show, 1, 2)
+        self.add(self.resolution, 2, 1, label=label(self, "Resolution:"))
+        self.add(self.fullscreen, 2, 2)
+        self.layout.addWidget(res_label, 3, 0, 1, 2)
+        self.add(hw_label, 4, 1, label=label(self, "Available Decoder:"))
+        self.layout.addWidget(self.use_hw, 4, 2)
+        self.layout.addWidget(devices_label, 4, 4, 1, 2)
+        self.layout.addItem(spacer(), 5, 0)
+        self.add(set_account, 6, 0)
+        self.add(add_account, 6, 1)
+        self.add(del_account, 6, 2)
+        self.add(add_device, 6, 4)
+        self.add(del_device, 6, 5)
+        self.layout.addWidget(self.accounts, 7, 0, 3, 3)
+        self.layout.addItem(spacer(), 7, 3)
+        self.layout.addWidget(self.devices, 7, 4, 3, 2)
         del_device.hide()
 
     def get_decoder(self):
@@ -384,6 +388,7 @@ class OptionsWidget(QtWidgets.QWidget):
 
     def set_options(self) -> bool:
         try:
+            self.quality.setCurrentText(str(self.options["quality"]))
             self.fps.setCurrentText(str(self.options["fps"]))
             self.fps_show.setChecked(self.options["show_fps"])
             self.use_hw.setChecked(self.options["use_hw"])
@@ -397,6 +402,7 @@ class OptionsWidget(QtWidgets.QWidget):
 
     def default_options(self) -> dict:
         options = {
+            "quality": "Default",
             "fps": 30,
             "show_fps": False,
             "resolution": "720p",
@@ -454,6 +460,10 @@ class OptionsWidget(QtWidgets.QWidget):
         self.layout.addWidget(item, row, col, Qt.AlignLeft)
         if label is not None:
             self.layout.addWidget(label, row, col - 1, Qt.AlignLeft)
+
+    def change_quality(self, text):
+        self.options["quality"] = text
+        write_options(self.options)
 
     def change_fps(self, text):
         self.options["fps"] = int(text)

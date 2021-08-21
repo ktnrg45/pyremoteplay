@@ -52,9 +52,9 @@ class RPWorker(QtCore.QObject):
         self.window = None
         self.finished.emit()
 
-    def setup(self, window, host, profile, resolution, fps, use_hw):
+    def setup(self, window, host, profile, resolution, fps, use_hw, quality):
         self.window = window
-        self.session = SessionAsync(host, profile, resolution=resolution, fps=fps, av_receiver=QueueReceiver, use_hw=use_hw)
+        self.session = SessionAsync(host, profile, resolution=resolution, fps=fps, av_receiver=QueueReceiver, use_hw=use_hw, quality=quality)
         # self.session.av_receiver.add_audio_cb(self.handle_audio)
 
     def worker(self):
@@ -318,7 +318,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.av_thread.started.connect(self.start_timer)
         # self.av_thread.started.connect(self.av_worker.next_frame)
 
-    def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None, use_hw=False):
+    def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None, use_hw=False, quality="default"):
         self.input_options = input_options
         self.frame_mutex = QtCore.QMutex()
         self.video_output.hide()
@@ -327,9 +327,10 @@ class StreamWindow(QtWidgets.QWidget):
         self.fullscreen = fullscreen
         self.ms_refresh = 1000.0/self.fps
         self.setWindowTitle(f"Session {name} @ {host}")
-        self.rp_worker.setup(self, host, profile, resolution, fps, use_hw)
+        self.rp_worker.setup(self, host, profile, resolution, fps, use_hw, quality)
+        self.show_fps = show_fps
 
-        if show_fps:
+        if self.show_fps:
             self.init_fps()
             self.fps_label.show()
         else:
@@ -372,7 +373,8 @@ class StreamWindow(QtWidgets.QWidget):
         if self.fullscreen:
             pixmap = pixmap.scaled(self.video_output.size(), aspectMode=Qt.KeepAspectRatio, mode=self._video_transform_mode)
         self.video_output.setPixmap(pixmap)
-        self.set_fps()
+        if self.show_fps:
+            self.set_fps()
 
     def av_slow(self):
         self._video_transform_mode = Qt.FastTransformation

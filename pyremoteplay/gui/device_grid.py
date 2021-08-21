@@ -105,6 +105,8 @@ class DeviceButton(QtWidgets.QPushButton):
                     self.text_color = self.COLOR_LIGHT
                 else:
                     self.text_color = self.COLOR_DARK
+        else:
+            self.setIcon(QtGui.QIcon())
 
     def calc_contrast(self, hex_color):
         colors = (self.text_color, hex_color)

@@ -18,6 +18,7 @@ RP_CRYPT_SIZE = 16
 
 class Quality(IntEnum):
     """Enums for quality."""
+    DEFAULT = 0
     VERY_LOW = 2000
     LOW = 4000
     MEDIUM = 6000

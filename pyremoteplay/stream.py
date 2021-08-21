@@ -258,6 +258,7 @@ class RPStream():
             max_fps=self.max_fps,
             rtt=int(self.rtt),
             mtu_in=self.mtu,
+            quality=self._session.quality,
         )
         if format_type == "raw":
             return launch_spec

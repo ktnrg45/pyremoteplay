@@ -133,6 +133,7 @@ class MainWindow(QtWidgets.QWidget):
         show_fps = options['show_fps']
         fullscreen = options['fullscreen']
         use_hw = options['use_hw']
+        quality = options['quality']
         self._stream_window = StreamWindow(self)
         self._stream_window.start(
             ip_address,
@@ -145,6 +146,7 @@ class MainWindow(QtWidgets.QWidget):
             input_map=self.controls.get_map(),
             input_options=self.controls.get_options(),
             use_hw=use_hw,
+            quality=quality, 
         )
         self._app.setActiveWindow(self._stream_window)
 

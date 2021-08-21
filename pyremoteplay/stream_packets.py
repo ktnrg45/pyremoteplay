@@ -8,6 +8,7 @@ from struct import pack, pack_into, unpack_from
 
 from google.protobuf.message import DecodeError
 
+from .const import Quality
 from .takion_pb2 import *
 from .util import log_bytes, timeit
 
@@ -87,13 +88,19 @@ LAUNCH_SPEC = {
 
 def get_launch_spec(
         handshake_key: bytes, resolution: dict, max_fps: int, rtt: int,
-        mtu_in: int) -> bytes:
+        mtu_in: int, quality: str) -> bytes:
     r = resolution
+    quality = quality.upper()
+    if quality == "DEFAULT":
+        bitrate = r['bitrate']
+    else:
+        bitrate = int(Quality[quality])
+    _LOGGER.info("Using bitrate: %s kbps", bitrate)
     launch_spec = LAUNCH_SPEC
     launch_spec['streamResolutions'][0]['resolution']['width'] = r['width']
     launch_spec['streamResolutions'][0]['resolution']['height'] = r['height']
     launch_spec['streamResolutions'][0]['maxFps'] = max_fps
-    launch_spec['network']['bwKbpsSent'] = r['bitrate']
+    launch_spec['network']['bwKbpsSent'] = bitrate
     launch_spec['network']['mtu'] = mtu_in
     launch_spec['network']['rtt'] = rtt
     launch_spec['handshakeKey'] = b64encode(handshake_key).decode()
