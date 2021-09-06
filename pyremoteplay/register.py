@@ -13,8 +13,10 @@ _LOGGER = logging.getLogger(__name__)
 
 CLIENT_TYPE = "dabfa2ec873de5839bee8d3f4c0239c4282c07c25c6077a2931afcf0adc0d34f"
 REG_URL = "http://{}:{}/sie/ps4/rp/sess/rgst"
-REG_INIT = b"SRC2"
-REG_START = b'RES2'
+REG_INIT_PS4 = b"SRC2"
+REG_START_PS4 = b'RES2'
+REG_INIT_PS5 = b"SRC3"
+REG_START_PS5 = b'RES3'
 
 REG_DATA = bytearray(b'A' * 480)
 REG_KEY_SIZE = 16
@@ -89,7 +91,7 @@ def regist_init(host: str, timeout: float) -> bool:
     """Check if device is accepting registrations."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(timeout)
-    sock.sendto(REG_INIT, (host, RP_PORT))
+    sock.sendto(REG_INIT_PS4, (host, RP_PORT))
     success = False
     try:
         response = sock.recv(32)
@@ -99,7 +101,7 @@ def regist_init(host: str, timeout: float) -> bool:
             "Remote Play Connection Settings -> Add Device\n"
         )
     else:
-        if response is not None and bytearray(response)[0:4] == REG_START:
+        if response is not None and bytearray(response)[0:4] == REG_START_PS4:
             _LOGGER.info("Register Started")
             success = True
         else:
