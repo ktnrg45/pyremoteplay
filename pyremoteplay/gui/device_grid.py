@@ -1,10 +1,10 @@
 """Device Grid Widget."""
 
 import requests
-from pyps4_2ndscreen.ddp import get_status, search
 from pyps4_2ndscreen.media_art import (BASE_IMAGE_URL, BASE_URL,
                                        DEFAULT_HEADERS, ResultItem,
                                        get_region_codes)
+from pyremoteplay.ddp import get_status, search
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt
 

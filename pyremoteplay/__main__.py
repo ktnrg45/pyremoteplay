@@ -8,8 +8,7 @@ import sys
 import threading
 from collections import OrderedDict
 
-from pyps4_2ndscreen.ddp import get_status
-
+from .ddp import get_status
 from .oauth import prompt as oauth_prompt
 from .register import register
 from .session import Session, SessionAsync

@@ -1,6 +1,7 @@
-from pyps4_2ndscreen.ddp import get_status
+"""Options Window."""
 from pyremoteplay.av import AVReceiver
 from pyremoteplay.const import RESOLUTION_PRESETS, Quality
+from pyremoteplay.ddp import get_status
 from pyremoteplay.oauth import LOGIN_URL, get_user_account
 from pyremoteplay.register import register
 from pyremoteplay.util import (add_profile, add_regist_data, get_mapping,

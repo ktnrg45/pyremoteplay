@@ -11,13 +11,13 @@ from struct import pack_into
 
 import requests
 from Cryptodome.Random import get_random_bytes
-from pyps4_2ndscreen.ddp import get_status
 
 from .av import AVFileReceiver, AVHandler
 from .const import (DDP_PORT, DDP_VERSION, FPS, OS_TYPE, RP_CRYPT_SIZE,
                     RP_PORT, RP_VERSION, TYPE_PS4, TYPE_PS5, USER_AGENT,
                     Resolution)
 from .crypt import SessionCipher
+from .ddp import get_status
 from .errors import RemotePlayError, RPErrorHandler
 from .feedback import Controller
 from .keys import SESSION_KEY_0, SESSION_KEY_1
