@@ -4,19 +4,31 @@ import socket
 
 from Cryptodome.Random import get_random_bytes
 
-from .const import RP_PORT, RP_VERSION, USER_AGENT
+from .const import RP_PORT, RP_VERSION, TYPE_PS4, TYPE_PS5, USER_AGENT
 from .crypt import SessionCipher
+from .ddp import get_host_type, get_status
 from .keys import REG_KEY_0, REG_KEY_1
 from .util import log_bytes
 
 _LOGGER = logging.getLogger(__name__)
 
 CLIENT_TYPE = "dabfa2ec873de5839bee8d3f4c0239c4282c07c25c6077a2931afcf0adc0d34f"
-REG_URL = "http://{}:{}/sie/ps4/rp/sess/rgst"
+REG_PATH = "/sie/ps4/rp/sess/rgst"
 REG_INIT_PS4 = b"SRC2"
 REG_START_PS4 = b'RES2'
 REG_INIT_PS5 = b"SRC3"
 REG_START_PS5 = b'RES3'
+
+HOST_TYPES = {
+    TYPE_PS4: {
+        "init": REG_INIT_PS4,
+        "start": REG_START_PS4,
+    },
+    TYPE_PS5: {
+        "init": REG_INIT_PS5,
+        "start": REG_START_PS5,
+    },
+}
 
 REG_DATA = bytearray(b'A' * 480)
 REG_KEY_SIZE = 16
@@ -75,7 +87,7 @@ def get_regist_headers(payload_length: int) -> bytes:
     """Get regist headers."""
     headers = (
         # Appears to use a malformed http request so have to construct it
-        'POST /sie/ps4/rp/sess/rgst HTTP/1.1\r\n HTTP/1.1\r\n'
+        f'POST {REG_PATH} HTTP/1.1\r\n HTTP/1.1\r\n'
         'HOST: 10.0.2.15\r\n'  # Doesn't Matter
         f'User-Agent: {USER_AGENT}\r\n'
         'Connection: close\r\n'
@@ -87,12 +99,18 @@ def get_regist_headers(payload_length: int) -> bytes:
     return headers
 
 
-def regist_init(host: str, timeout: float) -> bool:
+def regist_init(host: str, host_type: str, timeout: float) -> bool:
     """Check if device is accepting registrations."""
+    success = False
+    data = HOST_TYPES.get(host_type)
+    if not data:
+        _LOGGER.error("Invalid host_type: %s", host_type)
+        return success
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(timeout)
-    sock.sendto(REG_INIT_PS4, (host, RP_PORT))
-    success = False
+    sock.sendto(data["init"], (host, RP_PORT))
+
     try:
         response = sock.recv(32)
     except socket.timeout:
@@ -101,7 +119,7 @@ def regist_init(host: str, timeout: float) -> bool:
             "Remote Play Connection Settings -> Add Device\n"
         )
     else:
-        if response is not None and bytearray(response)[0:4] == REG_START_PS4:
+        if response is not None and bytearray(response)[0:4] == data["start"]:
             _LOGGER.info("Register Started")
             success = True
         else:
@@ -151,7 +169,12 @@ def parse_response(cipher, response: bytes) -> dict:
 def register(host: str, psn_id: str, pin: str, timeout: float = 2.0) -> dict:
     """Return Register info. Register as Remote Play client."""
     info = {}
-    if not regist_init(host, timeout):
+    status = get_status(host)
+    if not status:
+        _LOGGER.error("Host: %s not found", host)
+        return info
+    host_type = get_host_type(status).upper()
+    if not regist_init(host, host_type, timeout):
         return info
     nonce = get_random_bytes(16)
     key_0 = gen_key_0(int(pin))

@@ -37,6 +37,11 @@ STATUS_OK = 200
 STATUS_STANDBY = 620
 
 
+def get_host_type(response: dict) -> str:
+    """Return host type."""
+    return response.get("host-type")
+
+
 def get_ddp_message(msg_type, data=None):
     """Get DDP message."""
     if msg_type not in DDP_MSG_TYPES:
