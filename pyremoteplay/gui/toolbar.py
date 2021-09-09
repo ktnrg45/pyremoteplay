@@ -72,7 +72,7 @@ class ToolbarWidget(QtWidgets.QWidget):
 
     def refresh_click(self):
         if self.refresh.isChecked():
-            self.main_window.device_grid.start_timer()
+            self.main_window.device_grid.start_update()
         else:
             self.refresh_reset()
 

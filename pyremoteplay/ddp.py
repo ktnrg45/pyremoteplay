@@ -14,7 +14,7 @@ _LOGGER = logging.getLogger(__name__)
 BROADCAST_IP = '255.255.255.255'
 UDP_IP = '0.0.0.0'
 UDP_PORT = 0
-DEFAULT_UDP_PORT = 1987
+DEFAULT_UDP_PORT = 9103
 
 DDP_PORT_PS4 = 987
 DDP_PORT_PS5 = 9032
@@ -78,12 +78,13 @@ class DDPDevice():
         if self.host_type is None:
             self._host_type = data.get("host-type")
         self.poll_count = 0
-        self.unreachable = False
+        self._unreachable = False
         old_status = self.status
         self._status = data
         if old_status != data:
             _LOGGER.debug("Status: %s", self.status)
-            self.callback()
+            if self.callback:
+                self.callback()
             # Status changed from OK to Standby/Turned Off
             if old_status is not None and \
                     old_status.get('status_code') == STATUS_OK and \
@@ -100,7 +101,7 @@ class DDPDevice():
 
     @property
     def host_type(self):
-        return self._host_type.upper()
+        return self._host_type
 
     @property
     def remote_port(self):
@@ -135,7 +136,7 @@ class DDPDevice():
 class DDPProtocol(asyncio.DatagramProtocol):
     """Async UDP Client."""
 
-    def __init__(self, max_polls=DEFAULT_POLL_COUNT, callback=None):
+    def __init__(self, callback, max_polls=DEFAULT_POLL_COUNT):
         """Init Instance."""
         super().__init__()
         self.devices = {}
@@ -146,6 +147,7 @@ class DDPProtocol(asyncio.DatagramProtocol):
         self._message = get_ddp_search_message()
         self._standby_start = 0
         self._event_stop = asyncio.Event()
+        self._event_stop.clear()
 
     def __repr__(self):
         return (
@@ -197,7 +199,7 @@ class DDPProtocol(asyncio.DatagramProtocol):
         """When data is received."""
         if data is not None:
             sock = self._transport.get_extra_info('socket')
-            _LOGGER.error(
+            _LOGGER.debug(
                 "RECV MSG @ DDP Proto DPORT=%s SRC=%s",
                 sock.getsockname()[1], addr)
             self._handle(data, addr)
@@ -221,7 +223,7 @@ class DDPProtocol(asyncio.DatagramProtocol):
 
     def error_received(self, exc):
         """Handle Exceptions."""
-        _LOGGER.warning("Error received at DDP Transport")
+        _LOGGER.warning("Error received at DDP Transport: %s", exc)
 
     def close(self):
         """Close Transport."""
@@ -254,20 +256,20 @@ class DDPProtocol(asyncio.DatagramProtocol):
 
     async def run(self, interval=5):
         """Run polling."""
-        if self._event_stop.set():
-            _LOGGER.error("Protocol already polling")
-            return
-        while not self._event_stop.is_set():
-            self.send_msg()
-            for device in self.devices:
-                if device.direct:
-                    self.send_msg(device)
+        while True:
+            if not self._event_stop.is_set():
+                self.send_msg()
+                for device in self.devices.values():
+                    if device.direct:
+                        self.send_msg(device)
             await asyncio.sleep(interval)
-        self._event_stop.clear()
 
     def stop(self):
         """Stop Polling."""
         self._event_stop.set()
+
+    def start(self):
+        self._event_stop.clear()
 
     @property
     def local_port(self):
@@ -279,15 +281,20 @@ class DDPProtocol(asyncio.DatagramProtocol):
         """Return remote ports."""
         return DDP_PORTS
 
+    @property
+    def device_status(self):
+        return [device.status for device in self.devices.values()]
 
-async def async_create_ddp_endpoint(sock=None, port=DEFAULT_UDP_PORT):
+
+async def async_create_ddp_endpoint(callback, sock=None, port=DEFAULT_UDP_PORT):
     """Create Async UDP endpoint."""
     loop = asyncio.get_event_loop()
     if sock is None:
         sock = get_socket(port=port)
     sock.settimeout(0)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     connect = loop.create_datagram_endpoint(
-        lambda: DDPProtocol(),  # noqa: pylint: disable=unnecessary-lambda
+        lambda: DDPProtocol(callback),  # noqa: pylint: disable=unnecessary-lambda
         sock=sock,
     )
     transport, protocol = await loop.create_task(connect)

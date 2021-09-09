@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import sys
+import threading
 
 from pyremoteplay.__version__ import VERSION
 from pyremoteplay.ddp import async_create_ddp_endpoint
@@ -19,24 +20,30 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class AsyncHandler(QtCore.QObject):
-    def __init__(self):
+    status_updated = QtCore.Signal()
+
+    def __init__(self, main_window):
         super().__init__()
         self.loop = None
-        self.event = None
         self.protocol = None
+        self.main_window = main_window
 
     def start(self):
-        _LOGGER.info("Start")
         if sys.platform == "win32":
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         self.loop = asyncio.new_event_loop()
-        self.event = asyncio.Event()
         task = self.loop.create_task(self.run())
         self.loop.run_until_complete(task)
+        self.loop.run_forever()
+
+    def poll(self):
+        self.protocol.start()
+
+    def stop_poll(self):
+        self.protocol.stop()
 
     async def run(self):
-        _LOGGER.info("Run")
-        _, self.protocol = await async_create_ddp_endpoint()
+        _, self.protocol = await async_create_ddp_endpoint(self.status_updated.emit)
         await self.protocol.run()
 
 
@@ -46,21 +53,20 @@ class MainWindow(QtWidgets.QWidget):
     def __init__(self, app):
         super().__init__()
         self._app = app
-        self.loop = None
-        self.event = None
-        #self.thread = QtCore.QThread()
-        #self.async_handler = AsyncHandler()
-        #self.async_handler.moveToThread(self.thread)
-        #self.thread.started.connect(self.async_handler.start)
         self.screen = self._app.primaryScreen()
         self.idle = True
         self.toolbar = None
         self.device_grid = None
         self.rp_thread = QtCore.QThread()
+        self.async_handler = AsyncHandler(self)
+        self.async_handler.status_updated.connect(self.event_status_updated)
+        self.async_thread = QtCore.QThread()
+        self.async_handler.moveToThread(self.async_thread)
+        self.async_thread.started.connect(self.async_handler.start)
+        self.async_thread.start()
         self._stream_window = None
         self._init_window()
         self._init_rp_worker()
-        #self.thread.start()
 
     def _init_window(self):
         self.setWindowTitle("PyRemotePlay")
@@ -82,10 +88,14 @@ class MainWindow(QtWidgets.QWidget):
         self.layout.setAlignment(self.toolbar, Qt.AlignTop)
         self.layout.addWidget(QtWidgets.QLabel(f"v{VERSION}", alignment=Qt.AlignBottom))
         self.set_style()
-        self.device_grid.discover()
         self.toolbar.refresh.setChecked(True)
         self.toolbar.refresh_click()
         self.session_finished.connect(self.check_error_finish)
+
+    def event_status_updated(self):
+        status = self.async_handler.protocol.device_status
+        _LOGGER.info(status)
+        self.device_grid.create_grid(status)
 
     def _init_rp_worker(self):
         self.rp_worker = RPWorker(self)
@@ -153,7 +163,7 @@ class MainWindow(QtWidgets.QWidget):
         message(self, "Wakeup Sent", f"Sent Wakeup command to device at {ip_address}", "info")
 
     def connect_host(self, host):
-        self.device_grid.timer.stop()
+        self.device_grid.stop_update()
         options = self.options.options
         name = options.get("profile")
         profile = self.check_profile(name, host)
@@ -193,6 +203,11 @@ class MainWindow(QtWidgets.QWidget):
         self._app.setActiveWindow(self)
         self.device_grid.session_stop()
         self.session_finished.emit()
+
+    def add_devices(self):
+        devices = self.options.options.get("devices")
+        for host in devices:
+            self.async_handler.protocol.add_device(host)
 
     def check_error_finish(self):
         if self.rp_worker.error:

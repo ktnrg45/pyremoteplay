@@ -218,15 +218,7 @@ class DeviceGridWidget(QtWidgets.QWidget):
         self.layout.setColumnMinimumWidth(0, 100)
         self.widgets = []
         self.setStyleSheet("QPushButton {padding: 50px 25px;}")
-        self.searcher = DeviceSearch(self.main_window)
-        self.timer = QtCore.QTimer()
-        self.timer.timeout.connect(self.discover)
         self.wait_timer = None
-        self.thread = QtCore.QThread(self)
-        self.searcher.moveToThread(self.thread)
-        self.thread.started.connect(self.searcher.get_hosts)
-        self.searcher.finished.connect(lambda: self.create_grid(self.searcher.hosts))
-        self.searcher.finished.connect(self.thread.quit)
         self._is_startup = True
 
     def add(self, button, row, col):
@@ -273,23 +265,19 @@ class DeviceGridWidget(QtWidgets.QWidget):
             else:
                 self.main_window.center_text.hide()
 
-    def discover(self):
-        self.thread.start()
-
-    def start_timer(self):
-        self.timer.start(5000)
-
     def session_stop(self):
         if self.main_window.toolbar.refresh.isChecked():
-            self.start_timer()
+            self.start_update()
         self.wait_timer = QtCore.QTimer.singleShot(10000, self.enable_buttons)
 
     def enable_buttons(self):
         for button in self.widgets:
             button.setDisabled(False)
 
+    def start_update(self):
+        self.main_window.async_handler.poll()
+
     def stop_update(self):
-        self.timer.stop()
+        self.main_window.async_handler.stop_poll()
         if self.wait_timer:
             self.wait_timer.stop()
-        self.thread.quit()
