@@ -1,6 +1,9 @@
+import asyncio
 import logging
+import sys
 
 from pyremoteplay.__version__ import VERSION
+from pyremoteplay.ddp import async_create_ddp_endpoint
 from pyremoteplay.session import Session, send_wakeup
 from pyremoteplay.util import timeit
 from PySide6 import QtCore, QtWidgets
@@ -15,12 +18,40 @@ from .util import Popup, message
 _LOGGER = logging.getLogger(__name__)
 
 
+class AsyncHandler(QtCore.QObject):
+    def __init__(self):
+        super().__init__()
+        self.loop = None
+        self.event = None
+        self.protocol = None
+
+    def start(self):
+        _LOGGER.info("Start")
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        self.loop = asyncio.new_event_loop()
+        self.event = asyncio.Event()
+        task = self.loop.create_task(self.run())
+        self.loop.run_until_complete(task)
+
+    async def run(self):
+        _LOGGER.info("Run")
+        _, self.protocol = await async_create_ddp_endpoint()
+        await self.protocol.run()
+
+
 class MainWindow(QtWidgets.QWidget):
     session_finished = QtCore.Signal()
 
     def __init__(self, app):
         super().__init__()
         self._app = app
+        self.loop = None
+        self.event = None
+        #self.thread = QtCore.QThread()
+        #self.async_handler = AsyncHandler()
+        #self.async_handler.moveToThread(self.thread)
+        #self.thread.started.connect(self.async_handler.start)
         self.screen = self._app.primaryScreen()
         self.idle = True
         self.toolbar = None
@@ -29,6 +60,7 @@ class MainWindow(QtWidgets.QWidget):
         self._stream_window = None
         self._init_window()
         self._init_rp_worker()
+        #self.thread.start()
 
     def _init_window(self):
         self.setWindowTitle("PyRemotePlay")

@@ -1,5 +1,5 @@
 """Device Discovery Protocol for RP Hosts."""
-
+import asyncio
 import logging
 import re
 import select
@@ -35,6 +35,263 @@ DEFAULT_STANDBY_DELAY = 50
 
 STATUS_OK = 200
 STATUS_STANDBY = 620
+
+
+class DDPDevice():
+    def __init__(self, host, protocol, direct=False):
+        self._host = host
+        self._direct = direct
+        self._host_type = None
+        self._callback = None
+        self._protocol = None
+        self._standby_start = 0
+        self._poll_count = 0
+        self._unreachable = False
+        self._status = {}
+
+    def set_unreachable(self, state: bool):
+        self._unreachable = state
+
+    def set_callback(self, callback):
+        self._callback = callback
+
+    def set_status(self, data):
+        # Device won't respond to polls right after standby
+        if self.polls_disabled:
+            elapsed = time.time() - self._standby_start
+            seconds = DEFAULT_STANDBY_DELAY - elapsed
+            _LOGGER.debug("Polls disabled for %s seconds", round(seconds, 2))
+            return
+
+        self._standby_start = 0
+
+        # Track polls that were never returned.
+        self._poll_count += 1
+
+        # Assume Device is not available.
+        if not data:
+            if self.poll_count > self._protocol.max_polls:
+                self._status = {}
+                self._callback()
+                return
+
+        if self.host_type is None:
+            self._host_type = data.get("host-type")
+        self.poll_count = 0
+        self.unreachable = False
+        old_status = self.status
+        self._status = data
+        if old_status != data:
+            _LOGGER.debug("Status: %s", self.status)
+            self.callback()
+            # Status changed from OK to Standby/Turned Off
+            if old_status is not None and \
+                    old_status.get('status_code') == STATUS_OK and \
+                    self.status.get('status_code') == STATUS_STANDBY:
+                self._standby_start = time.time()
+                _LOGGER.debug(
+                    "Status changed from OK to Standby."
+                    "Disabling polls for %s seconds",
+                    DEFAULT_STANDBY_DELAY)
+
+    @property
+    def host(self):
+        return self._host
+
+    @property
+    def host_type(self):
+        return self._host_type.upper()
+
+    @property
+    def remote_port(self):
+        return DDP_PORTS.get(self.host_type)
+
+    @property
+    def polls_disabled(self):
+        """Return true if polls disabled."""
+        elapsed = time.time() - self._standby_start
+        if elapsed < DEFAULT_STANDBY_DELAY:
+            return True
+        self._standby_start = 0
+        return False
+
+    @property
+    def unreachable(self):
+        return self._unreachable
+
+    @property
+    def callback(self):
+        return self._callback
+
+    @property
+    def status(self):
+        return self._status
+
+    @property
+    def direct(self) -> bool:
+        return self._direct
+    
+
+class DDPProtocol(asyncio.DatagramProtocol):
+    """Async UDP Client."""
+
+    def __init__(self, max_polls=DEFAULT_POLL_COUNT, callback=None):
+        """Init Instance."""
+        super().__init__()
+        self.devices = {}
+        self.max_polls = max_polls
+        self._transport = None
+        self._local_port = UDP_PORT
+        self._default_callback = callback
+        self._message = get_ddp_search_message()
+        self._standby_start = 0
+        self._event_stop = asyncio.Event()
+
+    def __repr__(self):
+        return (
+            "<{}.{} local_port={} max_polls={}>".format(
+                self.__module__,
+                self.__class__.__name__,
+                self.local_port,
+                self.max_polls,
+            )
+        )
+
+    def _set_write_port(self, port):
+        """Only used for tests."""
+        self._remote_port = port
+
+    def set_max_polls(self, poll_count: int):
+        """Set number of unreturned polls neeeded to assume no status."""
+        self.max_polls = poll_count
+
+    def connection_made(self, transport):
+        """On Connection."""
+        self._transport = transport
+        sock = self._transport.get_extra_info('socket')
+        self._local_port = sock.getsockname()[1]
+        _LOGGER.debug("DDP Transport created with port: %s", self.local_port)
+
+    def send_msg(self, device=None, message=None):
+        """Send Message."""
+        sock = self._transport.get_extra_info('socket')
+        ports = []
+        if message is None:
+            message = self._message
+        if device is not None:
+            ports = [device.remote_port] if device.remote_port else []
+            host = device.host
+        else:
+            host = BROADCAST_IP
+        if not ports:
+            ports = list(self.remote_ports.values())
+        for port in ports:
+            _LOGGER.debug(
+                "SENT MSG @ DDP Proto SPORT=%s DEST=%s",
+                sock.getsockname()[1], (host, port))
+            self._transport.sendto(
+                message.encode('utf-8'),
+                (host, port))
+
+    def datagram_received(self, data, addr):
+        """When data is received."""
+        if data is not None:
+            sock = self._transport.get_extra_info('socket')
+            _LOGGER.error(
+                "RECV MSG @ DDP Proto DPORT=%s SRC=%s",
+                sock.getsockname()[1], addr)
+            self._handle(data, addr)
+
+    def _handle(self, data, addr):
+        data = parse_ddp_response(data.decode('utf-8'))
+        data['host-ip'] = addr[0]
+        address = addr[0]
+
+        if address in self.devices:
+            device = self.devices.get(address)
+        else:
+            device = self.add_device(address, direct=False)
+        device.set_status(data)
+
+    def connection_lost(self, exc):
+        """On Connection Lost."""
+        if self._transport is not None:
+            _LOGGER.error("DDP Transport Closed")
+            self._transport.close()
+
+    def error_received(self, exc):
+        """Handle Exceptions."""
+        _LOGGER.warning("Error received at DDP Transport")
+
+    def close(self):
+        """Close Transport."""
+        self._transport.close()
+        self._transport = None
+        _LOGGER.debug(
+            "Closing DDP Transport: Port=%s",
+            self._local_port)
+
+    def add_device(self, host, callback=None, direct=True):
+        if host in self.devices:
+            return None
+        self.devices[host] = DDPDevice(host, self, direct)
+        if callback is None:
+            callback = self._default_callback
+        self.add_callback(host, callback)
+        return self.devices[host]
+
+    def add_callback(self, host, callback):
+        """Add callback. One per host."""
+        if host not in self.devices:
+            return
+        self.devices[host].set_callback(callback)
+
+    def remove_callback(self, host):
+        """Remove callback from list."""
+        if host not in self.devices:
+            return
+        self.devices[host].set_callback(None)
+
+    async def run(self, interval=5):
+        """Run polling."""
+        if self._event_stop.set():
+            _LOGGER.error("Protocol already polling")
+            return
+        while not self._event_stop.is_set():
+            self.send_msg()
+            for device in self.devices:
+                if device.direct:
+                    self.send_msg(device)
+            await asyncio.sleep(interval)
+        self._event_stop.clear()
+
+    def stop(self):
+        """Stop Polling."""
+        self._event_stop.set()
+
+    @property
+    def local_port(self):
+        """Return local port."""
+        return self._local_port
+
+    @property
+    def remote_ports(self):
+        """Return remote ports."""
+        return DDP_PORTS
+
+
+async def async_create_ddp_endpoint(sock=None, port=DEFAULT_UDP_PORT):
+    """Create Async UDP endpoint."""
+    loop = asyncio.get_event_loop()
+    if sock is None:
+        sock = get_socket(port=port)
+    sock.settimeout(0)
+    connect = loop.create_datagram_endpoint(
+        lambda: DDPProtocol(),  # noqa: pylint: disable=unnecessary-lambda
+        sock=sock,
+    )
+    transport, protocol = await loop.create_task(connect)
+    return transport, protocol
 
 
 def get_host_type(response: dict) -> str:
