@@ -14,11 +14,13 @@ class DeviceButton(QtWidgets.QPushButton):
     COLOR_LIGHT = "#FFFFFF"
     COLOR_BG = "#E9ECEF"
 
-    def __init__(self, main_window, host):
+    def __init__(self, main_window, device):
         super().__init__()
         self.info = ""
         self.main_window = main_window
-        self.host = host
+        self.device = device
+        print(device)
+        self.host = device.status
         self.info_show = False
         self.menu = QtWidgets.QMenu(self)
         self.clicked.connect(lambda: self.main_window.connect_host(self.host))
@@ -71,28 +73,10 @@ class DeviceButton(QtWidgets.QPushButton):
         self.set_style()
 
     def set_image(self):
-        def get_image(title_id):
-            image = None
-            codes = get_region_codes("United States")
-            data_url = BASE_URL.format(codes[1], codes[0], title_id)
-            image_url = BASE_IMAGE_URL.format(data_url)
-            resp = requests.get(data_url, headers=DEFAULT_HEADERS)
-            if not resp:
-                return None
-            data = resp.json()
-            if data.get("gameContentTypesList") is None or data.get("title_name") is None:
-                return None
-            item = ResultItem(title_id, image_url, data)
-            if item is None or item.cover_art is None:
-                return None
-            resp = requests.get(item.cover_art)
-            image = resp.content
-            return image
-
         self.bg_color = self.COLOR_BG
         title_id = self.host.get("running-app-titleid")
         if title_id:
-            image = get_image(title_id)
+            image = self.device.image
             if image is not None:
                 pix = QtGui.QPixmap()
                 pix.loadFromData(image)
@@ -107,9 +91,10 @@ class DeviceButton(QtWidgets.QPushButton):
                     self.text_color = self.COLOR_DARK
         else:
             self.setIcon(QtGui.QIcon())
+            self.text_color = self.COLOR_DARK
 
     def calc_contrast(self, hex_color):
-        colors = (self.text_color, hex_color)
+        colors = (self.COLOR_DARK, hex_color)
         lum = []
         for color in colors:
             lum.append(self.calc_luminance(color))
@@ -216,7 +201,7 @@ class DeviceGridWidget(QtWidgets.QWidget):
         self.main_window = main_window
         self.layout = QtWidgets.QGridLayout(self)
         self.layout.setColumnMinimumWidth(0, 100)
-        self.widgets = []
+        self.widgets = {}
         self.setStyleSheet("QPushButton {padding: 50px 25px;}")
         self.wait_timer = None
         self._is_startup = True
@@ -224,35 +209,35 @@ class DeviceGridWidget(QtWidgets.QWidget):
     def add(self, button, row, col):
         self.layout.setRowStretch(row, 6)
         self.layout.addWidget(button, row, col, Qt.AlignCenter)
-        self.widgets.append(button)
+        self.widgets[button.device.host] = button
 
-    def create_grid(self, hosts):
+    def create_grid(self, devices):
+        all_devices = []
         if self.widgets:
-            ip_addresses = {}
-            if hosts:
-                for item in hosts:
-                    ip_address = item["host-ip"]
-                    ip_addresses[ip_address] = item
-                    hosts.remove(item)
-            for widget in self.widgets:
+            for widget in self.widgets.values():
                 self.layout.removeWidget(widget)
-                new_state = ip_addresses.get(widget.host["host-ip"])
-                if not new_state:
-                    widget.setParent(None)
-                    widget.deleteLater()
-                else:
-                    widget.update_state(new_state)
-                    hosts.append(widget)
-            self.widgets = []
+        widget = None
+        for ip_address in devices.keys():
+            if ip_address not in self.widgets:
+                all_devices.append(devices[ip_address])
+            else:
+                widget = self.widgets.pop(ip_address)
+                all_devices.append(widget)
+                widget.update_state(widget.device.status)
+        for widget in self.widgets:
+            widget.setParent(None)
+            widget.deleteLater()
+        self.widgets = {}
+
         max_cols = 3
-        if hosts:
-            for index, host in enumerate(hosts):
+        if all_devices:
+            for index, device in enumerate(all_devices):
                 col = index % max_cols
                 row = index // max_cols
-                if isinstance(host, dict):
-                    button = DeviceButton(self.main_window, host)
+                if isinstance(device, DeviceButton):
+                    button = device
                 else:
-                    button = host
+                    button = DeviceButton(self.main_window, device)
                 self.add(button, row, col)
             if not self.main_window.toolbar.options.isChecked() \
                     and not self.main_window.toolbar.controls.isChecked():
@@ -271,7 +256,7 @@ class DeviceGridWidget(QtWidgets.QWidget):
         self.wait_timer = QtCore.QTimer.singleShot(10000, self.enable_buttons)
 
     def enable_buttons(self):
-        for button in self.widgets:
+        for button in self.widgets.values():
             button.setDisabled(False)
 
     def start_update(self):

@@ -93,9 +93,8 @@ class MainWindow(QtWidgets.QWidget):
         self.session_finished.connect(self.check_error_finish)
 
     def event_status_updated(self):
-        status = self.async_handler.protocol.device_status
-        _LOGGER.info(status)
-        self.device_grid.create_grid(status)
+        devices = self.async_handler.protocol.devices
+        self.device_grid.create_grid(devices)
 
     def _init_rp_worker(self):
         self.rp_worker = RPWorker(self)

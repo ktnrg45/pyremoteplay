@@ -5,7 +5,12 @@ import re
 import select
 import socket
 import time
+from ssl import SSLError
 from typing import Optional
+
+import aiohttp
+from aiohttp.client_exceptions import ContentTypeError
+from pyps4_2ndscreen.media_art import async_search_ps_store
 
 from .const import TYPE_PS4, TYPE_PS5
 
@@ -48,6 +53,8 @@ class DDPDevice():
         self._poll_count = 0
         self._unreachable = False
         self._status = {}
+        self._media_info = None
+        self._image = None
 
     def set_unreachable(self, state: bool):
         self._unreachable = state
@@ -83,7 +90,13 @@ class DDPDevice():
         self._status = data
         if old_status != data:
             _LOGGER.debug("Status: %s", self.status)
-            if self.callback:
+            title_id = self.status.get("running-app-titleid")
+            if title_id:
+                asyncio.ensure_future(self.get_media_info(title_id))
+            else:
+                self._media_info = None
+                self._image = None
+            if not title_id and self.callback:
                 self.callback()
             # Status changed from OK to Standby/Turned Off
             if old_status is not None and \
@@ -94,6 +107,23 @@ class DDPDevice():
                     "Status changed from OK to Standby."
                     "Disabling polls for %s seconds",
                     DEFAULT_STANDBY_DELAY)
+
+    async def get_media_info(self, title_id):
+        result = await async_search_ps_store(title_id, "United States")
+        self._media_info = result
+        if self._media_info.cover_art:
+            await self.get_image(self.media_info.cover_art)
+        if self.callback:
+            self.callback()
+
+    async def get_image(self, url):
+        try:
+            async with aiohttp.ClientSession() as session:
+                response = await session.get(url, timeout=3)
+                if response is not None:
+                    self._image = await response.read()
+        except (asyncio.TimeoutError, ContentTypeError, SSLError):
+            pass
 
     @property
     def host(self):
@@ -131,6 +161,14 @@ class DDPDevice():
     @property
     def direct(self) -> bool:
         return self._direct
+
+    @property
+    def media_info(self):
+        return self._media_info
+
+    @property
+    def image(self):
+        return self._image
     
 
 class DDPProtocol(asyncio.DatagramProtocol):
@@ -139,7 +177,7 @@ class DDPProtocol(asyncio.DatagramProtocol):
     def __init__(self, callback, max_polls=DEFAULT_POLL_COUNT):
         """Init Instance."""
         super().__init__()
-        self.devices = {}
+        self._devices = {}
         self.max_polls = max_polls
         self._transport = None
         self._local_port = UDP_PORT
@@ -209,8 +247,8 @@ class DDPProtocol(asyncio.DatagramProtocol):
         data['host-ip'] = addr[0]
         address = addr[0]
 
-        if address in self.devices:
-            device = self.devices.get(address)
+        if address in self._devices:
+            device = self._devices.get(address)
         else:
             device = self.add_device(address, direct=False)
         device.set_status(data)
@@ -234,32 +272,32 @@ class DDPProtocol(asyncio.DatagramProtocol):
             self._local_port)
 
     def add_device(self, host, callback=None, direct=True):
-        if host in self.devices:
+        if host in self._devices:
             return None
-        self.devices[host] = DDPDevice(host, self, direct)
+        self._devices[host] = DDPDevice(host, self, direct)
         if callback is None:
             callback = self._default_callback
         self.add_callback(host, callback)
-        return self.devices[host]
+        return self._devices[host]
 
     def add_callback(self, host, callback):
         """Add callback. One per host."""
-        if host not in self.devices:
+        if host not in self._devices:
             return
-        self.devices[host].set_callback(callback)
+        self._devices[host].set_callback(callback)
 
     def remove_callback(self, host):
         """Remove callback from list."""
-        if host not in self.devices:
+        if host not in self._devices:
             return
-        self.devices[host].set_callback(None)
+        self._devices[host].set_callback(None)
 
     async def run(self, interval=5):
         """Run polling."""
         while True:
             if not self._event_stop.is_set():
                 self.send_msg()
-                for device in self.devices.values():
+                for device in self._devices.values():
                     if device.direct:
                         self.send_msg(device)
             await asyncio.sleep(interval)
@@ -282,8 +320,12 @@ class DDPProtocol(asyncio.DatagramProtocol):
         return DDP_PORTS
 
     @property
+    def devices(self):
+        return self._devices
+    
+    @property
     def device_status(self):
-        return [device.status for device in self.devices.values()]
+        return [device.status for device in self._devices.values()]
 
 
 async def async_create_ddp_endpoint(callback, sock=None, port=DEFAULT_UDP_PORT):
