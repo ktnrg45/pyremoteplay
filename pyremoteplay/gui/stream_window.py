@@ -120,15 +120,22 @@ class JoystickWidget(QtWidgets.QFrame):
     def __init__(self, window, left=False, right=False):
         super().__init__(window)
         self.window = window
+        self.grab_outside = False
         self.left = Joystick(self, "left") if left else None
         self.right = Joystick(self, "right") if right else None
         self.layout = QtWidgets.QHBoxLayout(self)
         self.layout.setAlignment(Qt.AlignCenter)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.setStyleSheet("background-color: rgba(255, 255, 255, 0.4); border-radius:25%;")
+        self.set_cursor()
         for joystick in [self.left, self.right]:
             self.layout.addWidget(joystick)
             joystick.show()
+
+    def set_cursor(self, shape=Qt.SizeAllCursor):
+        cursor = QtGui.QCursor()
+        cursor.setShape(shape)
+        self.setCursor(cursor)
 
     def hide_sticks(self):
         self.left.hide()
@@ -165,6 +172,8 @@ class JoystickWidget(QtWidgets.QFrame):
         self.grab_outside = False
 
     def mouseMoveEvent(self, event):
+        if event.buttons() == QtCore.Qt.NoButton:
+            return
         if self.grab_outside:
             cur_pos = self.mapToGlobal(self.pos())
             global_pos = event.globalPos()
@@ -202,11 +211,12 @@ class Joystick(QtWidgets.QLabel):
         self.grabbed = False
         self.__maxDistance = 50
         self.setStyleSheet("background-color: rgba(0, 0, 0, 0.0)")
-        self.set_default_cursor()
+        self.set_cursor()
+        self.setMouseTracking(True)
 
-    def set_default_cursor(self):
+    def set_cursor(self, shape=Qt.SizeAllCursor):
         cursor = QtGui.QCursor()
-        cursor.setShape(Qt.SizeAllCursor)
+        cursor.setShape(shape)
         self.setCursor(cursor)
 
     def paintEvent(self, event):
@@ -249,6 +259,8 @@ class Joystick(QtWidgets.QLabel):
             self.update()
         if not self.grabbed:
             self.parent.mousePressEvent(event)
+        else:
+            self.set_cursor(Qt.ClosedHandCursor)
         return super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
@@ -259,14 +271,21 @@ class Joystick(QtWidgets.QLabel):
         self.update()
         point = self.joystickDirection()
         self.parent.window.rp_worker.stick_state(self.stick, point=point)
+        self.set_cursor(Qt.OpenHandCursor)
 
     def mouseMoveEvent(self, event):
         if self.grabbed:
+            self.set_cursor(Qt.ClosedHandCursor)
             self.movingOffset = self._boundJoystick(event.pos())
             self.update()
             point = self.joystickDirection()
             self.parent.window.rp_worker.stick_state(self.stick, point=point)
         else:
+            is_center = self._centerEllipse().contains(event.pos())
+            if is_center:
+                self.set_cursor(Qt.OpenHandCursor)
+            else:
+                self.set_cursor()
             self.parent.mouseMoveEvent(event)
 
 
