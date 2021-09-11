@@ -315,6 +315,7 @@ class OptionsWidget(QtWidgets.QWidget):
                 raise RuntimeError("Failed to set options")
         self.set_profiles()
         self.set_devices()
+        self.main_window.add_devices(self.options["devices"])
 
     def init_options(self):
         set_account = QtWidgets.QPushButton("Select Account")

@@ -93,7 +93,7 @@ class MainWindow(QtWidgets.QWidget):
         self.toolbar.refresh.setChecked(True)
         self.toolbar.refresh_click()
         self.session_finished.connect(self.check_error_finish)
-        QtCore.QTimer.singleShot(5000, self.startup_check_grid)
+        QtCore.QTimer.singleShot(7000, self.startup_check_grid)
 
     def event_status_updated(self):
         devices = self.async_handler.protocol.devices
