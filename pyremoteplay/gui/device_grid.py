@@ -19,7 +19,6 @@ class DeviceButton(QtWidgets.QPushButton):
         self.info = ""
         self.main_window = main_window
         self.device = device
-        print(device)
         self.host = device.status
         self.info_show = False
         self.menu = QtWidgets.QMenu(self)

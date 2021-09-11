@@ -38,10 +38,7 @@ class RPWorker(QtCore.QObject):
             print("No Stream Window")
             self.stop()
             return
-        self.thread = threading.Thread(
-            target=self.worker,
-        )
-        self.thread.start()
+        self.worker()
 
     def stop(self):
         if self.session:
@@ -58,19 +55,11 @@ class RPWorker(QtCore.QObject):
         # self.session.av_receiver.add_audio_cb(self.handle_audio)
 
     def worker(self):
-        if sys.platform == "win32":
-            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        self.session.loop = asyncio.new_event_loop()
-        task = self.session.loop.create_task(self.start())
-        print("Session Start")
-        self.session.loop.run_until_complete(task)
-        if self.session:
-            self.session.loop.run_forever()
-        print("Session Finished")
-        task.cancel()
-        self.stop()
+        self.session.loop = self.main_window.async_handler.loop
+        self.session.loop.create_task(self.start())
 
     async def start(self):
+        print("Session Start")
         status = await self.session.start()
         if not status:
             print("Session Failed to Start")
@@ -78,6 +67,8 @@ class RPWorker(QtCore.QObject):
             self.stop()
         else:
             self.started.emit()
+        await self.session._stop_event.wait()
+        print("Session Finished")
 
     def send_standby(self):
         self.session.standby()
