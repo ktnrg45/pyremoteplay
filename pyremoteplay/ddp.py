@@ -526,7 +526,10 @@ def search(host=BROADCAST_IP, port=UDP_PORT, sock=None, timeout=3) -> list:
         _send_msg(host, msg, host_type=host_type, sock=sock, close=False)
     while time.time() - start < timeout:
         data = addr = None
-        response = _recv_msg(host, msg, sock=sock, close=False)
+        try:
+            response = _recv_msg(host, msg, sock=sock, close=False)
+        except ConnectionResetError:
+            continue
         if response is not None:
             data, addr = response
         if data is not None and addr is not None:
