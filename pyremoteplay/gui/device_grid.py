@@ -190,15 +190,13 @@ class DeviceSearch(QtCore.QObject):
 
 class DeviceGridWidget(QtWidgets.QWidget):
 
-    def __init__(self, main_window):
-        super().__init__(main_window)
+    def __init__(self, parent, main_window):
+        super().__init__(parent)
         self.main_window = main_window
         self.layout = QtWidgets.QGridLayout(self)
         self.layout.setColumnMinimumWidth(0, 100)
         self.widgets = {}
         self.setStyleSheet("QPushButton {padding: 50px 25px;}")
-        self.wait_timer = None
-        self._is_startup = True
 
     def add(self, button, row, col):
         self.layout.setRowStretch(row, 6)
@@ -237,17 +235,11 @@ class DeviceGridWidget(QtWidgets.QWidget):
                     and not self.main_window.toolbar.controls.isChecked():
                 self.show()
             self.main_window.center_text.hide()
-        else:
-            if self._is_startup:
-                self.main_window.startup_check_grid()
-                self._is_startup = False
-            else:
-                self.main_window.center_text.hide()
 
     def session_stop(self):
         if self.main_window.toolbar.refresh.isChecked():
             self.start_update()
-        self.wait_timer = QtCore.QTimer.singleShot(10000, self.enable_buttons)
+        QtCore.QTimer.singleShot(10000, self.enable_buttons)
 
     def enable_buttons(self):
         for button in self.widgets.values():
@@ -258,5 +250,3 @@ class DeviceGridWidget(QtWidgets.QWidget):
 
     def stop_update(self):
         self.main_window.async_handler.stop_poll()
-        if self.wait_timer:
-            self.wait_timer.stop()

@@ -1,7 +1,4 @@
 """Stream Window for GUI."""
-import asyncio
-import sys
-import threading
 import time
 from collections import deque
 from enum import Enum
@@ -286,9 +283,13 @@ class StreamWindow(QtWidgets.QWidget):
         self.setStyleSheet("background-color: black")
         self.video_output = QtWidgets.QLabel(self, alignment=Qt.AlignCenter)
         self.audio_output = None
+        self.center_text = QtWidgets.QLabel("Starting Stream...", alignment=Qt.AlignCenter)
+        self.center_text.setWordWrap(True)
+        self.center_text.setStyleSheet("QLabel {color: white;font-size: 24px;}")
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.addWidget(self.video_output)
+        self.layout.addWidget(self.center_text)
         self.joystick = JoystickWidget(self, left=True, right=True)
         self.joystick.hide()
         self.input_options = None
@@ -307,9 +308,9 @@ class StreamWindow(QtWidgets.QWidget):
         self.av_worker.slow.connect(self.av_slow)
         self.av_worker.moveToThread(self.av_thread)
         self.av_thread.started.connect(self.start_timer)
-        # self.av_thread.started.connect(self.av_worker.next_frame)
 
     def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None, use_hw=False, quality="default"):
+        self.center_text.show()
         self.input_options = input_options
         self.frame_mutex = QtCore.QMutex()
         self.video_output.hide()
@@ -329,13 +330,14 @@ class StreamWindow(QtWidgets.QWidget):
         self.av_thread.start()
         self.started.connect(self.main_window.session_start)
         self.started.emit()
-
-    def show_video(self):
         self.resize(self.rp_worker.session.resolution['width'], self.rp_worker.session.resolution['height'])
         if self.fullscreen:
             self.showFullScreen()
         else:
             self.show()
+
+    def show_video(self):
+        self.center_text.hide()
         self.video_output.show()
         joysticks = self.input_options.get("joysticks")
         if joysticks:

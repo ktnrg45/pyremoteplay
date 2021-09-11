@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import sys
-import threading
+import time
 
 from pyremoteplay.__version__ import VERSION
 from pyremoteplay.ddp import async_create_ddp_endpoint
@@ -57,7 +57,6 @@ class MainWindow(QtWidgets.QWidget):
         self.idle = True
         self.toolbar = None
         self.device_grid = None
-        self.rp_thread = QtCore.QThread()
         self.async_handler = AsyncHandler(self)
         self.async_handler.status_updated.connect(self.event_status_updated)
         self.async_thread = QtCore.QThread()
@@ -70,27 +69,31 @@ class MainWindow(QtWidgets.QWidget):
 
     def _init_window(self):
         self.setWindowTitle("PyRemotePlay")
-        self.device_grid = DeviceGridWidget(self)
+        self.main_frame = QtWidgets.QWidget(self)
+        self.main_frame.layout = QtWidgets.QVBoxLayout(self.main_frame)
+        self.center_text = QtWidgets.QLabel("Searching for devices...", alignment=Qt.AlignCenter)
+        self.center_text.setWordWrap(True)
+        self.center_text.setObjectName("center-text")
+        self.device_grid = DeviceGridWidget(self.main_frame, self)
         self.toolbar = ToolbarWidget(self)
         self.options = OptionsWidget(self)
         self.controls = ControlsWidget(self)
         self.options.hide()
         self.controls.hide()
-        self.center_text = QtWidgets.QLabel("Searching for devices...", alignment=Qt.AlignCenter)
-        self.center_text.setWordWrap(True)
-        self.center_text.setObjectName("center-text")
+        self.main_frame.layout.addWidget(self.center_text)
+        self.main_frame.layout.addWidget(self.device_grid)
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.addWidget(self.toolbar)
         self.layout.addWidget(self.options)
-        self.layout.addWidget(self.center_text)
-        self.layout.addWidget(self.device_grid)
         self.layout.addWidget(self.controls)
         self.layout.setAlignment(self.toolbar, Qt.AlignTop)
+        self.layout.addWidget(self.main_frame)
         self.layout.addWidget(QtWidgets.QLabel(f"v{VERSION}", alignment=Qt.AlignBottom))
         self.set_style()
         self.toolbar.refresh.setChecked(True)
         self.toolbar.refresh_click()
         self.session_finished.connect(self.check_error_finish)
+        QtCore.QTimer.singleShot(5000, self.startup_check_grid)
 
     def event_status_updated(self):
         devices = self.async_handler.protocol.devices
@@ -98,8 +101,7 @@ class MainWindow(QtWidgets.QWidget):
 
     def _init_rp_worker(self):
         self.rp_worker = RPWorker(self)
-        self.rp_thread.started.connect(self.rp_worker.run)
-        self.rp_worker.moveToThread(self.rp_thread)
+        self.rp_worker.moveToThread(self.async_thread)
 
     def startup_check_grid(self):
         if not self.device_grid.widgets:
@@ -192,12 +194,11 @@ class MainWindow(QtWidgets.QWidget):
         self._app.setActiveWindow(self._stream_window)
 
     def session_start(self):
-        self.rp_thread.start()
+        self.rp_worker.run()
 
     def session_stop(self):
         _LOGGER.debug("Detected Session Stop")
         self.rp_worker.stop()
-        self.rp_thread.quit()
         self._stream_window = None
         self._app.setActiveWindow(self)
         self.device_grid.session_stop()
@@ -225,4 +226,11 @@ class MainWindow(QtWidgets.QWidget):
         self.device_grid.stop_update()
         if self._stream_window:
             self._stream_window.close()
+        self.async_thread.quit()
+        self.async_handler.loop.stop()
+        self.hide()
+        start = time.time()
+        while self.async_handler.loop.is_running():
+            if time.time() - start > 5:
+                break
         event.accept()

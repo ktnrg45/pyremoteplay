@@ -25,13 +25,12 @@ class ToolbarWidget(QtWidgets.QWidget):
         self.home.setCheckable(False)
 
     def main_hide(self):
-        self.main_window.device_grid.hide()
+        self.main_window.main_frame.hide()
         self.refresh.hide()
         self.home.show()
-        self.main_window.center_text.hide()
 
     def main_show(self):
-        self.main_window.device_grid.show()
+        self.main_window.main_frame.show()
         self.refresh.show()
 
     def home_click(self):
