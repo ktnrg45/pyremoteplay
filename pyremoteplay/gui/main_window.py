@@ -203,8 +203,7 @@ class MainWindow(QtWidgets.QWidget):
         self.device_grid.session_stop()
         self.session_finished.emit()
 
-    def add_devices(self):
-        devices = self.options.options.get("devices")
+    def add_devices(self, devices):
         for host in devices:
             self.async_handler.protocol.add_device(host)
 

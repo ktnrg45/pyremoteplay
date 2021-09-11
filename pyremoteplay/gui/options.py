@@ -429,6 +429,7 @@ class OptionsWidget(QtWidgets.QWidget):
         for host in self.options["devices"]:
             item = QtWidgets.QTreeWidgetItem(self.devices)
             item.setText(0, host)
+        self.main_window.add_devices(self.options["devices"])
 
     def set_profiles(self):
         self.profiles = get_profiles()
