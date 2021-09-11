@@ -218,7 +218,7 @@ class DeviceGridWidget(QtWidgets.QWidget):
                 widget = self.widgets.pop(ip_address)
                 all_devices.append(widget)
                 widget.update_state(widget.device.status)
-        for widget in self.widgets:
+        for widget in self.widgets.values():
             widget.setParent(None)
             widget.deleteLater()
         self.widgets = {}

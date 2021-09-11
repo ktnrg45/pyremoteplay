@@ -1,7 +1,6 @@
 """Options Window."""
 from pyremoteplay.av import AVReceiver
 from pyremoteplay.const import RESOLUTION_PRESETS, Quality
-from pyremoteplay.ddp import get_status
 from pyremoteplay.oauth import LOGIN_URL, get_user_account
 from pyremoteplay.register import register
 from pyremoteplay.util import (add_profile, add_regist_data, get_mapping,
@@ -86,7 +85,7 @@ class ControlsWidget(QtWidgets.QWidget):
         super().__init__(main_window)
         self.main_window = main_window
         self.mapping = None
-        self.options = None
+        self.options = {}
         self.selected_map = ""
         self.layout = QtWidgets.QGridLayout(self, alignment=Qt.AlignTop)
         self.layout.setColumnMinimumWidth(0, 30)
@@ -422,14 +421,11 @@ class OptionsWidget(QtWidgets.QWidget):
         self.options = options
 
     def set_devices(self):
-        if not self.options.get("devices"):
-            self.options["devices"] = []
         self.devices.clear()
         self.devices.setHeaderLabels(["Devices"])
         for host in self.options["devices"]:
             item = QtWidgets.QTreeWidgetItem(self.devices)
             item.setText(0, host)
-        self.main_window.add_devices(self.options["devices"])
 
     def set_profiles(self):
         self.profiles = get_profiles()
@@ -510,14 +506,15 @@ class OptionsWidget(QtWidgets.QWidget):
             text = "Device is already added."
             message(self.main_window, "Device Already Added", text, "warning")
             return
-        status = get_status(host)
-        if not status:
-            text = f"Could not find device at: {host}."
-            message(self.main_window, "Device not found", text, "warning")
-            return
+        # status = get_status(host)
+        # if not status:
+        #     text = f"Could not find device at: {host}."
+        #     message(self.main_window, "Device not found", text, "warning")
+        #     return
         self.options["devices"].append(host)
         write_options(self.options)
         self.set_devices()
+        self.main_window.add_devices(self.options["devices"])
 
     def delete_device(self):
         items = self.devices.selectedItems()
@@ -528,6 +525,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.options["devices"].remove(host)
         write_options(self.options)
         self.set_devices()
+        self.main_window.remove_device(host)
 
     def delete_profile(self):
         item = self.accounts.selectedItems()[0]

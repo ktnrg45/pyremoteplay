@@ -280,6 +280,10 @@ class DDPProtocol(asyncio.DatagramProtocol):
         self.add_callback(host, callback)
         return self._devices[host]
 
+    def remove_device(self, host):
+        if host in self.devices:
+            self._devices.pop(host)
+
     def add_callback(self, host, callback):
         """Add callback. One per host."""
         if host not in self._devices:

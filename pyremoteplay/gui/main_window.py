@@ -195,7 +195,7 @@ class MainWindow(QtWidgets.QWidget):
         self.rp_thread.start()
 
     def session_stop(self):
-        print("Detected Session Stop")
+        _LOGGER.debug("Detected Session Stop")
         self.rp_worker.stop()
         self.rp_thread.quit()
         self._stream_window = None
@@ -205,7 +205,12 @@ class MainWindow(QtWidgets.QWidget):
 
     def add_devices(self, devices):
         for host in devices:
-            self.async_handler.protocol.add_device(host)
+            if host not in self.async_handler.protocol.devices:
+                self.async_handler.protocol.add_device(host)
+
+    def remove_device(self, host):
+        self.async_handler.protocol.remove_device(host)
+        self.event_status_updated()
 
     def check_error_finish(self):
         if self.rp_worker.error:
