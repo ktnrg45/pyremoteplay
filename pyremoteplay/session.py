@@ -12,12 +12,11 @@ from struct import pack_into
 import requests
 from Cryptodome.Random import get_random_bytes
 
-from .av import AVFileReceiver, AVHandler
-from .const import (DDP_PORT, DDP_VERSION, FPS, OS_TYPE, RP_CRYPT_SIZE,
-                    RP_PORT, RP_VERSION, TYPE_PS4, TYPE_PS5, USER_AGENT,
-                    Resolution)
+from .av import AVHandler
+from .const import (FPS, OS_TYPE, RP_CRYPT_SIZE, RP_PORT, RP_VERSION, TYPE_PS4,
+                    TYPE_PS5, USER_AGENT, Resolution)
 from .crypt import SessionCipher
-from .ddp import get_status
+from .ddp import get_status, wakeup
 from .errors import RemotePlayError, RPErrorHandler
 from .feedback import Controller
 from .keys import SESSION_KEY_0, SESSION_KEY_1
@@ -102,28 +101,9 @@ def _gen_did() -> bytes:
     return did
 
 
-def get_wakeup_packet(regist_key: str) -> bytes:
+def format_regist_key(regist_key: str) -> bytes:
     regist_key = int.from_bytes(bytes.fromhex(bytes.fromhex(regist_key).decode()), "big")
-
-    data = (
-        "WAKEUP * HTTP/1.1\n"
-        "client-type:vr\n"
-        "auth-type:R\n"
-        "model:w\n"
-        "app-type:r\n"
-        f"user-credential:{regist_key}\n"
-        f"device-discovery-protocol-version:{DDP_VERSION}\n"
-    )
-    return data.encode()
-
-
-def send_wakeup(host: str, regist_key: str):
-    """Send Wakeup Packet."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(0)
-    sock.sendto(get_wakeup_packet(regist_key), (host, DDP_PORT))
-    _LOGGER.info("Sent Wakeup to host")
-    sock.close()
+    return regist_key
 
 
 class Session():
@@ -381,7 +361,8 @@ class Session():
 
     def wakeup(self):
         """Wakeup Host."""
-        send_wakeup(self._host, self._regist_key)
+        regist_key = format_regist_key(self._regist_key)
+        wakeup(self.host, regist_key, host_type=self.type)
 
     def start(self, wakeup=True, autostart=True) -> bool:
         """Start Session/RP Session."""
@@ -509,10 +490,10 @@ class Session():
     @property
     def video_format(self):
         formats = {
-            "ps4": "h264",
-            "ps5": "h265",
+            TYPE_PS4: "h264",
+            TYPE_PS5: "h265",
         }
-        return formats.get(self.type.lower())
+        return formats.get(self.type)
     
 
 class SessionAsync(Session):

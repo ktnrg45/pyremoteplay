@@ -400,9 +400,11 @@ def get_ddp_search_message():
 def get_ddp_wake_message(credential):
     """Get DDP wake message."""
     data = {
-        'user-credential': credential,
-        'client-type': 'a',
-        'auth-type': 'C',
+        "user-credential": credential,
+        "client-type": "vr",
+        "auth-type": "R",
+        "model": "w",
+        "app-type": "r",
     }
     return get_ddp_message(DDP_TYPE_WAKEUP, data)
 
