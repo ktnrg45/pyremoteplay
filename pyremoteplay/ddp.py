@@ -70,8 +70,6 @@ class DDPDevice():
             _LOGGER.debug("Polls disabled for %s seconds", round(seconds, 2))
             return
 
-        self._standby_start = 0
-
         # Track polls that were never returned.
         self._poll_count += 1
 
@@ -79,8 +77,9 @@ class DDPDevice():
         if not data:
             if self.poll_count > self._protocol.max_polls:
                 self._status = {}
-                self._callback()
-                return
+                if self.callback:
+                    self.callback()
+            return
 
         if self.host_type is None:
             self._host_type = data.get("host-type")
@@ -302,6 +301,8 @@ class DDPProtocol(asyncio.DatagramProtocol):
             if not self._event_stop.is_set():
                 self.send_msg()
                 for device in self._devices.values():
+                    if device.polls_disabled:
+                        continue
                     if device.direct:
                         self.send_msg(device)
             await asyncio.sleep(interval)
