@@ -185,6 +185,7 @@ class Session():
 
         self._ready_event = None
         self._stop_event = None
+        self.stream_ready = None
         self.receiver_started = None
 
     def _init_profile_kwargs(self, device: dict) -> bool:
@@ -219,7 +220,7 @@ class Session():
 
     def _get_status(self) -> dict:
         """Return dict of device status."""
-        return get_status(self._host)
+        return get_status(self._host, host_type=self.type)
 
     def _check_host(self) -> tuple:
         """Return True, True if host is available."""
@@ -387,6 +388,7 @@ class Session():
         self._ready_event = threading.Event()
         self._stop_event = threading.Event()
         self.receiver_started = threading.Event()
+        self.stream_ready = threading.Event()
         status = self._check_host()
         if not status[0]:
             self.error = f"Host @ {self._host} is not reachable."
@@ -454,7 +456,8 @@ class Session():
             _LOGGER.debug("Session already stopping")
             return
         _LOGGER.info("Session Received Stop Signal")
-        self._stop_event.set()
+        if self._stop_event:
+            self._stop_event.set()
 
     def init_controller(self):
         self.controller.start()
@@ -550,6 +553,7 @@ class SessionAsync(Session):
         self._ready_event = asyncio.Event()
         self._stop_event = asyncio.Event()
         self.receiver_started = asyncio.Event()
+        self.stream_ready = asyncio.Event()
 
         _LOGGER.debug("Running Async")
         status = await self.run_io(self._check_host)

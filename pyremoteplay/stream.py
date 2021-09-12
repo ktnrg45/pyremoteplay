@@ -109,6 +109,7 @@ class RPStream():
     def ready(self):
         _LOGGER.info("Stream Ready")
         self._state = RPStream.STATE_READY
+        self._session.stream_ready.set()
 
     def _advance_sequence(self):
         """Advance SCTP sequence number."""

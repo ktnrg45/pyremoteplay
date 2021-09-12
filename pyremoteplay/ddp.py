@@ -511,7 +511,7 @@ def send_search_msg(host, host_type=TYPE_PS4, sock=None):
     return _send_msg(host, msg, host_type=host_type, sock=sock)
 
 
-def search(host=BROADCAST_IP, port=UDP_PORT, sock=None, timeout=3) -> list:
+def search(host=BROADCAST_IP, port=UDP_PORT, host_type=None, sock=None, timeout=3) -> list:
     """Return list of discovered PS4s."""
     ps_list = []
     msg = get_ddp_search_message()
@@ -522,7 +522,8 @@ def search(host=BROADCAST_IP, port=UDP_PORT, sock=None, timeout=3) -> list:
     if sock is None:
         sock = get_socket(port=port)
     _LOGGER.debug("Sending search message")
-    for host_type in DDP_PORTS.keys():
+    host_types = [host_type] if host_type else DDP_PORTS.keys()
+    for host_type in host_types:
         _send_msg(host, msg, host_type=host_type, sock=sock, close=False)
     while time.time() - start < timeout:
         data = addr = None
@@ -543,9 +544,9 @@ def search(host=BROADCAST_IP, port=UDP_PORT, sock=None, timeout=3) -> list:
     return ps_list
 
 
-def get_status(host, port=UDP_PORT, sock=None):
+def get_status(host, port=UDP_PORT, host_type=None, sock=None):
     """Return status dict."""
-    ps_list = search(host=host, port=port, sock=sock)
+    ps_list = search(host=host, port=port, host_type=host_type, sock=sock)
     if not ps_list:
         return None
     return ps_list[0]
