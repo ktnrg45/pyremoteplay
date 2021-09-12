@@ -12,17 +12,22 @@ class ToolbarWidget(QtWidgets.QWidget):
         self.options = QtWidgets.QPushButton("Options")
         self.home = QtWidgets.QPushButton("Home")
         self.home.hide()
-        self.buttons = [self.home, self.refresh, self.controls, self.options]
+        self.buttons = [self.home, self.controls, self.options]
         self.options.clicked.connect(self.options_click)
         self.refresh.clicked.connect(self.refresh_click)
         self.controls.clicked.connect(self.controls_click)
         self.home.clicked.connect(self.home_click)
 
+        self.refresh.setMaximumWidth(200)
+        self.refresh.setCheckable(True)
+        self.layout.addWidget(self.refresh)
+        self.layout.addStretch()
         for button in self.buttons:
             button.setMaximumWidth(200)
             button.setCheckable(True)
             self.layout.addWidget(button)
         self.home.setCheckable(False)
+        self.buttons.append(self.refresh)
 
     def main_hide(self):
         self.main_window.main_frame.hide()
