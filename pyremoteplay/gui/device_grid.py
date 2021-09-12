@@ -1,5 +1,5 @@
 """Device Grid Widget."""
-from pyremoteplay.ddp import get_status, search
+from pyremoteplay.ddp import DEFAULT_STANDBY_DELAY, get_status, search
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt
 
@@ -59,11 +59,17 @@ class DeviceButton(QtWidgets.QPushButton):
     def update_state(self, state):
         cur_id = self.status.get("running-app-titleid")
         new_id = state.get("running-app-titleid")
+        cur_status = self.status.get('status_code')
+        new_status = state.get('status_code')
         self.status = state
         self.get_info()
         self.get_text()
         if cur_id != new_id:
             self.set_image()
+        if cur_status == 200 and new_status != cur_status:
+            # Disable Wakeup since device won't do anything right away.
+            self.action_power.setDisabled(True)
+            QtCore.QTimer.singleShot(DEFAULT_STANDBY_DELAY * 1000, self.enable_toggle_power)
         self.set_style()
 
     def set_image(self):
@@ -162,30 +168,8 @@ class DeviceButton(QtWidgets.QPushButton):
         else:
             self.main_window.wakeup_host(self.status)
 
-
-class DeviceSearch(QtCore.QObject):
-    finished = QtCore.Signal()
-
-    def __init__(self, main_window):
-        super().__init__()
-        self.main_window = main_window
-        self.hosts = []
-
-    def get_hosts(self):
-        manual_hosts = self.main_window.options.options.get("devices")
-        self.hosts = search()
-        if manual_hosts:
-            found = []
-            if self.hosts:
-                for item in self.hosts:
-                    found.append(item.get("host-ip"))
-            for _host in manual_hosts:
-                if _host in found:
-                    continue
-                host = get_status(_host)
-                if host:
-                    self.hosts.append(host)
-        self.finished.emit()
+    def enable_toggle_power(self):
+        self.action_power.setDisabled(False)
 
 
 class DeviceGridWidget(QtWidgets.QWidget):

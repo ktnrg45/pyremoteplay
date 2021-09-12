@@ -133,6 +133,12 @@ def add_regist_data(profile: dict, host: dict, data: dict) -> dict:
     return profile
 
 
+def format_regist_key(regist_key: str) -> bytes:
+    """Format Regist Key for wakeup."""
+    regist_key = int.from_bytes(bytes.fromhex(bytes.fromhex(regist_key).decode()), "big")
+    return regist_key
+
+
 def log_bytes(name: str, data: bytes):
     """Log bytes."""
     mod = inspect.getmodulename(inspect.stack()[1].filename)

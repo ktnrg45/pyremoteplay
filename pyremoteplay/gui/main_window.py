@@ -4,9 +4,9 @@ import sys
 import time
 
 from pyremoteplay.__version__ import VERSION
-from pyremoteplay.ddp import async_create_ddp_endpoint
-from pyremoteplay.session import Session, send_wakeup
-from pyremoteplay.util import timeit
+from pyremoteplay.ddp import async_create_ddp_endpoint, wakeup
+from pyremoteplay.session import Session
+from pyremoteplay.util import format_regist_key, timeit
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtCore import Qt
 
@@ -160,7 +160,8 @@ class MainWindow(QtWidgets.QWidget):
         ip_address = host["host-ip"]
         mac_address = host["host-id"]
         regist_key = profile["hosts"][mac_address]["data"]["RegistKey"]
-        send_wakeup(ip_address, regist_key)
+        regist_key = format_regist_key(regist_key)
+        wakeup(ip_address, regist_key, host_type=host["host-type"])
         message(self, "Wakeup Sent", f"Sent Wakeup command to device at {ip_address}", "info")
 
     def connect_host(self, host):

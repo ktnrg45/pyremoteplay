@@ -21,7 +21,7 @@ from .errors import RemotePlayError, RPErrorHandler
 from .feedback import Controller
 from .keys import SESSION_KEY_0, SESSION_KEY_1
 from .stream import RPStream
-from .util import listener, log_bytes
+from .util import format_regist_key, listener, log_bytes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -99,11 +99,6 @@ def _gen_did() -> bytes:
     did = b"".join([DID_PREFIX, get_random_bytes(16), bytes(6)])
     log_bytes("Device ID", did)
     return did
-
-
-def format_regist_key(regist_key: str) -> bytes:
-    regist_key = int.from_bytes(bytes.fromhex(bytes.fromhex(regist_key).decode()), "big")
-    return regist_key
 
 
 class Session():
