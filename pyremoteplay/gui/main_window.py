@@ -142,15 +142,20 @@ class MainWindow(QtWidgets.QWidget):
         if not profile:
             return
         ip_address = host["host-ip"]
-        session = Session(ip_address, profile)
-        status = session.start(autostart=False)
-        if status:
-            session.standby()
-        session.stop()
-        if not status:
-            message(self, "Standby Error", session.error)
+        self.rp_worker.setup(None, ip_address, profile)
+        self.rp_worker.run(standby=True)
+        # session = Session(ip_address, profile)
+        # status = session.start(autostart=False)
+        # if status:
+        #     session.standby()
+        # session.stop()
+
+    def standby_callback(self, host):
+        """Callback for Standby."""
+        if self.rp_worker.error:
+            message(self, "Standby Error", self.rp_worker.error)
         else:
-            message(self, "Standby Success", f"Set device at {ip_address} to Standby", "info")
+            message(self, "Standby Success", f"Set device at {host} to Standby", "info")
 
     def wakeup_host(self, host):
         name = self.options.options.get("profile")
@@ -190,7 +195,7 @@ class MainWindow(QtWidgets.QWidget):
             input_map=self.controls.get_map(),
             input_options=self.controls.get_options(),
             use_hw=use_hw,
-            quality=quality, 
+            quality=quality,
         )
         self._app.setActiveWindow(self._stream_window)
 

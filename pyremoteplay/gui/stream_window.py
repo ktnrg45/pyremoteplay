@@ -16,6 +16,7 @@ from .util import label, message
 class RPWorker(QtCore.QObject):
     finished = QtCore.Signal()
     started = QtCore.Signal()
+    standby_done = QtCore.Signal()
 
     def __init__(self, main_window):
         super().__init__()
@@ -24,38 +25,40 @@ class RPWorker(QtCore.QObject):
         self.session = None
         self.thread = None
         self.error = ""
+        self.standby_done.connect(self.standby_finished)
         event_emitter.on("stop", self.stop)
 
-    def run(self):
+    def run(self, standby=False):
         if not self.session:
             print("No Session")
             self.stop()
             return
-        if not self.window:
+        if not self.window and not standby:
             print("No Stream Window")
             self.stop()
             return
-        self.worker()
+        self.session.loop = self.main_window.async_handler.loop
+        self.session.loop.create_task(self.start(standby))
 
-    def stop(self):
+    def stop(self, standby=False):
         if self.session:
             print(f"Stopping Session @ {self.session.host}")
             self.session.stop()
             self.error = self.session.error
+        if standby:
+            self.standby_done.emit()
         self.session = None
+        if self.window:
+            self.window.close()
         self.window = None
         self.finished.emit()
 
-    def setup(self, window, host, profile, resolution, fps, use_hw, quality):
+    def setup(self, window, host, profile, resolution='720p', fps=60, use_hw=False, quality='default'):
         self.window = window
         self.session = SessionAsync(host, profile, resolution=resolution, fps=fps, av_receiver=QueueReceiver, use_hw=use_hw, quality=quality)
         # self.session.av_receiver.add_audio_cb(self.handle_audio)
 
-    def worker(self):
-        self.session.loop = self.main_window.async_handler.loop
-        self.session.loop.create_task(self.start())
-
-    async def start(self):
+    async def start(self, standby=False):
         print("Session Start")
         status = await self.session.start()
         if not status:
@@ -64,12 +67,20 @@ class RPWorker(QtCore.QObject):
             self.stop()
         else:
             self.started.emit()
-        await self.session._stop_event.wait()
-        print("Session Finished")
+        if standby:
+            await self.session.stream_ready.wait()
+            self.send_standby()
+        elif self.session._stop_event:
+            await self.session._stop_event.wait()
+            print("Session Finished")
 
     def send_standby(self):
         self.session.standby()
-        self.stop()
+        self.stop(standby=True)
+
+    def standby_finished(self):
+        host = self.session.host if self.session else "Unknown"
+        self.main_window.standby_callback(host)
 
     def stick_state(self, stick: str, direction: str = None, value: float = None, point=None):
         if point is not None:

@@ -485,10 +485,10 @@ class Session():
     @property
     def video_format(self):
         formats = {
-            TYPE_PS4: "h264",
-            TYPE_PS5: "h265",
+            "ps4": "h264",
+            "ps5": "h265",
         }
-        return formats.get(self.type)
+        return formats.get(self.type.lower())
     
 
 class SessionAsync(Session):
