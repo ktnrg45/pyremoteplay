@@ -10,6 +10,7 @@ from PySide6 import QtCore, QtWidgets
 from PySide6.QtCore import Qt
 
 from .util import label, message, spacer
+from .widgets import AnimatedToggle
 
 
 class ControlsTable(QtWidgets.QTableWidget):
@@ -102,20 +103,20 @@ class ControlsWidget(QtWidgets.QWidget):
         header = self.table.horizontalHeader()       
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
         header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-        self.left_joystick = QtWidgets.QCheckBox("Show Left Joystick", self)
-        self.right_joystick = QtWidgets.QCheckBox("Show Right Joystick", self)
+        self.left_joystick = AnimatedToggle("Show Left Joystick", self)
+        self.right_joystick = AnimatedToggle("Show Right Joystick", self)
         self.reset = QtWidgets.QPushButton("Reset to Default")
         self.clear = QtWidgets.QPushButton("Clear")
         self.cancel = QtWidgets.QPushButton("Cancel")
         self.init_controls()
         self.instructions()
-        self.layout.addWidget(self.left_joystick, 0, 0)
-        self.layout.addWidget(self.right_joystick, 0, 1)
-        self.layout.addWidget(self.reset, 1, 0)
-        self.layout.addWidget(self.clear, 1, 1)
-        self.layout.addWidget(self.cancel, 1, 2)
-        self.layout.addWidget(self.table, 2, 0, 1, 3)
-        self.layout.addWidget(self.label, 2, 3)
+        self.layout.addWidget(self.left_joystick, 0, 0, 1, 2)
+        self.layout.addWidget(self.right_joystick, 1, 0, 1, 2)
+        self.layout.addWidget(self.reset, 2, 0)
+        self.layout.addWidget(self.clear, 2, 1)
+        self.layout.addWidget(self.cancel, 2, 2)
+        self.layout.addWidget(self.table, 3, 0, 1, 3)
+        self.layout.addWidget(self.label, 3, 3)
         self.cancel.hide()
         self.clear.hide()
         self.left_joystick.clicked.connect(lambda: self.click_joystick("left"))
@@ -346,11 +347,11 @@ class OptionsWidget(QtWidgets.QWidget):
         self.fps = QtWidgets.QComboBox(self)
         self.fps.addItems(["30", "60"])
         self.fps.currentTextChanged.connect(self.change_fps)
-        self.fps_show = QtWidgets.QCheckBox("Show FPS", self)
+        self.fps_show = AnimatedToggle("Show FPS", self)
         self.fps_show.stateChanged.connect(self.change_fps_show)
-        self.fullscreen = QtWidgets.QCheckBox("Show Fullscreen", self)
+        self.fullscreen = AnimatedToggle("Show Fullscreen", self)
         self.fullscreen.stateChanged.connect(self.change_fullscreen)
-        self.use_hw = QtWidgets.QCheckBox("Use Hardware Decoding", self)
+        self.use_hw = AnimatedToggle("Use Hardware Decoding", self)
         self.use_hw.stateChanged.connect(self.change_use_hw)
         self.resolution = QtWidgets.QComboBox(self)
         self.resolution.addItems(list(RESOLUTION_PRESETS.keys()))

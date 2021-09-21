@@ -52,8 +52,12 @@ setup(
     python_requires='>={}'.format(MIN_PY_VERSION),
     test_suite='tests',
     include_package_data=True,
-    entry_points={"console_scripts": [
-        "pyremoteplay = pyremoteplay.__main__:main",
-        "pyremoteplay-gui = pyremoteplay.gui.__init__:run [GUI]",
-    ]}
+    entry_points={
+        "console_scripts": [
+            "pyremoteplay = pyremoteplay.__main__:main",
+        ],
+        "gui_scripts": [
+            "pyremoteplay-gui = pyremoteplay.gui.__init__:run [GUI]",
+        ]
+    }
 )
