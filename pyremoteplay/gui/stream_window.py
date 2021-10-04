@@ -109,10 +109,20 @@ class AVProcessor(QtCore.QObject):
         self.window = window
         self.pixmaps = deque()
         self._set_slow = False
+        self.skip = False
         event_emitter.on("frame", self.next_frame)
 
     def next_frame(self):
         frame = self.window.rp_worker.session.av_receiver.get_video_frame()
+        if len(self.pixmaps) > 5:
+            if self.skip:
+                self.skip = False
+            else:
+                self.skip = True
+        else:
+            self.skip = False
+        if self.skip:
+            return
         if frame is None:
             return
         image = QtGui.QImage(
@@ -122,8 +132,8 @@ class AVProcessor(QtCore.QObject):
             frame.width * 3,
             QtGui.QImage.Format_RGB888,
         )
-        if len(self.pixmaps) > 2:
-            self.pixmaps.clear()
+        # if len(self.pixmaps) > 5:
+        #     self.pixmaps.clear()
         self.pixmaps.append(QtGui.QPixmap.fromImage(image))
 
 
@@ -347,7 +357,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.mapping = ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
         self.fps = fps
         self.fullscreen = fullscreen
-        self.ms_refresh = 1000.0/self.fps
+        self.ms_refresh = 1000.0/self.fps * 0.4
         self.setWindowTitle(f"Session {name} @ {host}")
         self.rp_worker.setup(self, host, profile, resolution, fps, use_hw, quality)
         self.show_fps = show_fps
