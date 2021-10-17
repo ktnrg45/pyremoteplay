@@ -6,7 +6,7 @@ from enum import Enum
 from pyremoteplay.av import QueueReceiver
 from pyremoteplay.session import SessionAsync
 from pyremoteplay.util import event_emitter, timeit
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtMultimedia, QtWidgets
 from PySide6.QtCore import Qt
 
 from .options import ControlsWidget
@@ -56,7 +56,6 @@ class RPWorker(QtCore.QObject):
     def setup(self, window, host, profile, resolution='720p', fps=60, use_hw=False, quality='default'):
         self.window = window
         self.session = SessionAsync(host, profile, resolution=resolution, fps=fps, av_receiver=QueueReceiver, use_hw=use_hw, quality=quality)
-        # self.session.av_receiver.add_audio_cb(self.handle_audio)
 
     async def start(self, standby=False):
         print("Session Start")
@@ -110,9 +109,10 @@ class AVProcessor(QtCore.QObject):
         self.pixmaps = deque()
         self._set_slow = False
         self.skip = False
-        event_emitter.on("frame", self.next_frame)
+        event_emitter.on("video_frame", self.next_video_frame)
+        event_emitter.on("audio_frame", self.next_audio_frame)
 
-    def next_frame(self):
+    def next_video_frame(self):
         frame = self.window.rp_worker.session.av_receiver.get_video_frame()
         if len(self.pixmaps) > 5:
             if self.skip:
@@ -135,6 +135,10 @@ class AVProcessor(QtCore.QObject):
         # if len(self.pixmaps) > 5:
         #     self.pixmaps.clear()
         self.pixmaps.append(QtGui.QPixmap.fromImage(image))
+
+    def next_audio_frame(self):
+        frame = self.window.rp_worker.session.av_receiver.get_audio_frame()
+        self.window.new_audio_frame(frame)
 
 
 class JoystickWidget(QtWidgets.QFrame):
@@ -337,7 +341,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.av_worker = AVProcessor(self)
         self.timer = QtCore.QTimer()
         self.timer.setTimerType(Qt.PreciseTimer)
-        self.timer.timeout.connect(self.new_frame)
+        self.timer.timeout.connect(self.new_video_frame)
         self.ms_refresh = 0
         self._video_transform_mode = Qt.SmoothTransformation
 
@@ -348,6 +352,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.av_worker.slow.connect(self.av_slow)
         self.av_worker.moveToThread(self.av_thread)
         self.av_thread.started.connect(self.start_timer)
+        event_emitter.on("audio_config", self.init_audio)
 
     def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None, use_hw=False, quality="default"):
         self.center_text.show()
@@ -385,20 +390,18 @@ class StreamWindow(QtWidgets.QWidget):
             self.joystick.show_sticks(joysticks['left'], joysticks['right'])
             self.joystick.default_pos()
 
-# Waiting on pyside6.2
-#    def init_audio(self):
-#        config = self._a_stream._audio_config
-#        format = QtMultimedia.QAudioFormat()
-#        format.setChannels(config['channels'])
-#        format.setFrequency(config['rate'])
-#        format.setSampleSize(config['bits'])
-#        format.setCodec("audio/pcm")
-#        format.setByteOrder(QtMultimedia.QAudioFormat.LittleEndian)
-#        format.setSampleType(QtMultimedia.QAudioFormat.SignedInt)
-#        output = QtMultimedia.QAudioOutput(format)
-#        self.audio_output = output.start()
+    def init_audio(self):
+        config = self.rp_worker.session.av_receiver.audio_config
+        audio_format = QtMultimedia.QAudioFormat()
+        audio_format.setChannelCount(config['channels'])
+        audio_format.setSampleRate(config['rate'])
+        audio_format.setSampleFormat(QtMultimedia.QAudioFormat.Int16)
 
-    def new_frame(self):
+        self.audio_output = QtMultimedia.QAudioSink(format=audio_format)
+        self.audio_output.setBufferSize(3840)
+        self.audio_buffer = self.audio_output.start()
+
+    def new_video_frame(self):
         try:
             pixmap = self.av_worker.pixmaps.popleft()
         except IndexError:
@@ -408,6 +411,11 @@ class StreamWindow(QtWidgets.QWidget):
         self.video_output.setPixmap(pixmap)
         if self.show_fps:
             self.set_fps()
+
+    def new_audio_frame(self, data):
+        if self.audio_output is None:
+            self.init_audio()
+        self.audio_buffer.write(data)
 
     def av_slow(self):
         self._video_transform_mode = Qt.FastTransformation
@@ -428,11 +436,6 @@ class StreamWindow(QtWidgets.QWidget):
             self.last_time = now
             self.fps_label.setText(f"FPS: {int(self.fps/delta)}")
             self.fps_sample = 0
-
-    def handle_audio(self, data):
-        if self.audio_output is None:
-            self.init_audio()
-        self.audio_output.write()
 
     def mousePressEvent(self, event):
         button = event.button().name.decode()
@@ -505,6 +508,10 @@ class StreamWindow(QtWidgets.QWidget):
         self.timer.stop()
         self.av_thread.quit()
         event_emitter.remove_all_listeners("frame")
+        if self.audio_output:
+            self.audio_output.stop()
+            self.audio_output = None
+            self.audio_buffer = None
         self.main_window.session_stop()
 
     def start_timer(self):

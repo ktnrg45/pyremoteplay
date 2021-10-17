@@ -11,6 +11,7 @@ from collections import deque
 from io import BytesIO
 from struct import unpack_from
 
+from .codecs.opus import OpusDecoder
 from .stream_packets import AVPacket, Packet
 from .util import event_emitter, log_bytes, timeit
 
@@ -18,11 +19,6 @@ try:
     import av
     import ffmpeg
 except ModuleNotFoundError as err:
-    print(err)
-
-try:
-    from opuslib import Decoder
-except Exception as err:
     print(err)
 
 _LOGGER = logging.getLogger(__name__)
@@ -58,6 +54,7 @@ class AVHandler():
             self._receiver._v_header = v_header
             self._v_stream = AVStream("video", v_header, self._receiver.handle_video)
             self._a_stream = AVStream("audio", a_header, self._receiver.handle_audio)
+            self._receiver.get_audio_config(a_header)
 
     def add_packet(self, packet):
         """Add Packet."""
@@ -145,39 +142,6 @@ class AVStream():
 
         if self._type not in [AVStream.TYPE_VIDEO, AVStream.TYPE_AUDIO]:
             raise ValueError("Invalid Type")
-        if self._type == AVStream.TYPE_AUDIO:
-            self._audio_config = {}
-            self._audio_decoder = None
-            self.get_audio_config()
-
-    def get_audio_config(self):
-        """Get Audio config from header."""
-        if self._type != AVStream.TYPE_AUDIO:
-            raise RuntimeError("Type is not Audio")
-        if sys.modules.get("opuslib") is None:
-            _LOGGER.info("Opuslib not found. Ignoring audio.")
-            return
-        self._audio_config = {
-            "channels": self._header[0],
-            "bits": self._header[1],
-            "rate": unpack_from("!I", self._header, 2)[0],
-            "frame_size": unpack_from("!I", self._header, 6)[0],
-            "unknown": unpack_from("!I", self._header, 10)[0],
-        }
-        _LOGGER.info("Audio Config: %s", self._audio_config)
-        self._audio_decoder = Decoder(self._audio_config['rate'], self._audio_config['channels'])
-
-    def audio_decode(self, packet: AVPacket):
-        if not self._audio_config:
-            return
-
-        assert len(packet.data) % packet.frame_size_audio == 0
-        buf = bytearray()
-        for count in range(0, packet.frame_length_src):
-            start = count * packet.frame_size_audio
-            end = (count + 1) * packet.frame_size_audio
-            buf.extend(self._audio_decoder.decode(packet.data[start:end], self._audio_config['frame_size']))
-        return buf
 
     def handle(self, packet: AVPacket):
         """Handle Packet."""
@@ -188,8 +152,7 @@ class AVStream():
             self._received = 1
 
         if self._type == AVStream.TYPE_AUDIO:
-            data = self.audio_decode(packet)
-            self._callback(data)
+            self._callback(packet)
             return
         # New Video Frame
         if packet.frame_index != self.frame:
@@ -316,8 +279,25 @@ class AVReceiver(abc.ABC):
 
     def __init__(self, session):
         self._session = session
-        self.a_cb = None
         self.codec = None
+        self.audio_decoder = None
+        self.audio_config = {}
+        self.first_video = False
+
+    def get_audio_config(self, header: bytes):
+        """Get Audio config from header."""
+        self.audio_config = {
+            "channels": header[0],
+            "bits": header[1],
+            "rate": unpack_from("!I", header, 2)[0],
+            "frame_size": unpack_from("!I", header, 6)[0],
+            "unknown": unpack_from("!I", header, 10)[0],
+        }
+        _LOGGER.info("Audio Config: %s", self.audio_config)
+
+        if not self.audio_decoder:
+            self.audio_decoder = OpusDecoder(self.audio_config['rate'], self.audio_config['channels'])
+            event_emitter.emit("audio_config")
 
     def get_video_codec(self):
         self.codec = AVReceiver.video_codec(video_format=self._session.video_format, use_hw=self._session.use_hw)
@@ -331,11 +311,32 @@ class AVReceiver(abc.ABC):
 
     def decode_video_frame(self, buf: bytes) -> bytes:
         """Decode Video Frame."""
+        if not self.first_video:
+            self.first_video = True
         frame = AVReceiver.video_frame(buf, self.codec)
         return frame
 
+    def decode_audio_frame(self, packet: AVPacket) -> bytes:
+        """Return Audio Frame."""
+        if not self.audio_config or not self.first_video:
+            return None
+
+        assert len(packet.data) % packet.frame_size_audio == 0
+        buf = bytearray()
+        for count in range(0, packet.frame_length_src):
+            start = count * packet.frame_size_audio
+            end = (count + 1) * packet.frame_size_audio
+            data = packet.data[start:end]
+            _buf = self.audio_decoder.decode(data)
+            buf.extend(_buf)
+        return buf
+
     def get_video_frame(self):
         """Return Video Frame."""
+        raise NotImplementedError
+
+    def get_audio_frame(self):
+        """Return Audio Frame."""
         raise NotImplementedError
 
     def handle_video(self, buf: bytes):
@@ -356,10 +357,7 @@ class QueueReceiver(AVReceiver):
     def __init__(self, session):
         super().__init__(session)
         self.v_queue = deque(maxlen=10)
-        self.lock = threading.Lock()
-
-    def add_audio_cb(self, cb):
-        self.a_cb = cb
+        self.a_queue = deque(maxlen=10)
 
     def start(self):
         self.get_video_codec()
@@ -376,23 +374,34 @@ class QueueReceiver(AVReceiver):
         except IndexError:
             return None
 
+    def get_audio_frame(self):
+        try:
+            frame = self.a_queue.popleft()
+            return frame
+        except IndexError:
+            return None
+
     def handle_video(self, buf):
         frame = self.decode_video_frame(buf)
         if frame is None:
             return
-        if self.queue_size >= self.v_queue.maxlen:
-            _LOGGER.warning("AV Receiver max queue size exceeded")
+        if len(self.v_queue) >= self.v_queue.maxlen:
+            _LOGGER.warning("AV Receiver max video queue size exceeded")
             self.v_queue.clear()
         self.v_queue.append(frame)
-        event_emitter.emit('frame')
+        event_emitter.emit('video_frame')
 
-    def handle_audio(self, buf):
-        if self.a_cb is not None:
-            self.a_cb(buf)
-
-    @property
-    def queue_size(self):
-        return len(self.v_queue)
+    def handle_audio(self, packet):
+        if not self.first_video:
+            return
+        frame = self.decode_audio_frame(packet)
+        if frame is None:
+            return
+        if len(self.a_queue) >= self.a_queue.maxlen:
+            _LOGGER.warning("AV Receiver max audio queue size exceeded")
+            self.a_queue.clear()
+        self.a_queue.append(frame)
+        event_emitter.emit('audio_frame')
 
 
 # class ProcessReceiver(AVReceiver):

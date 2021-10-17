@@ -18,7 +18,7 @@ This project provides an API to programmatically connect to and control Remote P
 The GUI requires dependencies that may be complex to install.
 Below is a list of such dependencies.
 - pyav (May require FFMPEG to be installed)
-- opuslib (Requires libopus to be installed)
+- pyogg (May require libopus-dev, libopusfile-dev, libogg-dev to be installed on Linux)
 - PySide6
 
 ## Installation ##
@@ -78,7 +78,7 @@ To run the GUI use the following command:
 `pyremoteplay-gui`
 
 ## Notes ##
-- Video decoding is performed by the CPU by default. Hardware Acceleration can be enabled in the options screen in the GUI.
+- Video decoding is performed by the CPU by default. Hardware Decoding can be enabled in the options screen in the GUI.
 
 ## Baseline measurements ##
 The CLI instance runs at 5-10% CPU usage with around 50Mb memory usage according to `top` on this author's machine: ODroid N2.
@@ -87,4 +87,4 @@ The CLI instance runs at 5-10% CPU usage with around 50Mb memory usage according
 - Text sending functions
 - Congestion Control
 - Add support for PS5. (Don't have one yet)
-- Implement audio stream for GUI
+- Poor audio quality on Windows (Probably QT related)
