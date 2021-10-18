@@ -295,7 +295,7 @@ class DDPProtocol(asyncio.DatagramProtocol):
             return
         self._devices[host].set_callback(None)
 
-    async def run(self, interval=5):
+    async def run(self, interval=1):
         """Run polling."""
         while True:
             if not self._event_stop.is_set():
