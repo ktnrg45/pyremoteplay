@@ -282,7 +282,6 @@ class AVReceiver(abc.ABC):
         self.codec = None
         self.audio_decoder = None
         self.audio_config = {}
-        self.first_video = False
 
     def get_audio_config(self, header: bytes):
         """Get Audio config from header."""
@@ -311,14 +310,12 @@ class AVReceiver(abc.ABC):
 
     def decode_video_frame(self, buf: bytes) -> bytes:
         """Decode Video Frame."""
-        if not self.first_video:
-            self.first_video = True
         frame = AVReceiver.video_frame(buf, self.codec)
         return frame
 
     def decode_audio_frame(self, packet: AVPacket) -> bytes:
         """Return Audio Frame."""
-        if not self.audio_config or not self.first_video:
+        if not self.audio_config:
             return None
 
         assert len(packet.data) % packet.frame_size_audio == 0
@@ -357,6 +354,7 @@ class QueueReceiver(AVReceiver):
     def __init__(self, session):
         super().__init__(session)
         self.v_queue = deque(maxlen=10)
+        self.a_queue = deque(maxlen=10)
 
     def start(self):
         self.get_video_codec()
@@ -391,12 +389,14 @@ class QueueReceiver(AVReceiver):
         event_emitter.emit('video_frame')
 
     def handle_audio(self, packet):
-        if not self.first_video:
-            return
         frame = self.decode_audio_frame(packet)
         if frame is None:
             return
-        event_emitter.emit('audio_frame', frame)
+        if len(self.a_queue) >= self.a_queue.maxlen:
+            _LOGGER.warning("AV Receiver max audio queue size exceeded")
+            self.a_queue.clear()
+        self.a_queue.append(frame)
+        event_emitter.emit('audio_frame')
 
 
 # class ProcessReceiver(AVReceiver):

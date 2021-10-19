@@ -3,7 +3,7 @@ import time
 from collections import deque
 from enum import Enum
 
-from pyremoteplay.av import QueueReceiver
+from pyremoteplay.av import AVReceiver
 from pyremoteplay.session import SessionAsync
 from pyremoteplay.util import event_emitter, timeit
 from PySide6 import QtCore, QtGui, QtMultimedia, QtWidgets
@@ -11,6 +11,30 @@ from PySide6.QtCore import Qt
 
 from .options import ControlsWidget
 from .util import label, message
+
+
+class QtReceiver(AVReceiver):
+
+    def __init__(self, session):
+        super().__init__(session)
+        self.video_signal = None
+        self.audio_signal = None
+
+    def handle_video(self, buf):
+        frame = self.decode_video_frame(buf)
+        if frame is None:
+            return
+        self.video_signal.emit(frame)
+
+    def handle_audio(self, packet):
+        frame = self.decode_audio_frame(packet)
+        if frame is None:
+            return
+        self.audio_signal.emit(frame)
+
+    def set_signals(self, video_signal, audio_signal):
+        self.video_signal = video_signal
+        self.audio_signal = audio_signal
 
 
 class RPWorker(QtCore.QObject):
@@ -55,7 +79,7 @@ class RPWorker(QtCore.QObject):
 
     def setup(self, window, host, profile, resolution='720p', fps=60, use_hw=False, quality='default'):
         self.window = window
-        self.session = SessionAsync(host, profile, resolution=resolution, fps=fps, av_receiver=QueueReceiver, use_hw=use_hw, quality=quality)
+        self.session = SessionAsync(host, profile, resolution=resolution, fps=fps, av_receiver=QtReceiver, use_hw=use_hw, quality=quality)
 
     async def start(self, standby=False):
         print("Session Start")
@@ -65,6 +89,9 @@ class RPWorker(QtCore.QObject):
             message(None, "Error", self.session.error)
             self.stop()
         else:
+            self.session.av_receiver.set_signals(self.window.av_worker.video_frame, self.window.av_worker.audio_frame)
+            self.window.av_worker.video_frame.connect(self.window.av_worker.next_video_frame)
+            self.window.av_worker.audio_frame.connect(self.window.av_worker.next_audio_frame)
             self.started.emit()
         if standby:
             await self.session.stream_ready.wait()
@@ -102,6 +129,8 @@ class AVProcessor(QtCore.QObject):
     started = QtCore.Signal()
     frame = QtCore.Signal()
     slow = QtCore.Signal()
+    video_frame = QtCore.Signal(object)
+    audio_frame = QtCore.Signal(object)
 
     def __init__(self, window):
         super().__init__()
@@ -109,11 +138,11 @@ class AVProcessor(QtCore.QObject):
         self.pixmaps = deque()
         self._set_slow = False
         self.skip = False
-        event_emitter.on("video_frame", self.next_video_frame)
-        event_emitter.on("audio_frame", self.next_audio_frame)
+        # event_emitter.on("video_frame", self.next_video_frame)
+        # event_emitter.on("audio_frame", self.next_audio_frame)
 
-    def next_video_frame(self):
-        frame = self.window.rp_worker.session.av_receiver.get_video_frame()
+    def next_video_frame(self, frame):
+        #frame = self.window.rp_worker.session.av_receiver.get_video_frame()
         if len(self.pixmaps) > 5:
             if self.skip:
                 self.skip = False
@@ -137,6 +166,7 @@ class AVProcessor(QtCore.QObject):
         self.pixmaps.append(QtGui.QPixmap.fromImage(image))
 
     def next_audio_frame(self, frame):
+        #frame = self.window.rp_worker.session.av_receiver.get_audio_frame()
         self.window.new_audio_frame(frame)
 
 
