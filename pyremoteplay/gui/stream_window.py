@@ -136,8 +136,7 @@ class AVProcessor(QtCore.QObject):
         #     self.pixmaps.clear()
         self.pixmaps.append(QtGui.QPixmap.fromImage(image))
 
-    def next_audio_frame(self):
-        frame = self.window.rp_worker.session.av_receiver.get_audio_frame()
+    def next_audio_frame(self, frame):
         self.window.new_audio_frame(frame)
 
 
