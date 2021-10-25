@@ -205,10 +205,11 @@ class MainWindow(QtWidgets.QWidget):
     def session_stop(self):
         _LOGGER.debug("Detected Session Stop")
         self.rp_worker.stop()
-        self._stream_window = None
         self._app.setActiveWindow(self)
         self.device_grid.session_stop()
-        self.session_finished.emit()
+        if self._stream_window:
+            self._stream_window = None
+            self.session_finished.emit()
 
     def add_devices(self, devices):
         for host in devices:

@@ -72,8 +72,6 @@ class RPWorker(QtCore.QObject):
         if standby:
             self.standby_done.emit()
         self.session = None
-        if self.window:
-            self.window.close()
         self.window = None
         self.finished.emit()
 
@@ -86,8 +84,9 @@ class RPWorker(QtCore.QObject):
         status = await self.session.start()
         if not status:
             print("Session Failed to Start")
-            message(None, "Error", self.session.error)
+            # message(None, "Error", self.session.error)
             self.stop()
+            return
         else:
             self.session.av_receiver.set_signals(self.window.av_worker.video_frame, self.window.av_worker.audio_frame)
             self.window.av_worker.video_frame.connect(self.window.av_worker.next_video_frame)
