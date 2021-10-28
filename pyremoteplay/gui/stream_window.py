@@ -137,11 +137,8 @@ class AVProcessor(QtCore.QObject):
         self.pixmaps = deque()
         self._set_slow = False
         self.skip = False
-        # event_emitter.on("video_frame", self.next_video_frame)
-        # event_emitter.on("audio_frame", self.next_audio_frame)
 
     def next_video_frame(self, frame):
-        #frame = self.window.rp_worker.session.av_receiver.get_video_frame()
         if len(self.pixmaps) > 5:
             if self.skip:
                 self.skip = False
@@ -165,7 +162,6 @@ class AVProcessor(QtCore.QObject):
         self.pixmaps.append(QtGui.QPixmap.fromImage(image))
 
     def next_audio_frame(self, frame):
-        #frame = self.window.rp_worker.session.av_receiver.get_audio_frame()
         self.window.new_audio_frame(frame)
 
 
@@ -310,6 +306,8 @@ class Joystick(QtWidgets.QLabel):
             self.grabbed = True
             self.movingOffset = self._boundJoystick(event.pos())
             self.update()
+            point = self.joystickDirection()
+            self.parent.window.rp_worker.stick_state(self.stick, point=point)
         if not self.grabbed:
             self.parent.mousePressEvent(event)
         else:

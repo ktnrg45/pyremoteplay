@@ -97,11 +97,7 @@ class Controller():
 
         def scale_value(value):
             value = int(Controller.STICK_STATE_MAX * value)
-            if value > Controller.STICK_STATE_MAX:
-                value = Controller.STICK_STATE_MAX
-            elif value < Controller.STICK_STATE_MIN:
-                value = Controller.STICK_STATE_MIN
-            return value
+            return max([min([Controller.STICK_STATE_MAX, value]), Controller.STICK_STATE_MIN])
 
         stick = stick.lower()
         if stick not in ("left", "right"):

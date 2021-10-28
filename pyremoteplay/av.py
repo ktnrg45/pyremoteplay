@@ -3,9 +3,6 @@ import abc
 import errno
 import logging
 import multiprocessing
-import queue
-import sys
-import threading
 import time
 from collections import deque
 from io import BytesIO
@@ -17,7 +14,6 @@ from .util import event_emitter, log_bytes, timeit
 
 try:
     import av
-    import ffmpeg
 except ModuleNotFoundError as err:
     print(err)
 
@@ -399,89 +395,12 @@ class QueueReceiver(AVReceiver):
         event_emitter.emit('audio_frame')
 
 
-# class ProcessReceiver(AVReceiver):
-#     """Uses Multiprocessing. Seems to be slower than threaded."""
-#     class FrameMinimal():
-#         def __init__(self, plane, width, height):
-#             self.planes = [plane]
-#             self.width = width
-#             self.height = height
-
-#     def process(q_in, q_out, video_format="h264", use_hw=False):
-#         codec = AVReceiver.video_codec(video_format=video_format, use_hw=use_hw)
-
-#         _LOGGER.info("Process Started")
-#         while True:
-#             frame = None
-#             try:
-#                 buf = q_in.get_nowait()
-#             except queue.Empty:
-#                 continue
-#             frame = AVReceiver.video_frame(buf, codec)
-#             if frame is None:
-#                 continue
-#             try:
-#                 q_out.put_nowait((bytearray(frame.planes[0]), frame.width, frame.height))
-#                 frame = None
-#                 event_emitter.emit("frame")
-#             except BrokenPipeError:
-#                 break
-
-#     def listener(session, queue):
-#         while not session.is_stopped:
-#             if not queue.empty():
-#                 event_emitter.emit("frame")
-#                 break
-#             else:
-#                 time.sleep(0.001)
-
-#     def __init__(self, session):
-#         super().__init__(session)
-#         self.pipe1, self.pipe2 = multiprocessing.Pipe()
-#         self.manager = multiprocessing.Manager()
-#         self.v_queue_in = self.manager.Queue(100)
-#         self.v_queue = self.manager.Queue(10)
-#         self.lock = self.manager.Lock()
-#         self._worker = None
-
-#     def start(self):
-#         self._worker = multiprocessing.Process(
-#             target=ProcessReceiver.process,
-#             args=(self.v_queue_in, self.v_queue, self._session.video_format, self._session.use_hw),
-#             daemon=True,
-#         )
-#         self._worker.start()
-#         _LOGGER.info("Process Start")
-#         self._listener = threading.Thread(target=ProcessReceiver.listener, args=(self._session, self.v_queue))
-#         self._listener.start()
-#         self.notify_started()
-
-#     def get_video_frame(self):
-#         frame = None
-#         try:  
-#             frame = self.v_queue.get_nowait()
-#             frame = ProcessReceiver.FrameMinimal(frame[0], frame[1], frame[2])
-#         except queue.Empty:
-#             pass
-#         return frame
-
-#     def handle_video(self, buf):
-#         self.v_queue_in.put_nowait(buf)
-
-#     def handle_audio(self, buf):
-#         if self.a_cb is not None:
-#             self.a_cb(buf)
-
-#     def close(self):
-#         if self._worker:
-#             self._worker.terminate()
-#             self._worker.join()
-#             self._worker.close()
-
-
 class AVFileReceiver(AVReceiver):
     """Writes AV to file."""
+
     def process(pipe, av_file):
+        import ffmpeg
+
         video = ffmpeg.input('pipe:', format='h264')
         audio = ffmpeg.input('pipe:', format='s16le', ac=2, ar=48000)
         #joined = ffmpeg.concat(video, audio, v=1, a=1).node

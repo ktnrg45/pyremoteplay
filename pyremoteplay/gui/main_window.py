@@ -208,6 +208,7 @@ class MainWindow(QtWidgets.QWidget):
         self._app.setActiveWindow(self)
         self.device_grid.session_stop()
         if self._stream_window:
+            self._stream_window.hide()
             self._stream_window = None
             self.session_finished.emit()
 
