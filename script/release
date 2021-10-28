@@ -30,8 +30,10 @@ then
 fi
 echo "Branch up to date."
 
-python3 setup.py install
+rm -rf dist
+rm -rf build
 
+python3 setup.py install
 
 git checkout master
 git reset HEAD
@@ -64,8 +66,6 @@ read -p "Upload to pypi?: y> " msg_pypi
 if [ "$msg_pypi" == "y" ];
 then
     echo "Uploading to pypi."
-    rm -rf dist
-    rm -rf build
     python3 setup.py sdist bdist_wheel
     python3 -m twine check dist/*
     python3 -m twine upload dist/* --skip-existing
