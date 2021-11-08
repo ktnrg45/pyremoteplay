@@ -234,8 +234,9 @@ class MainWindow(QtWidgets.QWidget):
         self.device_grid.stop_update()
         if self._stream_window:
             self._stream_window.close()
-        self.async_thread.quit()
+        self.async_handler.stop_poll()
         self.async_handler.loop.stop()
+        self.async_thread.quit()
         self.hide()
         start = time.time()
         while self.async_handler.loop.is_running():

@@ -108,8 +108,8 @@ def get_key_stream(
     cipher = AES.new(key, AES.MODE_ECB)
     key_stream = cipher.encrypt(key_stream)
 
-    key_stream = key_stream[padding:]  # Align to the overflow of the block.
-    key_stream = key_stream[:data_len]  # Truncate to match packet size.
+    # Align to the overflow of the block and truncate to match packet size.
+    key_stream = key_stream[padding:data_len]
     return key_stream
 
 
@@ -265,9 +265,11 @@ class LocalCipher(BaseCipher):
 class StreamCipher():
     """Collection of Local and Remote Ciphers."""
 
-    def __init__(self, local_cipher, remote_cipher):
-        self._local_cipher = local_cipher
-        self._remote_cipher = remote_cipher
+    def __init__(self, handshake_key, secret):
+        self._local_cipher = LocalCipher(handshake_key, secret)
+        self._remote_cipher = RemoteCipher(handshake_key, secret)
+        self._handshake_key = handshake_key
+        self._secret = secret
 
     def encrypt(self, data: bytes) -> bytes:
         """Return Encrypted data."""
@@ -472,8 +474,4 @@ class StreamECDH():
 
     def init_ciphers(self) -> StreamCipher:
         """Return Stream Cipher."""
-        local_cipher = LocalCipher(
-            self.handshake_key, self._secret)
-        remote_cipher = RemoteCipher(
-            self.handshake_key, self._secret)
-        return StreamCipher(local_cipher, remote_cipher)
+        return StreamCipher(self.handshake_key, self._secret)

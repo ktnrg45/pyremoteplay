@@ -57,6 +57,12 @@ class RPStream():
         def close(self):
             self.transport.close()
 
+        @property
+        def socket(self):
+            if self.transport is None:
+                return None
+            return self.transport.get_extra_info("socket")
+
     def __init__(self, session, stop_event, rtt=None, mtu=None, is_test=False, cb_stop=None):
         self._host = session.host
         self._port = STREAM_PORT if not is_test else TEST_STREAM_PORT

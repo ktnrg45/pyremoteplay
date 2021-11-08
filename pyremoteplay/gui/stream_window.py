@@ -533,8 +533,7 @@ class StreamWindow(QtWidgets.QWidget):
         print("Cleaning up window")
         self.timer.stop()
         self.av_thread.quit()
-        event_emitter.remove_all_listeners("video_frame")
-        event_emitter.remove_all_listeners("audio_frame")
+        event_emitter.remove_all_listeners()
         if self.audio_output:
             self.audio_output.stop()
             self.audio_output = None

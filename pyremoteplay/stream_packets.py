@@ -9,7 +9,7 @@ from struct import pack, pack_into, unpack_from
 from google.protobuf.message import DecodeError
 
 from .const import Quality
-from .takion_pb2 import *
+from .takion_pb2 import SenkushaPayload, TakionMessage
 from .util import log_bytes, timeit
 
 _LOGGER = logging.getLogger(__name__)
