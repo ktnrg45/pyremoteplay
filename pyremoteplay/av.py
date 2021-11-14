@@ -235,6 +235,8 @@ class AVReceiver(abc.ABC):
         #_LOGGER.debug(f"Frame: Key:{frame.key_frame}, Interlaced:{frame.interlaced_frame} Pict:{frame.pict_type}")
         if to_rgb:
             frame = frame.reformat(frame.width, frame.height, "rgb24")
+        elif frame.format.name == "nv12":  # HW Decode will output NV12 frames
+            frame = frame.reformat(format="yuv420p")
         return frame
 
     def find_video_decoder(video_format="h264", use_hw=False):

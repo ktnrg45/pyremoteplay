@@ -9,6 +9,7 @@ from pyremoteplay.util import event_emitter, timeit
 from PySide6 import QtCore, QtGui, QtMultimedia, QtWidgets
 from PySide6.QtCore import Qt
 
+from .gl_widget import YUVGLWidget
 from .options import ControlsWidget
 from .util import label, message
 
@@ -19,6 +20,11 @@ class QtReceiver(AVReceiver):
         super().__init__(session)
         self.video_signal = None
         self.audio_signal = None
+
+    def decode_video_frame(self, buf: bytes) -> bytes:
+        """Decode Video Frame."""
+        frame = AVReceiver.video_frame(buf, self.codec, to_rgb=False)
+        return frame
 
     def handle_video(self, buf):
         frame = self.decode_video_frame(buf)
@@ -89,8 +95,8 @@ class RPWorker(QtCore.QObject):
             return
         else:
             self.session.av_receiver.set_signals(self.window.av_worker.video_frame, self.window.av_worker.audio_frame)
-            self.window.av_worker.video_frame.connect(self.window.av_worker.next_video_frame)
-            self.window.av_worker.audio_frame.connect(self.window.av_worker.next_audio_frame)
+            self.window.av_worker.audio_frame.connect(self.window.next_audio_frame)
+            self.window.av_worker.video_frame.connect(self.window.video_output.next_video_frame)
             self.started.emit()
         if standby:
             await self.session.stream_ready.wait()
@@ -342,6 +348,7 @@ class Joystick(QtWidgets.QLabel):
 
 class StreamWindow(QtWidgets.QWidget):
     started = QtCore.Signal()
+    fps_update = QtCore.Signal()
 
     def __init__(self, main_window):
         super().__init__()
@@ -351,46 +358,43 @@ class StreamWindow(QtWidgets.QWidget):
         self.setMaximumWidth(self.main_window.screen.virtualSize().width())
         self.setMaximumHeight(self.main_window.screen.virtualSize().height())
         self.setStyleSheet("background-color: black")
-        self.video_output = QtWidgets.QLabel(self, alignment=Qt.AlignCenter)
+        self.video_output = None
         self.audio_output = None
         self.center_text = QtWidgets.QLabel("Starting Stream...", alignment=Qt.AlignCenter)
         self.center_text.setWordWrap(True)
         self.center_text.setStyleSheet("QLabel {color: white;font-size: 24px;}")
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.addWidget(self.video_output)
         self.layout.addWidget(self.center_text)
         self.joystick = JoystickWidget(self, left=True, right=True)
         self.joystick.hide()
         self.input_options = None
         self.fps_label = label(self, "FPS: ")
         self.av_worker = AVProcessor(self)
-        self.timer = QtCore.QTimer()
-        self.timer.setTimerType(Qt.PreciseTimer)
-        self.timer.timeout.connect(self.new_video_frame)
-        self.ms_refresh = 0
-        self._video_transform_mode = Qt.SmoothTransformation
+        self.fps_update.connect(self.set_fps)
 
         self.rp_worker = self.main_window.rp_worker
         self.av_thread = QtCore.QThread()
         self.rp_worker.started.connect(self.show_video)
         self.rp_worker.finished.connect(self.close)
-        self.av_worker.slow.connect(self.av_slow)
         self.av_worker.moveToThread(self.av_thread)
-        self.av_thread.started.connect(self.start_timer)
         event_emitter.on("audio_config", self.init_audio)
 
     def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None, use_hw=False, quality="default"):
         self.center_text.show()
         self.input_options = input_options
-        self.frame_mutex = QtCore.QMutex()
-        self.video_output.hide()
         self.mapping = ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
         self.fps = fps
         self.fullscreen = fullscreen
         self.ms_refresh = 1000.0/self.fps * 0.4
         self.setWindowTitle(f"Session {name} @ {host}")
         self.rp_worker.setup(self, host, profile, resolution, fps, use_hw, quality)
+        self.resize(self.rp_worker.session.resolution['width'], self.rp_worker.session.resolution['height'])
+        self.video_output = YUVGLWidget(self.rp_worker.session.resolution['width'], self.rp_worker.session.resolution['height'])
+        self.video_output.hide()
+        self.layout.addWidget(self.video_output)
+        self.joystick.setParent(self.video_output)
+        self.fps_label.setParent(self.video_output)
         self.show_fps = show_fps
 
         if self.show_fps:
@@ -401,7 +405,6 @@ class StreamWindow(QtWidgets.QWidget):
         self.av_thread.start()
         self.started.connect(self.main_window.session_start)
         self.started.emit()
-        self.resize(self.rp_worker.session.resolution['width'], self.rp_worker.session.resolution['height'])
         if self.fullscreen:
             self.showFullScreen()
         else:
@@ -417,6 +420,8 @@ class StreamWindow(QtWidgets.QWidget):
             self.joystick.default_pos()
 
     def init_audio(self):
+        if not self.rp_worker.session:
+            return
         config = self.rp_worker.session.av_receiver.audio_config
         audio_format = QtMultimedia.QAudioFormat()
         audio_format.setChannelCount(config['channels'])
@@ -427,27 +432,15 @@ class StreamWindow(QtWidgets.QWidget):
         self.audio_output.setBufferSize(3840)
         self.audio_buffer = self.audio_output.start()
 
-    def new_video_frame(self):
-        try:
-            pixmap = self.av_worker.pixmaps.popleft()
-        except IndexError:
-            return
-        if self.fullscreen:
-            pixmap = pixmap.scaled(self.video_output.size(), aspectMode=Qt.KeepAspectRatio, mode=self._video_transform_mode)
-        self.video_output.setPixmap(pixmap)
-        if self.show_fps:
-            self.set_fps()
-
-    def new_audio_frame(self, data):
+    def next_audio_frame(self, data):
         if self.audio_output is None:
             self.init_audio()
-        self.audio_buffer.write(data)
-
-    def av_slow(self):
-        self._video_transform_mode = Qt.FastTransformation
+        if self.audio_buffer:
+            self.audio_buffer.write(data)
 
     def init_fps(self):
         self.fps_label.move(20, 20)
+        self.fps_label.resize(80, 20)
         self.fps_label.setStyleSheet("background-color:#33333333;color:white;padding-left:5px;")
         self.fps_sample = 0
         self.last_time = time.time()
@@ -531,15 +524,13 @@ class StreamWindow(QtWidgets.QWidget):
 
     def cleanup(self):
         print("Cleaning up window")
-        self.timer.stop()
         self.av_thread.quit()
         event_emitter.remove_all_listeners()
+        if self.video_output:
+            self.video_output.deleteLater()
+            self.video_output = None
         if self.audio_output:
             self.audio_output.stop()
             self.audio_output = None
             self.audio_buffer = None
         self.main_window.session_stop()
-
-    def start_timer(self):
-        print("AV Processor Started")
-        self.timer.start(self.ms_refresh)
