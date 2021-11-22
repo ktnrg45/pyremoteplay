@@ -375,6 +375,7 @@ class StreamWindow(QtWidgets.QWidget):
             self.joystick.hide_sticks()
             self.joystick.show_sticks(joysticks['left'], joysticks['right'])
             self.joystick.default_pos()
+        self.setFixedSize(self.width(), self.height())
 
     def init_audio(self):
         if not self.rp_worker.session:

@@ -83,6 +83,7 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         self.frame_width = width
         self.frame_height = height
         self.resize(self.frame_width, self.frame_height)
+
         self.program = QOpenGLShaderProgram(self)
         self.vao = QOpenGLVertexArrayObject()
         self.frame = self.draw_pos = None
@@ -119,7 +120,7 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
 
         self.program.setUniformValue("pos_matrix", matrix)
 
-        self.glViewport(0, 0, self.width(), self.height())
+        #self.glViewport(0, 0, self.width(), self.height())
 
         for index, plane in enumerate(self.frame.planes):
             self.update_texture(index, plane.to_bytes(), plane.line_size)
