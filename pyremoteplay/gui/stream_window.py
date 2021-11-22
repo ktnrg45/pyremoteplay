@@ -270,9 +270,9 @@ class Joystick(QtWidgets.QLabel):
         if is_center:
             self.grabbed = True
             self.movingOffset = self._boundJoystick(event.pos())
-            self.update()
             point = self.joystickDirection()
             self.parent.window.rp_worker.stick_state(self.stick, point=point)
+            self.update()
         if not self.grabbed:
             self.parent.mousePressEvent(event)
         else:
@@ -282,10 +282,10 @@ class Joystick(QtWidgets.QLabel):
         if self.grabbed:
             self.grabbed = False
             self.movingOffset = QtCore.QPointF(0, 0)
-            self.update()
             point = self.joystickDirection()
             self.parent.window.rp_worker.stick_state(self.stick, point=point)
             self.set_cursor(Qt.OpenHandCursor)
+            self.update()
         else:
             self.parent.mouseReleaseEvent(event)
 
@@ -293,9 +293,9 @@ class Joystick(QtWidgets.QLabel):
         if self.grabbed:
             self.set_cursor(Qt.ClosedHandCursor)
             self.movingOffset = self._boundJoystick(event.pos())
-            self.update()
             point = self.joystickDirection()
             self.parent.window.rp_worker.stick_state(self.stick, point=point)
+            self.update()
         else:
             is_center = self._centerEllipse().contains(event.pos())
             if is_center:
