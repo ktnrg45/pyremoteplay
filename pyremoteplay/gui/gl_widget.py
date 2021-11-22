@@ -1,14 +1,12 @@
-import logging
 from textwrap import dedent
 
 from OpenGL import GL
-from PySide6 import QtGui, QtOpenGL
+from PySide6 import QtGui
 from PySide6.QtGui import QOpenGLFunctions, QSurfaceFormat
-from PySide6.QtOpenGL import QOpenGLTexture
+from PySide6.QtOpenGL import (QOpenGLShader, QOpenGLShaderProgram,
+                              QOpenGLTexture, QOpenGLVertexArrayObject)
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from shiboken6 import VoidPtr
-
-_LOGGER = logging.getLogger(__name__)
 
 YUV_VERT = dedent("""
     #version 150 core
@@ -82,11 +80,11 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         self.setFormat(surface_format)
         self.surface_format = surface_format
         self.textures = []
-        self.frameWidth = width
-        self.frameHeight = height
-        self.resize(self.frameWidth, self.frameHeight)
-        self.program = QtOpenGL.QOpenGLShaderProgram(self)
-        self.vao = QtOpenGL.QOpenGLVertexArrayObject()
+        self.frame_width = width
+        self.frame_height = height
+        self.resize(self.frame_width, self.frame_height)
+        self.program = QOpenGLShaderProgram(self)
+        self.vao = QOpenGLVertexArrayObject()
         self.frame = self.draw_pos = None
 
     def __del__(self):
@@ -96,17 +94,18 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         self.doneCurrent()
 
     def initializeGL(self):
+        """Initilize GL Program and textures."""
         self.initializeOpenGLFunctions()
 
         # Setup shaders
-        assert self.program.addShaderFromSourceCode(QtOpenGL.QOpenGLShader.Vertex, YUV_VERT)
-        assert self.program.addShaderFromSourceCode(QtOpenGL.QOpenGLShader.Fragment, YUV_FRAG)
+        assert self.program.addShaderFromSourceCode(QOpenGLShader.Vertex, YUV_VERT)
+        assert self.program.addShaderFromSourceCode(QOpenGLShader.Fragment, YUV_FRAG)
 
         self.program.link()
         self.program.bind()
 
         self.program.setUniformValue("draw_pos", 0, 0, self.width(), self.height())
-        self.initializeTextures()
+        self._create_textures()
 
         self.vao.create()
         self.vao.bind()
@@ -123,17 +122,18 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         self.glViewport(0, 0, self.width(), self.height())
 
         for index, plane in enumerate(self.frame.planes):
-            self.bindPixelTexture(index, plane.to_bytes(), plane.line_size)
+            self.update_texture(index, plane.to_bytes(), plane.line_size)
 
         self.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
         if self.parent():
             self.parent().fps_update.emit()
 
-    def initializeTextures(self):
+    def _create_textures(self):
+        """Create Textures."""
         self.textures = []
         for index, name in enumerate(YUVGLWidget.TEXTURE_NAMES):
-            width = self.frameWidth
-            height = self.frameHeight
+            width = self.frame_width
+            height = self.frame_height
             if index > 0:
                 width /= 2
                 height /= 2
@@ -150,9 +150,9 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
             self.program.setUniformValue1i(self.program.uniformLocation(name), index)
             self.textures.append(texture)
 
-    def bindPixelTexture(self, index, pixels, stride):
-        width = self.frameWidth if index == 0 else self.frameWidth / 2
-        height = self.frameHeight if index == 0 else self.frameHeight / 2
+    def update_texture(self, index, pixels, stride):
+        width = self.frame_width if index == 0 else self.frame_width / 2
+        height = self.frame_height if index == 0 else self.frame_height / 2
 
         self.glActiveTexture(GL.GL_TEXTURE0 + index)
         texture = self.textures[index]

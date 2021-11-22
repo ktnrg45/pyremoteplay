@@ -12,6 +12,7 @@ def run():
         QtCore.Qt.HighDpiScaleFactorRoundingPolicy.Floor
     )
     app = QtWidgets.QApplication([])
+    app.setApplicationName("PyRemotePlay")
     widget = MainWindow(app)
     widget.resize(800, 600)
     widget.show()
