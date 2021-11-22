@@ -94,9 +94,9 @@ class RPWorker(QtCore.QObject):
             self.stop()
             return
         else:
-            self.session.av_receiver.set_signals(self.window.av_worker.video_frame, self.window.av_worker.audio_frame)
-            self.window.av_worker.audio_frame.connect(self.window.next_audio_frame)
-            self.window.av_worker.video_frame.connect(self.window.video_output.next_video_frame)
+            self.session.av_receiver.set_signals(self.window.video_frame, self.window.audio_frame)
+            self.window.audio_frame.connect(self.window.next_audio_frame)
+            self.window.video_frame.connect(self.window.video_output.next_video_frame)
             self.started.emit()
         if standby:
             await self.session.stream_ready.wait()
@@ -128,47 +128,6 @@ class RPWorker(QtCore.QObject):
 
     def send_button(self, button, action):
         self.session.controller.button(button, action)
-
-
-class AVProcessor(QtCore.QObject):
-    started = QtCore.Signal()
-    frame = QtCore.Signal()
-    slow = QtCore.Signal()
-    video_frame = QtCore.Signal(object)
-    audio_frame = QtCore.Signal(object)
-
-    def __init__(self, window):
-        super().__init__()
-        self.window = window
-        self.pixmaps = deque()
-        self._set_slow = False
-        self.skip = False
-
-    def next_video_frame(self, frame):
-        if len(self.pixmaps) > 5:
-            if self.skip:
-                self.skip = False
-            else:
-                self.skip = True
-        else:
-            self.skip = False
-        if self.skip:
-            return
-        if frame is None:
-            return
-        image = QtGui.QImage(
-            bytearray(frame.planes[0]),
-            frame.width,
-            frame.height,
-            frame.width * 3,
-            QtGui.QImage.Format_RGB888,
-        )
-        # if len(self.pixmaps) > 5:
-        #     self.pixmaps.clear()
-        self.pixmaps.append(QtGui.QPixmap.fromImage(image))
-
-    def next_audio_frame(self, frame):
-        self.window.new_audio_frame(frame)
 
 
 class JoystickWidget(QtWidgets.QFrame):
@@ -318,17 +277,17 @@ class Joystick(QtWidgets.QLabel):
             self.parent.mousePressEvent(event)
         else:
             self.set_cursor(Qt.ClosedHandCursor)
-        return super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if not self.grabbed:
-            self.parent.mouseMoveEvent(event)
-        self.grabbed = False
-        self.movingOffset = QtCore.QPointF(0, 0)
-        self.update()
-        point = self.joystickDirection()
-        self.parent.window.rp_worker.stick_state(self.stick, point=point)
-        self.set_cursor(Qt.OpenHandCursor)
+        if self.grabbed:
+            self.grabbed = False
+            self.movingOffset = QtCore.QPointF(0, 0)
+            self.update()
+            point = self.joystickDirection()
+            self.parent.window.rp_worker.stick_state(self.stick, point=point)
+            self.set_cursor(Qt.OpenHandCursor)
+        else:
+            self.parent.mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event):
         if self.grabbed:
@@ -349,6 +308,8 @@ class Joystick(QtWidgets.QLabel):
 class StreamWindow(QtWidgets.QWidget):
     started = QtCore.Signal()
     fps_update = QtCore.Signal()
+    video_frame = QtCore.Signal(object)
+    audio_frame = QtCore.Signal(object)
 
     def __init__(self, main_window):
         super().__init__()
@@ -370,14 +331,11 @@ class StreamWindow(QtWidgets.QWidget):
         self.joystick.hide()
         self.input_options = None
         self.fps_label = label(self, "FPS: ")
-        self.av_worker = AVProcessor(self)
         self.fps_update.connect(self.set_fps)
 
         self.rp_worker = self.main_window.rp_worker
-        self.av_thread = QtCore.QThread()
         self.rp_worker.started.connect(self.show_video)
         self.rp_worker.finished.connect(self.close)
-        self.av_worker.moveToThread(self.av_thread)
         event_emitter.on("audio_config", self.init_audio)
 
     def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None, use_hw=False, quality="default"):
@@ -402,7 +360,6 @@ class StreamWindow(QtWidgets.QWidget):
             self.fps_label.show()
         else:
             self.fps_label.hide()
-        self.av_thread.start()
         self.started.connect(self.main_window.session_start)
         self.started.emit()
         if self.fullscreen:
@@ -524,7 +481,6 @@ class StreamWindow(QtWidgets.QWidget):
 
     def cleanup(self):
         print("Cleaning up window")
-        self.av_thread.quit()
         event_emitter.remove_all_listeners()
         if self.video_output:
             self.video_output.deleteLater()

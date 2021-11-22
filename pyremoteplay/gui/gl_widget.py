@@ -68,11 +68,11 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
     TEXTURE_NAMES = ("plane1", "plane2", "plane3")
 
     def surface_format():
-        defaultFormat = QSurfaceFormat.defaultFormat()
-        defaultFormat.setProfile(QSurfaceFormat.CoreProfile)
-        defaultFormat.setVersion(3, 3)
-        QSurfaceFormat.setDefaultFormat(defaultFormat)
-        return defaultFormat
+        surface_format = QSurfaceFormat.defaultFormat()
+        surface_format.setProfile(QSurfaceFormat.CoreProfile)
+        surface_format.setVersion(3, 3)
+        QSurfaceFormat.setDefaultFormat(surface_format)
+        return surface_format
 
     def __init__(self, width, height, surface_format=None, parent=None):
         QOpenGLWidget.__init__(self, parent)
