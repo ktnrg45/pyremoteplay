@@ -8,6 +8,7 @@ from pyremoteplay.util import (add_profile, add_regist_data, get_mapping,
                                write_options, write_profiles)
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtCore import Qt
+from PySide6.QtMultimedia import QMediaDevices
 
 from .util import label, message, spacer
 from .widgets import AnimatedToggle
@@ -308,6 +309,8 @@ class OptionsWidget(QtWidgets.QWidget):
         # self.layout.setRowMinimumHeight(3, 20)
         # self.layout.setRowStretch(4, 1)
 
+        self.audio_devices = self.get_audio_devices()
+
         self.init_options()
         self.load_options()
         success = self.set_options()
@@ -341,6 +344,7 @@ class OptionsWidget(QtWidgets.QWidget):
             "try adding the IP Address below.",
             wrap=True,
         )
+
         self.quality = QtWidgets.QComboBox(self)
         self.quality.addItems([item.name for item in Quality])
         self.quality.currentTextChanged.connect(self.change_quality)
@@ -360,6 +364,8 @@ class OptionsWidget(QtWidgets.QWidget):
         self.accounts.itemDoubleClicked.connect(self.change_profile)
         self.devices = QtWidgets.QTreeWidget()
         self.devices.itemClicked.connect(del_device.show)
+        self.audio_output = QtWidgets.QComboBox(self)
+        self.audio_output.addItems(list(self.audio_devices.keys()))
 
         self.add(self.quality, 0, 1, label=label(self, "Quality:"))
         self.add(self.fps, 1, 1, label=label(self, "FPS:"))
@@ -370,15 +376,16 @@ class OptionsWidget(QtWidgets.QWidget):
         self.add(hw_label, 4, 1, label=label(self, "Available Decoder:"))
         self.layout.addWidget(self.use_hw, 4, 2)
         self.layout.addWidget(devices_label, 4, 4, 1, 2)
-        self.layout.addItem(spacer(), 5, 0)
-        self.add(set_account, 6, 0)
-        self.add(add_account, 6, 1)
-        self.add(del_account, 6, 2)
-        self.add(add_device, 6, 4)
-        self.add(del_device, 6, 5)
-        self.layout.addWidget(self.accounts, 7, 0, 3, 3)
-        self.layout.addItem(spacer(), 7, 3)
-        self.layout.addWidget(self.devices, 7, 4, 3, 2)
+        self.add(self.audio_output, 5, 1, label=label(self, "Audio Output"))
+        self.layout.addItem(spacer(), 6, 0)
+        self.add(set_account, 7, 0)
+        self.add(add_account, 7, 1)
+        self.add(del_account, 7, 2)
+        self.add(add_device, 7, 4)
+        self.add(del_device, 7, 5)
+        self.layout.addWidget(self.accounts, 8, 0, 3, 3)
+        self.layout.addItem(spacer(), 8, 3)
+        self.layout.addWidget(self.devices, 8, 4, 3, 2)
         del_device.hide()
 
     def get_decoder(self):
@@ -387,6 +394,19 @@ class OptionsWidget(QtWidgets.QWidget):
         if not decoder:
             decoder = "CPU"
         return decoder
+
+    def get_audio_devices(self):
+        devices = QMediaDevices.audioOutputs()
+        default = QMediaDevices.defaultAudioOutput()
+        audio_devices = {f"{default.description()} (Default)": default}
+        for device in devices:
+            if device == default:
+                continue
+            audio_devices[device.description()] = device
+        return audio_devices
+
+    def get_audio_device(self):
+        return self.audio_devices.get(self.audio_output.currentText())
 
     def set_options(self) -> bool:
         try:

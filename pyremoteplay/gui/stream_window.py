@@ -338,7 +338,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.rp_worker.finished.connect(self.close)
         event_emitter.on("audio_config", self.init_audio)
 
-    def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None, use_hw=False, quality="default"):
+    def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None, use_hw=False, quality="default", audio_device=None):
         self.center_text.show()
         self.input_options = input_options
         self.mapping = ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
@@ -354,6 +354,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.joystick.setParent(self.video_output)
         self.fps_label.setParent(self.video_output)
         self.show_fps = show_fps
+        self.audio_device = audio_device
 
         if self.show_fps:
             self.init_fps()
@@ -386,7 +387,7 @@ class StreamWindow(QtWidgets.QWidget):
         audio_format.setSampleRate(config['rate'])
         audio_format.setSampleFormat(QtMultimedia.QAudioFormat.Int16)
 
-        self.audio_output = QtMultimedia.QAudioSink(format=audio_format)
+        self.audio_output = QtMultimedia.QAudioSink(self.audio_device, format=audio_format)
         self.audio_output.setBufferSize(3840)
         self.audio_buffer = self.audio_output.start()
 

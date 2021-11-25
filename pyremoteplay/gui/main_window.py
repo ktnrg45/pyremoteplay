@@ -183,6 +183,7 @@ class MainWindow(QtWidgets.QWidget):
         fullscreen = options['fullscreen']
         use_hw = options['use_hw']
         quality = options['quality']
+        audio_device = self.options.get_audio_device()
         self._stream_window = StreamWindow(self)
         self._stream_window.start(
             ip_address,
@@ -196,6 +197,7 @@ class MainWindow(QtWidgets.QWidget):
             input_options=self.controls.get_options(),
             use_hw=use_hw,
             quality=quality,
+            audio_device=audio_device,
         )
         self._app.setActiveWindow(self._stream_window)
 
