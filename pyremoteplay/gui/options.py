@@ -355,6 +355,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.quality.currentTextChanged.connect(self.change_quality)
         self.use_opengl = AnimatedToggle("Use OpenGL", self)
         self.use_opengl.stateChanged.connect(self.change_opengl)
+        self.use_opengl.setToolTip("Recommended if using Hardware Decoding")
         self.fps = QtWidgets.QComboBox(self)
         self.fps.addItems(["30", "60"])
         self.fps.currentTextChanged.connect(self.change_fps)
