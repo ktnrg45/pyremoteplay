@@ -9,9 +9,9 @@ from pyremoteplay.util import event_emitter, timeit
 from PySide6 import QtCore, QtGui, QtMultimedia, QtWidgets
 from PySide6.QtCore import Qt
 
-from .gl_widget import YUVGLWidget
 from .options import ControlsWidget
 from .util import label, message
+from .video import VideoWidget, YUVGLWidget
 
 
 class QtReceiver(AVReceiver):
@@ -20,10 +20,11 @@ class QtReceiver(AVReceiver):
         super().__init__(session)
         self.video_signal = None
         self.audio_signal = None
+        self.rgb = True
 
     def decode_video_frame(self, buf: bytes) -> bytes:
         """Decode Video Frame."""
-        frame = AVReceiver.video_frame(buf, self.codec, to_rgb=False)
+        frame = AVReceiver.video_frame(buf, self.codec, to_rgb=self.rgb)
         return frame
 
     def handle_video(self, buf):
@@ -87,6 +88,7 @@ class RPWorker(QtCore.QObject):
 
     async def start(self, standby=False):
         print("Session Start")
+        self.session.av_receiver.rgb = False if self.window.use_opengl else True
         status = await self.session.start()
         if not status:
             print("Session Failed to Start")
@@ -321,6 +323,8 @@ class StreamWindow(QtWidgets.QWidget):
         self.setStyleSheet("background-color: black")
         self.video_output = None
         self.audio_output = None
+        self.audio_device = None
+        self.opengl = False
         self.center_text = QtWidgets.QLabel("Starting Stream...", alignment=Qt.AlignCenter)
         self.center_text.setWordWrap(True)
         self.center_text.setStyleSheet("QLabel {color: white;font-size: 24px;}")
@@ -338,17 +342,19 @@ class StreamWindow(QtWidgets.QWidget):
         self.rp_worker.finished.connect(self.close)
         event_emitter.on("audio_config", self.init_audio)
 
-    def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None, use_hw=False, quality="default", audio_device=None):
+    def start(self, host, name, profile, resolution='720p', fps=60, show_fps=False, fullscreen=False, input_map=None, input_options=None, use_hw=False, quality="default", audio_device=None, use_opengl=False):
         self.center_text.show()
         self.input_options = input_options
         self.mapping = ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
         self.fps = fps
         self.fullscreen = fullscreen
+        self.use_opengl = use_opengl
         self.ms_refresh = 1000.0/self.fps * 0.4
         self.setWindowTitle(f"Session {name} @ {host}")
         self.rp_worker.setup(self, host, profile, resolution, fps, use_hw, quality)
         self.resize(self.rp_worker.session.resolution['width'], self.rp_worker.session.resolution['height'])
-        self.video_output = YUVGLWidget(self.rp_worker.session.resolution['width'], self.rp_worker.session.resolution['height'])
+        output = YUVGLWidget if self.use_opengl else VideoWidget
+        self.video_output = output(self.rp_worker.session.resolution['width'], self.rp_worker.session.resolution['height'])
         self.video_output.hide()
         self.layout.addWidget(self.video_output)
         self.joystick.setParent(self.video_output)

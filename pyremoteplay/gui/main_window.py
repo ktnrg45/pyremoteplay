@@ -183,6 +183,7 @@ class MainWindow(QtWidgets.QWidget):
         fullscreen = options['fullscreen']
         use_hw = options['use_hw']
         quality = options['quality']
+        use_opengl = options["use_opengl"]
         audio_device = self.options.get_audio_device()
         self._stream_window = StreamWindow(self)
         self._stream_window.start(
@@ -198,6 +199,7 @@ class MainWindow(QtWidgets.QWidget):
             use_hw=use_hw,
             quality=quality,
             audio_device=audio_device,
+            use_opengl=use_opengl,
         )
         self._app.setActiveWindow(self._stream_window)
 

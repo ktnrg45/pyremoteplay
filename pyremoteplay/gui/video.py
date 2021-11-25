@@ -1,7 +1,7 @@
 from textwrap import dedent
 
 from OpenGL import GL
-from PySide6 import QtGui
+from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtGui import QOpenGLFunctions, QSurfaceFormat
 from PySide6.QtOpenGL import (QOpenGLShader, QOpenGLShaderProgram,
                               QOpenGLTexture, QOpenGLVertexArrayObject)
@@ -163,3 +163,24 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
     def next_video_frame(self, frame):
         self.frame = frame
         self.update()
+
+
+class VideoWidget(QtWidgets.QLabel):
+    def __init__(self, width, height, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.frame_width = width
+        self.frame_height = height
+
+    def next_video_frame(self, frame):
+        image = QtGui.QImage(
+            bytearray(frame.planes[0]),
+            frame.width,
+            frame.height,
+            frame.width * 3,
+            QtGui.QImage.Format_RGB888,
+        )
+        pixmap = QtGui.QPixmap.fromImage(image)
+        if self.parent().fullscreen:
+            pixmap = pixmap.scaled(self.parent().size(), aspectMode=QtCore.Qt.KeepAspectRatio, mode=QtCore.Qt.SmoothTransformation)
+        self.setPixmap(pixmap)
+        self.parent().fps_update.emit()

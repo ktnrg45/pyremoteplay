@@ -351,6 +351,8 @@ class OptionsWidget(QtWidgets.QWidget):
         self.quality = QtWidgets.QComboBox(self)
         self.quality.addItems([item.name for item in Quality])
         self.quality.currentTextChanged.connect(self.change_quality)
+        self.use_opengl = AnimatedToggle("Use OpenGL", self)
+        self.use_opengl.stateChanged.connect(self.change_opengl)
         self.fps = QtWidgets.QComboBox(self)
         self.fps.addItems(["30", "60"])
         self.fps.currentTextChanged.connect(self.change_fps)
@@ -371,6 +373,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.audio_output.addItems(list(self.audio_devices.keys()))
 
         self.add(self.quality, 0, 1, label=label(self, "Quality:"))
+        self.add(self.use_opengl, 0, 2)
         self.add(self.fps, 1, 1, label=label(self, "FPS:"))
         self.add(self.fps_show, 1, 2)
         self.add(self.resolution, 2, 1, label=label(self, "Resolution:"))
@@ -418,6 +421,7 @@ class OptionsWidget(QtWidgets.QWidget):
     def set_options(self) -> bool:
         try:
             self.quality.setCurrentText(str(self.options["quality"]))
+            self.use_opengl.setChecked(self.options["use_opengl"])
             self.fps.setCurrentText(str(self.options["fps"]))
             self.fps_show.setChecked(self.options["show_fps"])
             self.use_hw.setChecked(self.options["use_hw"])
@@ -432,6 +436,7 @@ class OptionsWidget(QtWidgets.QWidget):
     def default_options(self) -> dict:
         options = {
             "quality": "Default",
+            "use_opengl": False,
             "fps": 30,
             "show_fps": False,
             "resolution": "720p",
@@ -491,6 +496,10 @@ class OptionsWidget(QtWidgets.QWidget):
 
     def change_quality(self, text):
         self.options["quality"] = text
+        write_options(self.options)
+
+    def change_opengl(self):
+        self.options["use_opengl"] = self.use_opengl.isChecked()
         write_options(self.options)
 
     def change_fps(self, text):
