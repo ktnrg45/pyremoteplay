@@ -308,7 +308,7 @@ class OptionsWidget(QtWidgets.QWidget):
 
         # self.layout.setRowMinimumHeight(3, 20)
         # self.layout.setRowStretch(4, 1)
-
+        self.audio_output = None
         self.audio_devices = {}
         self.get_audio_devices()
         self._media_devices = QMediaDevices()
@@ -407,6 +407,9 @@ class OptionsWidget(QtWidgets.QWidget):
                 continue
             audio_devices[device.description()] = device
         self.audio_devices = audio_devices
+        if self.audio_output:
+            self.audio_output.clear()
+            self.audio_output.addItems(self.audio_devices)
         return audio_devices
 
     def get_audio_device(self):
