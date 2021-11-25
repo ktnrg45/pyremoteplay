@@ -1,4 +1,6 @@
 """Options Window."""
+import socket
+
 from pyremoteplay.av import AVReceiver
 from pyremoteplay.const import RESOLUTION_PRESETS, Quality
 from pyremoteplay.oauth import LOGIN_URL, get_user_account
@@ -540,6 +542,11 @@ class OptionsWidget(QtWidgets.QWidget):
             return
         host = dialog.textValue()
         if not host:
+            return
+        try:
+            socket.getaddrinfo(host, None)
+        except socket.gaierror:
+            QtWidgets.QMessageBox.critical(self, "Invalid IP Address", f"Could not find device at: {host}")
             return
         if host in self.options["devices"]:
             text = "Device is already added."
