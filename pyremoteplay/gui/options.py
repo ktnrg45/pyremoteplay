@@ -309,7 +309,10 @@ class OptionsWidget(QtWidgets.QWidget):
         # self.layout.setRowMinimumHeight(3, 20)
         # self.layout.setRowStretch(4, 1)
 
-        self.audio_devices = self.get_audio_devices()
+        self.audio_devices = {}
+        self.get_audio_devices()
+        self._media_devices = QMediaDevices()
+        self._media_devices.audioOutputsChanged.connect(self.get_audio_devices)
 
         self.init_options()
         self.load_options()
@@ -376,7 +379,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.add(hw_label, 4, 1, label=label(self, "Available Decoder:"))
         self.layout.addWidget(self.use_hw, 4, 2)
         self.layout.addWidget(devices_label, 4, 4, 1, 2)
-        self.add(self.audio_output, 5, 1, label=label(self, "Audio Output"))
+        self.add(self.audio_output, 5, 1, width=3, label=label(self, "Audio Output"))
         self.layout.addItem(spacer(), 6, 0)
         self.add(set_account, 7, 0)
         self.add(add_account, 7, 1)
@@ -403,6 +406,7 @@ class OptionsWidget(QtWidgets.QWidget):
             if device == default:
                 continue
             audio_devices[device.description()] = device
+        self.audio_devices = audio_devices
         return audio_devices
 
     def get_audio_device(self):
@@ -476,10 +480,11 @@ class OptionsWidget(QtWidgets.QWidget):
             selected[0].setSelected(True)
             selected[0].setText(1, "Yes")
 
-    def add(self, item, row, col, label=None):
-        self.layout.addWidget(item, row, col, Qt.AlignLeft)
+    def add(self, item, row, col, width=2, label=None):
         if label is not None:
+            width -= 1
             self.layout.addWidget(label, row, col - 1, Qt.AlignLeft)
+        self.layout.addWidget(item, row, col, 1, width, Qt.AlignLeft)
 
     def change_quality(self, text):
         self.options["quality"] = text
