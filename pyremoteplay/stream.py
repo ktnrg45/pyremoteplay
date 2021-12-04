@@ -11,13 +11,13 @@ from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
 
 from .crypt import StreamECDH
+from .protobuf import ProtoHandler
 from .stream_packets import (
     Chunk,
     CongestionPacket,
     FeedbackPacket,
     Header,
     Packet,
-    ProtoHandler,
     get_launch_spec,
 )
 from .util import listener, log_bytes
