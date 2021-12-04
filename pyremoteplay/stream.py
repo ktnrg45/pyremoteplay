@@ -11,8 +11,15 @@ from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
 
 from .crypt import StreamECDH
-from .stream_packets import (Chunk, CongestionPacket, FeedbackPacket, Header,
-                             Packet, ProtoHandler, get_launch_spec)
+from .stream_packets import (
+    Chunk,
+    CongestionPacket,
+    FeedbackPacket,
+    Header,
+    Packet,
+    ProtoHandler,
+    get_launch_spec,
+)
 from .util import listener, log_bytes
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,14 +39,13 @@ DATA_LENGTH = 26
 DATA_ACK_LENGTH = 29
 
 
-class RPStream():
+class RPStream:
     """RP Stream Class."""
 
     STATE_INIT = "init"
     STATE_READY = "ready"
 
     class Protocol(asyncio.Protocol):
-
         def __init__(self, stream):
             self.transport = None
             self.stream = stream
@@ -63,14 +69,16 @@ class RPStream():
                 return None
             return self.transport.get_extra_info("socket")
 
-    def __init__(self, session, stop_event, rtt=None, mtu=None, is_test=False, cb_stop=None):
+    def __init__(
+        self, session, stop_event, rtt=None, mtu=None, is_test=False, cb_stop=None
+    ):
         self._host = session.host
         self._port = STREAM_PORT if not is_test else TEST_STREAM_PORT
         self._session = session
         self._is_test = is_test
         self._test = StreamTest(self) if is_test else None
         self._state = None
-        self._tsn = self._tag_local = 1  #int.from_bytes(get_random_bytes(4), "big")
+        self._tsn = self._tag_local = 1  # int.from_bytes(get_random_bytes(4), "big")
         self._tag_remote = 0
         self._key_pos = 0
         self._protocol = None
@@ -109,7 +117,9 @@ class RPStream():
 
     async def async_connect(self):
         """Connect Async."""
-        _, self._protocol = await self._session.loop.create_datagram_endpoint(lambda: RPStream.Protocol(self), local_addr=("0.0.0.0", 0))
+        _, self._protocol = await self._session.loop.create_datagram_endpoint(
+            lambda: RPStream.Protocol(self), local_addr=("0.0.0.0", 0)
+        )
         self._send_init()
 
     def ready(self):
@@ -125,12 +135,20 @@ class RPStream():
 
     def _send_init(self):
         """Send Init Packet."""
-        msg = Packet(Header.Type.CONTROL, Chunk.Type.INIT, tag=self._tag_local, tsn=self._tsn)
+        msg = Packet(
+            Header.Type.CONTROL, Chunk.Type.INIT, tag=self._tag_local, tsn=self._tsn
+        )
         self.send(msg.bytes())
 
     def _send_cookie(self, data: bytes):
         """Send Cookie Packet."""
-        msg = Packet(Header.Type.CONTROL, Chunk.Type.COOKIE, tag=self._tag_local, tag_remote=self._tag_remote, data=data)
+        msg = Packet(
+            Header.Type.CONTROL,
+            Chunk.Type.COOKIE,
+            tag=self._tag_local,
+            tag_remote=self._tag_remote,
+            data=data,
+        )
         self.send(msg.bytes())
 
     def send_data(self, data: bytes, flag: int, channel: int, proto=False):
@@ -141,15 +159,29 @@ class RPStream():
             if proto:
                 advance_by = len(data)
 
-        msg = Packet(Header.Type.CONTROL, Chunk.Type.DATA, tag_remote=self._tag_remote, tsn=self._tsn, flag=flag, channel=channel, data=data)
+        msg = Packet(
+            Header.Type.CONTROL,
+            Chunk.Type.DATA,
+            tag_remote=self._tag_remote,
+            tsn=self._tsn,
+            flag=flag,
+            channel=channel,
+            data=data,
+        )
         self.send(msg.bytes(self.cipher, False, advance_by))
 
     def _send_data_ack(self, ack_tsn: int):
         """Send Data Packet."""
-        msg = Packet(Header.Type.CONTROL, Chunk.Type.DATA_ACK, tag_remote=self._tag_remote, tag=self._tag_local, tsn=ack_tsn)
+        msg = Packet(
+            Header.Type.CONTROL,
+            Chunk.Type.DATA_ACK,
+            tag_remote=self._tag_remote,
+            tag=self._tag_local,
+            tsn=ack_tsn,
+        )
         self.send(msg.bytes(self.cipher, False, DATA_ACK_LENGTH))
 
-    def send_feedback(self, feedback_type: int, sequence: int, data=b'', state=None):
+    def send_feedback(self, feedback_type: int, sequence: int, data=b"", state=None):
         """Send feedback packet."""
         msg = FeedbackPacket(feedback_type, sequence=sequence, data=data, state=state)
         self.send(msg.bytes(self.cipher, True))
@@ -162,7 +194,7 @@ class RPStream():
 
     def send(self, msg: bytes):
         """Send Message."""
-        log_bytes(f"Stream Send", msg)
+        log_bytes("Stream Send", msg)
         self._protocol.sendto(msg, (self._host, self._port))
 
     def _handle(self, msg):
@@ -186,7 +218,7 @@ class RPStream():
     def _handle_later(self, msg):
         packet = Packet.parse(msg)
         _LOGGER.debug(packet)
-        log_bytes(f"Stream RECV", msg)
+        log_bytes("Stream RECV", msg)
         if self.cipher:
             gmac = packet.header.gmac
             _gmac = int.to_bytes(gmac, 4, "big")
@@ -223,9 +255,14 @@ class RPStream():
     def _recv_data_ack(self, packet):
         """Handle data ack."""
         params = packet.params
-        _LOGGER.debug(f"TSN={params['tsn']} GAP_ACKs={params['gap_ack_blocks_count']} DUP_TSNs={params['dup_tsns_count']}")
+        _LOGGER.debug(
+            "TSN=%s GAP_ACKs=%s DUP_TSNs=%s",
+            params["tsn"],
+            params["gap_ack_blocks_count"],
+            params["dup_tsns_count"],
+        )
 
-        if self._cb_ack and self._cb_ack_tsn == params['tsn']:
+        if self._cb_ack and self._cb_ack_tsn == params["tsn"]:
             _LOGGER.debug("Received waiting TSN ACK")
             self._cb_ack()
             self._cb_ack = None
@@ -324,11 +361,11 @@ class RPStream():
                 self.set_ciphers(ecdh_pub_key, ecdh_sig)
             else:
                 _LOGGER.error("RP Launch Spec not accepted")
-                self._stream._stop_event.set()
+                self._session._stop_event.set()
 
-    def wait_for_ack(self, tsn: int, cb: callable):
+    def wait_for_ack(self, tsn: int, callback: callable):
         """Wait for ack received."""
-        self._cb_ack = cb
+        self._cb_ack = callback
         self._cb_ack_tsn = tsn
 
     @property
@@ -337,7 +374,7 @@ class RPStream():
         return self._state
 
 
-class StreamTest():
+class StreamTest:
     def __init__(self, stream: RPStream):
         self._stream = stream
         self._index = 0
@@ -353,9 +390,9 @@ class StreamTest():
         chunk_flag = 1
         channel = 8
         data = ProtoHandler.senkusha_echo(enable)
-        cb = self.send_rtt if enable else self.stop_rtt
+        callback = self.send_rtt if enable else self.stop_rtt
         self._stream._advance_sequence()
-        self._stream.wait_for_ack(self._stream._tsn, cb)
+        self._stream.wait_for_ack(self._stream._tsn, callback)
         self._stream.send_data(data, chunk_flag, channel)
 
     def _send_mtu_in(self):
@@ -370,16 +407,18 @@ class StreamTest():
         chunk_flag = 1
         channel = 8
         self._index += 1
-        data = ProtoHandler.senkusha_mtu_client(True, self._index, self._mtu_in, self._mtu_in)
+        data = ProtoHandler.senkusha_mtu_client(
+            True, self._index, self._mtu_in, self._mtu_in
+        )
         self._stream._advance_sequence()
         self._stream.send_data(data, chunk_flag, channel)
 
     def _get_test_packet(self, length) -> bytes:
-        index = 0x1f + (self._index * 0x20)
+        index = 0x1F + (self._index * 0x20)
         gmac = int.from_bytes(get_random_bytes(4), "big")
         buf = bytearray(length)
         pack_into("!B", buf, 0, Header.Type.AUDIO)
-        pack_into("!HBxB", buf, 5, index, 0xfc, 0xff)
+        pack_into("!HBxB", buf, 5, index, 0xFC, 0xFF)
         pack_into("!I", buf, 22, gmac)
         return bytes(buf)
 
@@ -387,7 +426,11 @@ class StreamTest():
         """Stop Tests."""
         self._stream.rtt = self._results["rtt"]
         self._stream.mtu = self._results["mtu"]
-        _LOGGER.info("Tested network and got MTU: %s; RTT: %sms", self._results["mtu"], self._results["rtt"] * 1000)
+        _LOGGER.info(
+            "Tested network and got MTU: %s; RTT: %sms",
+            self._results["mtu"],
+            self._results["rtt"] * 1000,
+        )
         self._stream.stop()
 
     def run_rtt(self):

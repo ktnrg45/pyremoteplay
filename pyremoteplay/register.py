@@ -15,9 +15,9 @@ _LOGGER = logging.getLogger(__name__)
 CLIENT_TYPE = "dabfa2ec873de5839bee8d3f4c0239c4282c07c25c6077a2931afcf0adc0d34f"
 REG_PATH = "/sie/ps4/rp/sess/rgst"
 REG_INIT_PS4 = b"SRC2"
-REG_START_PS4 = b'RES2'
+REG_START_PS4 = b"RES2"
 REG_INIT_PS5 = b"SRC3"
-REG_START_PS5 = b'RES3'
+REG_START_PS5 = b"RES3"
 
 HOST_TYPES = {
     TYPE_PS4: {
@@ -30,7 +30,7 @@ HOST_TYPES = {
     },
 }
 
-REG_DATA = bytearray(b'A' * 480)
+REG_DATA = bytearray(b"A" * 480)
 REG_KEY_SIZE = 16
 
 
@@ -42,7 +42,7 @@ def gen_key_0(pin: int) -> bytes:
     # Encode PIN into last 4 bytes
     shift = 0
     for index in range(12, REG_KEY_SIZE):
-        key[index] ^= (pin >> (24 - (shift * 8)) & 255)
+        key[index] ^= pin >> (24 - (shift * 8)) & 255
         shift += 1
     log_bytes("Key 0", key)
     return bytes(key)
@@ -61,23 +61,24 @@ def gen_key_1(nonce: bytes) -> bytes:
 
 def get_regist_payload(key_1: bytes) -> bytes:
     """Return regist payload."""
-    payload = b''.join([
-        bytes(REG_DATA[0:199]),
-        key_1[8:],
-        bytes(REG_DATA[207:401]),
-        key_1[0:8],
-        bytes(REG_DATA[409:]),
-    ])
+    payload = b"".join(
+        [
+            bytes(REG_DATA[0:199]),
+            key_1[8:],
+            bytes(REG_DATA[207:401]),
+            key_1[0:8],
+            bytes(REG_DATA[409:]),
+        ]
+    )
     log_bytes("Payload", payload)
     return payload
 
 
 def encrypt_payload(cipher, psn_id: str) -> bytes:
     """Return Encrypted Register Payload."""
-    payload = (
-        f'Client-Type: {CLIENT_TYPE}\r\n'
-        f'Np-AccountId: {psn_id}\r\n'
-    ).encode("utf-8")
+    payload = (f"Client-Type: {CLIENT_TYPE}\r\n" f"Np-AccountId: {psn_id}\r\n").encode(
+        "utf-8"
+    )
     log_bytes("Enc Payload", payload)
     enc_payload = cipher.encrypt(payload)
     return enc_payload
@@ -87,12 +88,12 @@ def get_regist_headers(payload_length: int) -> bytes:
     """Get regist headers."""
     headers = (
         # Appears to use a malformed http request so have to construct it
-        f'POST {REG_PATH} HTTP/1.1\r\n HTTP/1.1\r\n'
-        'HOST: 10.0.2.15\r\n'  # Doesn't Matter
-        f'User-Agent: {USER_AGENT}\r\n'
-        'Connection: close\r\n'
-        f'Content-Length: {payload_length}\r\n'
-        f'RP-Version: {RP_VERSION}\r\n\r\n'
+        f"POST {REG_PATH} HTTP/1.1\r\n HTTP/1.1\r\n"
+        "HOST: 10.0.2.15\r\n"  # Doesn't Matter
+        f"User-Agent: {USER_AGENT}\r\n"
+        "Connection: close\r\n"
+        f"Content-Length: {payload_length}\r\n"
+        f"RP-Version: {RP_VERSION}\r\n\r\n"
     )
     headers = headers.encode("utf-8")
     log_bytes("Regist Headers", headers)
@@ -128,14 +129,16 @@ def regist_init(host: str, host_type: str, timeout: float) -> bool:
     return success
 
 
-def get_register_info(host: str, headers: bytes, payload: bytes, timeout: float) -> bytes:
+def get_register_info(
+    host: str, headers: bytes, payload: bytes, timeout: float
+) -> bytes:
     """Send Register Packet and receive register info."""
     response = None
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(timeout)
     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     sock.connect((host, RP_PORT))
-    sock.sendall(b''.join([headers, payload]))
+    sock.sendall(b"".join([headers, payload]))
     try:
         response = sock.recvfrom(1024)
         response = response[0]
@@ -149,12 +152,12 @@ def get_register_info(host: str, headers: bytes, payload: bytes, timeout: float)
 def parse_response(cipher, response: bytes) -> dict:
     """Parse Register Response."""
     info = {}
-    response = response.split(b'\r\n')
+    response = response.split(b"\r\n")
     if b"200 OK" in response[0]:
         _LOGGER.info("Registered successfully")
         cipher_text = response[-1]
         data = cipher.decrypt(cipher_text).decode()
-        data = data.split('\r\n')
+        data = data.split("\r\n")
         for item in data:
             if item == "":
                 continue
@@ -182,7 +185,7 @@ def register(host: str, psn_id: str, pin: str, timeout: float = 2.0) -> dict:
     payload = get_regist_payload(key_1)
     cipher = SessionCipher(key_0, nonce, counter=0)
     enc_payload = encrypt_payload(cipher, psn_id)
-    payload = b''.join([payload, enc_payload])
+    payload = b"".join([payload, enc_payload])
     headers = get_regist_headers(len(payload))
     response = get_register_info(host, headers, payload, timeout)
     if response is not None:

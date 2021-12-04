@@ -8,6 +8,7 @@ from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
+
 # from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
@@ -26,7 +27,7 @@ def get_gmac_key(gmac_index: int, key: bytes, iv: bytes) -> bytes:
     """Return GMAC key."""
     gmac_index *= GMAC_REFRESH_IV
     out_array = counter_add(gmac_index, iv)
-    out_key = b''.join([key, out_array])
+    out_key = b"".join([key, out_array])
     gcm = SHA256.new(out_key)
     gcm = gcm.digest()
     gcm = strxor(gcm[0:16], gcm[16:])
@@ -40,16 +41,14 @@ def counter_add(counter: int, iv: bytes) -> bytes:
     iv = bytearray(iv)
     for index, value in enumerate(iv):
         add = value + counter
-        iv[index] = add & 0xff
+        iv[index] = add & 0xFF
         if (counter := add >> 8) <= 0 or index >= 15:
             break
     return bytes(iv)
 
 
 def get_base_key_iv(secret: bytes, handshake_key: bytes, index: int) -> bytes:
-    key_iv = b''.join([
-        bytes([0x01, index, 0x00]), handshake_key, bytes([0x01, 0x00])
-    ])
+    key_iv = b"".join([bytes([0x01, index, 0x00]), handshake_key, bytes([0x01, 0x00])])
     hmac = HMAC.new(key=secret, msg=key_iv, digestmod=SHA256)
     hmac = hmac.digest()
     hmac = bytearray(hmac)
@@ -64,11 +63,10 @@ def get_gmac_cipher(key: bytes, iv: bytes) -> bytes:
     return cipher
 
 
-def get_gmac_tag(
-        data: bytes, key: bytes, iv: bytes) -> bytes:
+def get_gmac_tag(data: bytes, key: bytes, iv: bytes) -> bytes:
     """Return GMAC tag of packet."""
     cipher = AESGCM(key)
-    return cipher.encrypt(iv, b'', data)[:4]
+    return cipher.encrypt(iv, b"", data)[:4]
     # cipher = get_gmac_cipher(key, iv)
     # cipher.update(data)
     # return cipher.digest()
@@ -88,8 +86,7 @@ def gen_iv_stream(buf: bytearray, iv: bytes, key_pos: int):
 
 
 # TODO: Make more efficient
-def get_key_stream(
-        key: bytes, iv: bytes, key_pos: int, data_len: int) -> bytes:
+def get_key_stream(key: bytes, iv: bytes, key_pos: int, data_len: int) -> bytes:
     """Return the minimum CTR Keystream at key position."""
     padding = key_pos % 16
     key_pos = key_pos - padding
@@ -113,7 +110,7 @@ def get_key_stream(
     return key_stream
 
 
-def decrypt_encrypt(key: bytes, iv: bytes, key_pos: int, data: bytes, key_stream=b''):
+def decrypt_encrypt(key: bytes, iv: bytes, key_pos: int, data: bytes, key_stream=b""):
     """Return Decrypted or Encrypted packet. Two way."""
     if not key_stream:
         key_stream = get_key_stream(key, iv, key_pos, len(data))
@@ -121,8 +118,9 @@ def decrypt_encrypt(key: bytes, iv: bytes, key_pos: int, data: bytes, key_stream
     return enc_data
 
 
-class BaseCipher():
+class BaseCipher:
     """Base AES CTR Cipher."""
+
     KEYSTREAM_LEN = 0x1000
 
     def __init__(self, handshake_key, secret):
@@ -139,14 +137,19 @@ class BaseCipher():
 
     def _init_cipher(self):
         self.base_key, self.base_iv = get_base_key_iv(
-            self.secret, self.handshake_key, self._base_index)
-        self.current_key = self.base_gmac_key = get_gmac_key(self.index, self.base_key, self.base_iv)
+            self.secret, self.handshake_key, self._base_index
+        )
+        self.current_key = self.base_gmac_key = get_gmac_key(
+            self.index, self.base_key, self.base_iv
+        )
         self._next_key_stream()
 
     def _next_key_stream(self):
         while len(self.keystreams) < 3:
             key_pos = self.keystream_index * BaseCipher.KEYSTREAM_LEN
-            key_stream = get_key_stream(self.base_key, self.base_iv, key_pos, BaseCipher.KEYSTREAM_LEN)
+            key_stream = get_key_stream(
+                self.base_key, self.base_iv, key_pos, BaseCipher.KEYSTREAM_LEN
+            )
             self.keystreams.append((self.keystream_index, key_stream))
             self.keystream_index += 1
 
@@ -159,7 +162,7 @@ class BaseCipher():
                 self.keystreams.pop(index)
             else:
                 break
-        key_stream = b''
+        key_stream = b""
         if self.keystreams:
             requires_additional = False
             start_pos = key_pos % BaseCipher.KEYSTREAM_LEN
@@ -179,8 +182,7 @@ class BaseCipher():
     def gen_new_key(self):
         if self.base_gmac_key is None:
             raise CryptError("Base GMAC Key is None")
-        self.current_key = get_gmac_key(
-            self.index, self.base_gmac_key, self.base_iv)
+        self.current_key = get_gmac_key(self.index, self.base_gmac_key, self.base_iv)
         # _LOGGER.debug("Cipher: %s, Index: %s", self.name, self.index)
         return self.current_key
 
@@ -213,7 +215,7 @@ class RemoteCipher(BaseCipher):
 
     def decrypt(self, data: bytes, key_pos: int) -> bytes:
         """Decrypt data."""
-        key_stream = b''
+        key_stream = b""
         key_stream = self.get_key_stream(key_pos, len(data))
         dec = decrypt_encrypt(self.base_key, self.base_iv, key_pos, data, key_stream)
         return dec
@@ -245,16 +247,17 @@ class LocalCipher(BaseCipher):
 
     def encrypt(self, data: bytes) -> bytes:
         """Encrypt data using key stream."""
-        key_stream = b''
+        key_stream = b""
         key_stream = self.get_key_stream(self.key_pos, len(data))
-        enc = decrypt_encrypt(self.base_key, self.base_iv, self.key_pos, data, key_stream)
+        enc = decrypt_encrypt(
+            self.base_key, self.base_iv, self.key_pos, data, key_stream
+        )
         return enc
 
     def advance_key_pos(self, advance_by: int):
         """Advance key pos by data length."""
         self._key_pos += advance_by
-        _LOGGER.debug(
-            "Advancing key pos by %s to: %s", advance_by, self.key_pos)
+        _LOGGER.debug("Advancing key pos by %s to: %s", advance_by, self.key_pos)
 
     @property
     def key_pos(self) -> int:
@@ -262,7 +265,7 @@ class LocalCipher(BaseCipher):
         return self._key_pos
 
 
-class StreamCipher():
+class StreamCipher:
     """Collection of Local and Remote Ciphers."""
 
     def __init__(self, handshake_key, secret):
@@ -300,8 +303,7 @@ class StreamCipher():
 def get_aes_cipher(key: bytes, iv: bytes, segment_size=128):
     """Get AES Cipher."""
     # Segment size is in bits. AES-CFB-128.
-    cipher = AES.new(
-        key, AES.MODE_CFB, iv, segment_size=segment_size)
+    cipher = AES.new(key, AES.MODE_CFB, iv, segment_size=segment_size)
     return cipher
 
 
@@ -319,9 +321,9 @@ def get_aes_iv(nonce: bytes, counter: int):
     shift = 56
     suffix = bytearray(8)
     for index in range(0, 8):
-        suffix[index] = ((counter >> shift) & 0xff)
+        suffix[index] = (counter >> shift) & 0xFF
         shift -= 8
-    nonce = b''.join([nonce, bytes(suffix)])
+    nonce = b"".join([nonce, bytes(suffix)])
     current_hmac = get_hmac(bytes(nonce))
     iv = current_hmac[:16]  # Truncate to IV length.
     return iv
@@ -342,7 +344,7 @@ def get_cipher(key: bytes, nonce: bytes, counter=0):
     return cipher
 
 
-class SessionCipher():
+class SessionCipher:
     """AES CFB-128 Cipher pair."""
 
     def __init__(self, key: bytes, nonce: bytes, counter=0):
@@ -384,23 +386,25 @@ class SessionCipher():
         return self._dec_counter
 
 
-class StreamECDH():
+class StreamECDH:
     """ECDH Container for Stream."""
 
+    @staticmethod
     def get_handshake_key(handshake: bytes = None):
         """Return random key for ECDH."""
         handshake_key = handshake or get_random_bytes(16)
         log_bytes("Handshake Key", handshake_key)
         return handshake_key
 
+    @staticmethod
     def set_local_ec(key: bytes = None):
         """Init Local EC Key object."""
         key = key or get_random_bytes(32)
         private = from_b(key)
-        private_key = ec.derive_private_key(
-            private, ec.SECP256K1(), default_backend())
+        private_key = ec.derive_private_key(private, ec.SECP256K1(), default_backend())
         return private_key
 
+    @staticmethod
     def set_private_key(local_ec):
         """Return Private Key for ECDH."""
         private_numbers = local_ec.private_numbers().private_value
@@ -408,14 +412,15 @@ class StreamECDH():
         log_bytes("Private Key", private_key)
         return private_key
 
+    @staticmethod
     def set_public_key(local_ec):
         """Return Public Key for ECDH."""
         pub = local_ec.public_key()
-        public_key = pub.public_bytes(
-            Encoding.X962, PublicFormat.UncompressedPoint)
+        public_key = pub.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
         log_bytes("Public Key", public_key)
         return public_key
 
+    @staticmethod
     def get_key_sig(handshake_key, public_key):
         """Return authenticated signature of public key."""
         hmac = HMAC.new(key=handshake_key, msg=public_key, digestmod=SHA256)
@@ -423,13 +428,15 @@ class StreamECDH():
         log_bytes("Public Key Sig", local_sig)
         return local_sig
 
+    @staticmethod
     def get_secret(local_key, remote_key: bytes):
         """Return derived secret from ECDH exchange."""
         remote_key = ec.EllipticCurvePublicKey.from_encoded_point(
-            ec.SECP256K1(), remote_key)
+            ec.SECP256K1(), remote_key
+        )
         remote_key.public_numbers()
         secret = local_key.exchange(ec.ECDH(), remote_key)
-        log_bytes('Secret', secret)
+        log_bytes("Secret", secret)
         return secret
 
     def __init__(self, handshake: bytes = None, private_key: bytes = None):

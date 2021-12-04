@@ -12,30 +12,24 @@ CLIENT_SECRET = "mvaiZkRsAsI1IBkY"
 
 REDIRECT_URL = "https://remoteplay.dl.playstation.net/remoteplay/redirect"
 LOGIN_URL = (
-    'https://auth.api.sonyentertainmentnetwork.com/'
-    '2.0/oauth/authorize'
-    '?service_entity=urn:service-entity:psn'
-    f'&response_type=code&client_id={CLIENT_ID}'
-    f'&redirect_uri={REDIRECT_URL}'
-    '&scope=psn:clientapp'
-    '&request_locale=en_US&ui=pr'
-    '&service_logo=ps'
-    '&layout_type=popup'
-    '&smcid=remoteplay'
-    '&prompt=always'
-    '&PlatformPrivacyWs1=minimal'
-    '&no_captcha=true&'
+    "https://auth.api.sonyentertainmentnetwork.com/"
+    "2.0/oauth/authorize"
+    "?service_entity=urn:service-entity:psn"
+    f"&response_type=code&client_id={CLIENT_ID}"
+    f"&redirect_uri={REDIRECT_URL}"
+    "&scope=psn:clientapp"
+    "&request_locale=en_US&ui=pr"
+    "&service_logo=ps"
+    "&layout_type=popup"
+    "&smcid=remoteplay"
+    "&prompt=always"
+    "&PlatformPrivacyWs1=minimal"
+    "&no_captcha=true&"
 )
 
 TOKEN_URL = "https://auth.api.sonyentertainmentnetwork.com/2.0/oauth/token"
-TOKEN_BODY = (
-    'grant_type=authorization_code'
-    '&code={}'
-    f'&redirect_uri={REDIRECT_URL}&'
-)
-HEADERS = {
-    "Content-Type": "application/x-www-form-urlencoded"
-}
+TOKEN_BODY = "grant_type=authorization_code" "&code={}" f"&redirect_uri={REDIRECT_URL}&"
+HEADERS = {"Content-Type": "application/x-www-form-urlencoded"}
 
 logging.basicConfig(level=logging.INFO)
 _LOGGER = logging.getLogger(__name__)
@@ -68,17 +62,16 @@ async def async_get_user_account(redirect_url: str) -> dict:
 async def _get_token(code):
     _LOGGER.debug("Sending POST request")
     auth = aiohttp.BasicAuth(CLIENT_ID, password=CLIENT_SECRET)
-    body = TOKEN_BODY.format(code).encode('ascii')
+    body = TOKEN_BODY.format(code).encode("ascii")
     async with aiohttp.ClientSession() as session:
         async with session.post(
-                url=TOKEN_URL, auth=auth,
-                headers=HEADERS, data=body, timeout=3) as resp:
+            url=TOKEN_URL, auth=auth, headers=HEADERS, data=body, timeout=3
+        ) as resp:
             if resp.status == 200:
                 content = await resp.json()
-                token = content.get('access_token')
+                token = content.get("access_token")
                 return token
-            _LOGGER.error(
-                "Error getting token. Got response: %s", resp.status)
+            _LOGGER.error("Error getting token. Got response: %s", resp.status)
             await resp.release()
             return None
 
@@ -87,18 +80,17 @@ async def _fetch_account_info(token):
     auth = aiohttp.BasicAuth(CLIENT_ID, password=CLIENT_SECRET)
     async with aiohttp.ClientSession() as session:
         async with session.get(
-                url='{}/{}'.format(TOKEN_URL, token),
-                auth=auth, timeout=3) as resp:
+            url="{}/{}".format(TOKEN_URL, token), auth=auth, timeout=3
+        ) as resp:
             if resp.status == 200:
                 account_info = await resp.json()
-                user_id = account_info.get('user_id')
-                user_b64 = _format_user_id(user_id, 'base64')
-                user_creds = _format_user_id(user_id, 'sha256')
-                account_info['user_rpid'] = user_b64
-                account_info['credentials'] = user_creds
+                user_id = account_info.get("user_id")
+                user_b64 = _format_user_id(user_id, "base64")
+                user_creds = _format_user_id(user_id, "sha256")
+                account_info["user_rpid"] = user_b64
+                account_info["credentials"] = user_creds
                 return account_info
-            _LOGGER.error(
-                "Error getting account. Got response: %s", resp.status)
+            _LOGGER.error("Error getting account. Got response: %s", resp.status)
             await resp.release()
             return None
 
@@ -109,7 +101,7 @@ def _parse_redirect_url(redirect_url):
         return None
     code_url = urlparse(redirect_url)
     query = parse_qs(code_url.query)
-    code = query.get('code')
+    code = query.get("code")
     if code is None:
         _LOGGER.error("Code not in query")
         return None
@@ -121,20 +113,20 @@ def _parse_redirect_url(redirect_url):
     return code
 
 
-def _format_user_id(user_id: str, encoding='base64'):
+def _format_user_id(user_id: str, encoding="base64"):
     """Format user id into useable encoding."""
-    valid_encodings = {'base64', 'sha256'}
+    valid_encodings = {"base64", "sha256"}
     if encoding not in valid_encodings:
-        raise TypeError("{} encoding is not valid. Use {}".format(
-            encoding, valid_encodings))
+        raise TypeError(
+            "{} encoding is not valid. Use {}".format(encoding, valid_encodings)
+        )
 
     if user_id is not None:
-        if encoding == 'sha256':
+        if encoding == "sha256":
             user_id = SHA256.new(user_id.encode())
             user_id = user_id.digest().hex()
-        elif encoding == 'base64':
-            user_id = base64.b64encode(
-                int(user_id).to_bytes(8, "little")).decode()
+        elif encoding == "base64":
+            user_id = base64.b64encode(int(user_id).to_bytes(8, "little")).decode()
     return user_id
 
 

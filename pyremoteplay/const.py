@@ -17,6 +17,7 @@ RP_CRYPT_SIZE = 16
 
 class Quality(IntEnum):
     """Enums for quality."""
+
     DEFAULT = 0
     VERY_LOW = 2000
     LOW = 4000
@@ -26,42 +27,44 @@ class Quality(IntEnum):
 
 
 RESOLUTION_360P = {
-    'width': 640,
-    'height': 360,
-    'bitrate': int(Quality.VERY_LOW),
+    "width": 640,
+    "height": 360,
+    "bitrate": int(Quality.VERY_LOW),
 }
 
 RESOLUTION_540P = {
-    'width': 960,
-    'height': 540,
-    'bitrate': int(Quality.MEDIUM),
+    "width": 960,
+    "height": 540,
+    "bitrate": int(Quality.MEDIUM),
 }
 
 RESOLUTION_720P = {
-    'width': 1280,
-    'height': 720,
-    'bitrate': int(Quality.HIGH),
+    "width": 1280,
+    "height": 720,
+    "bitrate": int(Quality.HIGH),
 }
 
 RESOLUTION_1080P = {
-    'width': 1920,
-    'height': 1080,
-    'bitrate': int(Quality.VERY_HIGH),
+    "width": 1920,
+    "height": 1080,
+    "bitrate": int(Quality.VERY_HIGH),
 }
 
 RESOLUTION_PRESETS = {
-    '360p': RESOLUTION_360P,
-    '540p': RESOLUTION_540P,
-    '720p': RESOLUTION_720P,
-    '1080p': RESOLUTION_1080P,
+    "360p": RESOLUTION_360P,
+    "540p": RESOLUTION_540P,
+    "720p": RESOLUTION_720P,
+    "1080p": RESOLUTION_1080P,
 }
 
 
 class FPS(IntEnum):
     """Enum for FPS."""
+
     LOW = 30
     HIGH = 60
 
+    @staticmethod
     def preset(fps) -> int:
         """Return FPS Value."""
         if isinstance(fps, str):
@@ -72,17 +75,26 @@ class FPS(IntEnum):
 
 class Resolution(IntEnum):
     """Enum for resolution."""
+
     RESOLUTION_360P = 1
     RESOLUTION_540P = 2
     RESOLUTION_720P = 3
     RESOLUTION_1080P = 4
 
+    @staticmethod
     def preset(resolution) -> dict:
         """Return Resolution preset dict."""
         if isinstance(resolution, str):
-            return RESOLUTION_PRESETS[Resolution[f"RESOLUTION_{resolution}".upper()].name.replace("RESOLUTION_", "").lower()]
+            return RESOLUTION_PRESETS[
+                Resolution[f"RESOLUTION_{resolution}".upper()]
+                .name.replace("RESOLUTION_", "")
+                .lower()
+            ]
         if isinstance(resolution, int):
-            return RESOLUTION_PRESETS[Resolution(index).name.replace("RESOLUTION_", "").lower()]
+            return RESOLUTION_PRESETS[
+                Resolution(resolution).name.replace("RESOLUTION_", "").lower()
+            ]
+
 
 # AV_CODEC_OPTIONS_H264 = {
 #     # "profile": "high",

@@ -122,20 +122,22 @@ def add_profile(profiles: dict, user_data: dict) -> dict:
 
 def add_regist_data(profile: dict, host: dict, data: dict) -> dict:
     """Add regist data to profile and return profile."""
-    mac_address = host['host-id']
-    host_type = host['host-type']
+    mac_address = host["host-id"]
+    host_type = host["host-type"]
     for key in list(data.keys()):
         if key.startswith(host_type):
             value = data.pop(key)
             new_key = key.split("-")[1]
             data[new_key] = value
-    profile['hosts'][mac_address] = {'data': data, 'type': host_type}
+    profile["hosts"][mac_address] = {"data": data, "type": host_type}
     return profile
 
 
 def format_regist_key(regist_key: str) -> bytes:
     """Format Regist Key for wakeup."""
-    regist_key = int.from_bytes(bytes.fromhex(bytes.fromhex(regist_key).decode()), "big")
+    regist_key = int.from_bytes(
+        bytes.fromhex(bytes.fromhex(regist_key).decode()), "big"
+    )
     return regist_key
 
 
@@ -143,7 +145,8 @@ def log_bytes(name: str, data: bytes):
     """Log bytes."""
     mod = inspect.getmodulename(inspect.stack()[1].filename)
     logging.getLogger(f"{__package__}.{mod}").debug(
-        "Length: %s, %s: %s", len(data), name, hexlify(data))
+        "Length: %s, %s: %s", len(data), name, hexlify(data)
+    )
 
 
 def from_b(_bytes: bytes, order="big") -> int:
@@ -172,16 +175,20 @@ def listener(name: str, sock, handle, stop_event):
         time.sleep(0.001)
 
     sock.close()
-    _LOGGER.info(f"{name} Stopped")
+    _LOGGER.info("%s Stopped", name)
 
 
 def timeit(func):
     """Time Function."""
+
     def inner(*args, **kwargs):
         start = time.time()
         result = func(*args, **kwargs)
         end = time.time()
         elapsed = round(end - start, 8)
-        _LOGGER.info("Timed %s.%s at %s seconds", func.__module__, func.__name__, elapsed)
+        _LOGGER.info(
+            "Timed %s.%s at %s seconds", func.__module__, func.__name__, elapsed
+        )
         return result
+
     return inner

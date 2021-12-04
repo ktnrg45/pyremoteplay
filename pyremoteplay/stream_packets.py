@@ -14,7 +14,7 @@ from .util import log_bytes, timeit
 
 _LOGGER = logging.getLogger(__name__)
 
-STREAM_START = b'\x00\x00\x00\x40\x01\x00\x00'
+STREAM_START = b"\x00\x00\x00\x40\x01\x00\x00"
 A_RWND = 0x019000
 OUTBOUND_STREAMS = 0x64
 INBOUND_STREAMS = 0x64
@@ -22,95 +22,92 @@ INBOUND_STREAMS = 0x64
 
 class UnexpectedMessage(Exception):
     """Message not Expected."""
+
     pass
 
 
 class UnexpectedData(Exception):
     """Data incorrect or not expected."""
+
     pass
 
 
 LAUNCH_SPEC = {
-    'sessionId': 'sessionId4321',
-    'streamResolutions': [
-        {
-            'resolution': {
-                'width': None,
-                'height': None
-            },
-            'maxFps': None,
-            'score': 10
-        }
+    "sessionId": "sessionId4321",
+    "streamResolutions": [
+        {"resolution": {"width": None, "height": None}, "maxFps": None, "score": 10}
     ],
-    'network': {
-        'bwKbpsSent': None,
-        'bwLoss': 0.001000,
-        'mtu': None,
-        'rtt': None,
-        'ports': [53, 2053]
+    "network": {
+        "bwKbpsSent": None,
+        "bwLoss": 0.001000,
+        "mtu": None,
+        "rtt": None,
+        "ports": [53, 2053],
     },
-    'slotId': 1,
-    'appSpecification': {
-        'minFps': 30,
-        'minBandwidth': 0,
-        'extTitleId': 'ps3',
-        'version': 1,
-        'timeLimit': 1,
-        'startTimeout': 100,
-        'afkTimeout': 100,
-        'afkTimeoutDisconnect': 100},
-    'konan': {
-        'ps3AccessToken': 'accessToken',
-        'ps3RefreshToken': 'refreshToken'},
-    'requestGameSpecification': {
-        'model': 'bravia_tv',
-        'platform': 'android',
-        'audioChannels': '5.1',
-        'language': 'sp',
-        'acceptButton': 'X',
-        'connectedControllers': ['xinput', 'ds3', 'ds4'],
-        'yuvCoefficient': 'bt709',  # Changed from bt601
-        'videoEncoderProfile': 'hw4.1',
-        'audioEncoderProfile': 'audio1'
+    "slotId": 1,
+    "appSpecification": {
+        "minFps": 30,
+        "minBandwidth": 0,
+        "extTitleId": "ps3",
+        "version": 1,
+        "timeLimit": 1,
+        "startTimeout": 100,
+        "afkTimeout": 100,
+        "afkTimeoutDisconnect": 100,
     },
-    'userProfile': {
-        'onlineId': 'psnId',
-        'npId': 'npId',
-        'region': 'US',
-        'languagesUsed': ['en', 'jp']
+    "konan": {"ps3AccessToken": "accessToken", "ps3RefreshToken": "refreshToken"},
+    "requestGameSpecification": {
+        "model": "bravia_tv",
+        "platform": "android",
+        "audioChannels": "5.1",
+        "language": "sp",
+        "acceptButton": "X",
+        "connectedControllers": ["xinput", "ds3", "ds4"],
+        "yuvCoefficient": "bt709",  # Changed from bt601
+        "videoEncoderProfile": "hw4.1",
+        "audioEncoderProfile": "audio1",
+    },
+    "userProfile": {
+        "onlineId": "psnId",
+        "npId": "npId",
+        "region": "US",
+        "languagesUsed": ["en", "jp"],
     },
     "adaptiveStreamMode": "resize",
     "videoCodec": "avc",
     "dynamicRange": "HDR",
-    'handshakeKey': None,
+    "handshakeKey": None,
 }
 
 
 def get_launch_spec(
-        handshake_key: bytes, resolution: dict, max_fps: int, rtt: int,
-        mtu_in: int, quality: str) -> bytes:
-    r = resolution
+    handshake_key: bytes,
+    resolution: dict,
+    max_fps: int,
+    rtt: int,
+    mtu_in: int,
+    quality: str,
+) -> bytes:
     quality = quality.upper()
     if quality == "DEFAULT":
-        bitrate = r['bitrate']
+        bitrate = resolution["bitrate"]
     else:
         bitrate = int(Quality[quality])
     _LOGGER.info("Using bitrate: %s kbps", bitrate)
     launch_spec = LAUNCH_SPEC
-    launch_spec['streamResolutions'][0]['resolution']['width'] = r['width']
-    launch_spec['streamResolutions'][0]['resolution']['height'] = r['height']
-    launch_spec['streamResolutions'][0]['maxFps'] = max_fps
-    launch_spec['network']['bwKbpsSent'] = bitrate
-    launch_spec['network']['mtu'] = mtu_in
-    launch_spec['network']['rtt'] = rtt
-    launch_spec['handshakeKey'] = b64encode(handshake_key).decode()
+    launch_spec["streamResolutions"][0]["resolution"]["width"] = resolution["width"]
+    launch_spec["streamResolutions"][0]["resolution"]["height"] = resolution["height"]
+    launch_spec["streamResolutions"][0]["maxFps"] = max_fps
+    launch_spec["network"]["bwKbpsSent"] = bitrate
+    launch_spec["network"]["mtu"] = mtu_in
+    launch_spec["network"]["rtt"] = rtt
+    launch_spec["handshakeKey"] = b64encode(handshake_key).decode()
     launch_spec = json.dumps(launch_spec)
-    launch_spec = launch_spec.replace(' ', '')  # minify
-    launch_spec = launch_spec.replace(':0.001,', ':0.001000,' )  # Add three zeros
-    _LOGGER.debug(
-        "Length: %s, Launch Spec JSON: %s", len(launch_spec), launch_spec)
+    launch_spec = launch_spec.replace(" ", "")  # minify
+    launch_spec = launch_spec.replace(":0.001,", ":0.001000,")  # Add three zeros
+    _LOGGER.debug("Length: %s, Launch Spec JSON: %s", len(launch_spec), launch_spec)
     launch_spec = launch_spec.encode()
-    launch_spec = b''.join([launch_spec, b'\x00'])
+    launch_spec = b"".join([launch_spec, b"\x00"])
     return launch_spec
 
 
@@ -119,10 +116,12 @@ class PacketSection(abc.ABC):
 
     LENGTH = 0
 
-    class Type(abc.ABC):
+    class Type(IntEnum):
         """Abstract Type Class."""
+
         pass
 
+    @staticmethod
     def parse(msg: bytes):
         """Return new instance from bytes."""
         raise NotImplementedError
@@ -130,13 +129,12 @@ class PacketSection(abc.ABC):
     def __init__(self, _type: int):
         self._length = self.LENGTH if self.LENGTH != 0 else 0
         if not self._type_valid(_type):
-            raise ValueError(f"Invalid type: {_type} for {self.__name__}")
+            raise ValueError(f"Invalid type: {_type} for {self.__class__.__name__}")
         self.__type = self.__class__.Type(_type)
 
     def __repr__(self) -> str:
         return (
-            f"<{self.__module__}.{self.__class__.__name__} "
-            f"type={self.type.name}>"
+            f"<{self.__module__}.{self.__class__.__name__} " f"type={self.type.name}>"
         )
 
     def _type_valid(self, _type: int) -> bool:
@@ -167,6 +165,7 @@ class PacketSection(abc.ABC):
 
 class Header(PacketSection):
     """RP Header section of packet."""
+
     LENGTH = 13
 
     SLOTS = [
@@ -177,6 +176,7 @@ class Header(PacketSection):
 
     class Type(IntEnum):
         """Enums for RP Headers."""
+
         CONTROL = 0x00
         FEEDBACK_EVENT = 0x01
         VIDEO = 0x02
@@ -188,6 +188,7 @@ class Header(PacketSection):
         CLIENT_INFO = 0x08
         PAD_EVENT = 0x09
 
+    @staticmethod
     def parse(buf: bytearray, params: dict) -> int:
         """Return type. Unpack and parse header."""
         _type = unpack_from("!b", buf, 0)[0]
@@ -229,6 +230,7 @@ class Chunk(PacketSection):
 
     class Type(IntEnum):
         """Enums for Chunks."""
+
         DATA = 0x00
         INIT = 0x01
         INIT_ACK = 0x02
@@ -236,6 +238,7 @@ class Chunk(PacketSection):
         COOKIE = 0x0A
         COOKIE_ACK = 0x0B
 
+    @staticmethod
     def data(parse=False, **kwargs) -> bytes:
         """Return Data PL."""
         if parse:
@@ -253,6 +256,7 @@ class Chunk(PacketSection):
         data = kwargs.get("data")
         return pack("!IHxxx", tsn, channel) + data
 
+    @staticmethod
     def init(parse=False, **kwargs) -> bytes:
         """Return Init PL."""
         if parse:
@@ -265,8 +269,11 @@ class Chunk(PacketSection):
                 return None
         tag_local = kwargs.get("tag")
         init_tsn = kwargs.get("tsn")
-        return pack("!IIHHI", tag_local, A_RWND, OUTBOUND_STREAMS, INBOUND_STREAMS, init_tsn)
+        return pack(
+            "!IIHHI", tag_local, A_RWND, OUTBOUND_STREAMS, INBOUND_STREAMS, init_tsn
+        )
 
+    @staticmethod
     def init_ack(parse=False, **kwargs) -> None:
         """Return Init Ack PL."""
         if parse:
@@ -282,6 +289,7 @@ class Chunk(PacketSection):
                 params["data"] = payload[16:]
         return None
 
+    @staticmethod
     def data_ack(parse=False, **kwargs) -> bytes:
         """Return Data Ack PL."""
         if parse:
@@ -299,10 +307,12 @@ class Chunk(PacketSection):
         dup_tsns = kwargs.get("dup_tsns_count") or 0
         return pack("!IIHH", tsn, A_RWND, gap_acks, dup_tsns)
 
+    @staticmethod
     def cookie(parse=False, **kwargs) -> bytes:
         """Return Cookie PL."""
-        return kwargs.get("data") or b''
+        return kwargs.get("data") or b""
 
+    @staticmethod
     def cookie_ack(parse=False, **kwargs) -> bytes:
         """Return Cookie Ack PL."""
         if parse:
@@ -314,14 +324,15 @@ class Chunk(PacketSection):
                 return None
 
     PAYLOADS = {
-        0x00: data,
-        0x01: init,
-        0x02: init_ack,
-        0x03: data_ack,
-        0x0A: cookie,
-        0x0B: cookie_ack,
+        0x00: data.__func__,
+        0x01: init.__func__,
+        0x02: init_ack.__func__,
+        0x03: data_ack.__func__,
+        0x0A: cookie.__func__,
+        0x0B: cookie_ack.__func__,
     }
 
+    @staticmethod
     def parse(buf: bytearray, params: dict) -> int:
         """Return type. Unpack and parse header."""
         _type = unpack_from("!b", buf, 13)[0]
@@ -335,7 +346,7 @@ class Chunk(PacketSection):
     def __init__(self, chunk_type: int, **kwargs):
         super().__init__(chunk_type)
         self.flag = kwargs.get("flag") or 0
-        self.payload = self.PAYLOADS[chunk_type](**kwargs)
+        self.payload = Chunk.PAYLOADS[chunk_type](**kwargs)
 
     def pack(self, buf: bytearray):
         """Pack buffer with compiled bytes."""
@@ -352,6 +363,21 @@ class Chunk(PacketSection):
 class Packet(PacketSection):
     """Full RP Packet."""
 
+    class Type(IntEnum):
+        """Enums for RP Packet."""
+
+        CONTROL = Header.Type.CONTROL
+        FEEDBACK_EVENT = Header.Type.FEEDBACK_EVENT
+        VIDEO = Header.Type.VIDEO
+        AUDIO = Header.Type.AUDIO
+        HANDSHAKE = Header.Type.HANDSHAKE
+        CONGESTION = Header.Type.CONGESTION
+        FEEDBACK_STATE = Header.Type.FEEDBACK_STATE
+        RUMBLE_EVENT = Header.Type.RUMBLE_EVENT
+        CLIENT_INFO = Header.Type.CLIENT_INFO
+        PAD_EVENT = Header.Type.PAD_EVENT
+
+    @staticmethod
     def is_av(header_type: bytes) -> int:
         """Return AV type if packet is AV else return 0."""
         av_mask = int.from_bytes(header_type, "big") & 0x0F
@@ -359,6 +385,7 @@ class Packet(PacketSection):
             return av_mask
         return 0
 
+    @staticmethod
     def parse(msg: bytes):
         """Return new instance from bytes.
 
@@ -381,6 +408,7 @@ class Packet(PacketSection):
         )
 
     def __init__(self, header_type: int, chunk_type: int, **kwargs):
+        super().__init__(header_type)
         self.header = Header(header_type, **kwargs)
         self.chunk = Chunk(chunk_type, **kwargs)
         self.params = kwargs
@@ -390,13 +418,15 @@ class Packet(PacketSection):
         buf = bytearray(self.header.length + self.chunk.length)
         self.header.pack(buf)
         self.chunk.pack(buf)
-        pack_into("!H", buf, self.header.length + 2, self.chunk.length)  # Pack Chunk length
+        pack_into(
+            "!H", buf, self.header.length + 2, self.chunk.length
+        )  # Pack Chunk length
         payload = self.chunk.payload
         if cipher is not None:
             key_pos = cipher.key_pos
             if encrypt:
                 payload = cipher.encrypt(payload)
-        buf[self.header.length + 4:] = payload
+        buf[self.header.length + 4 :] = payload
         if cipher is not None:
             # If cipher is available need to send the gmac and key_pos
             if not advance_by:
@@ -410,19 +440,13 @@ class Packet(PacketSection):
             cipher.advance_key_pos(advance_by)
         return bytes(buf)
 
-    @property
-    def type(self) -> int:
-        """Return Packet Type."""
-        if self.header is None:
-            return None
-        return self.header.type
-
 
 class AVPacket(PacketSection):
     """AV Packet. Parsing capability only."""
 
     class Type(IntEnum):
         """Enums for AV Packet."""
+
         VIDEO = Header.Type.VIDEO
         AUDIO = Header.Type.AUDIO
 
@@ -443,8 +467,8 @@ class AVPacket(PacketSection):
             f"{self.frame_meta['units']['total']}>"
         )
 
-    def __init__(self, _type: int, buf: bytearray, **kwargs):
-        self.__type = self.Type(_type)
+    def __init__(self, av_type: int, buf: bytearray, **kwargs):
+        super().__init__(av_type)
         self._has_nalu = (unpack_from("!B", buf, 0)[0] >> 4) & 1 != 0
         self._index = unpack_from("!H", buf, 1)[0]
         self._frame_index = unpack_from("!H", buf, 3)[0]
@@ -458,59 +482,54 @@ class AVPacket(PacketSection):
         self._frame_meta = {}
         self._nalu = None
 
-        offset = 1  # TODO: Offset 1 verify?
+        offset = 1
         if self.type == self.Type.VIDEO:
             offset = 3
-            self._unit_index = (self._dword2 >> 0x15) & 0x7ff
+            self._unit_index = (self._dword2 >> 0x15) & 0x7FF
             self._adaptive_stream_index = unpack_from("!b", buf, 20)[0] >> 5
         else:
-            self._unit_index = (self._dword2 >> 0x18) & 0xff
+            self._unit_index = (self._dword2 >> 0x18) & 0xFF
         if self.has_nalu:
             # Unknown ushort at 18
-            self._nalu = buf[18 + offset + 1: 18 + offset + 3]
+            self._nalu = buf[18 + offset + 1 : 18 + offset + 3]
             offset += 3
-        self._data = buf[18 + offset:]
+        self._data = buf[18 + offset :]
 
         self._get_frame_meta()
 
     def _get_frame_meta(self):
         self._frame_meta = {
-            'frame': self.frame_index,
-            'index': self.unit_index,
+            "frame": self.frame_index,
+            "index": self.unit_index,
         }
         if self.type == self.Type.VIDEO:
-            total = ((self._dword2 >> 0xa) & 0x7ff) + 1
-            fec = self._dword2 & 0x3ff
+            total = ((self._dword2 >> 0xA) & 0x7FF) + 1
+            fec = self._dword2 & 0x3FF
             src = total - fec
             units = {
-                'total': total,
-                'fec': fec,
-                'src': src,
+                "total": total,
+                "fec": fec,
+                "src": src,
             }
         else:
-            _dword2 = self._dword2 & 0xffff
-            total = ((self._dword2 >> 0x10) & 0xff) + 1
-            fec = (_dword2 >> 4) & 0xf
-            src = _dword2 & 0xf  # TODO: Verify?
-            size = _dword2 >> 8  # TODO: Verify?
+            _dword2 = self._dword2 & 0xFFFF
+            total = ((self._dword2 >> 0x10) & 0xFF) + 1
+            fec = (_dword2 >> 4) & 0x0F
+            src = _dword2 & 0x0F
+            size = _dword2 >> 8
             units = {
-                'total': total,
-                'fec': fec,
-                'src': src,
-                'size': size,
+                "total": total,
+                "fec": fec,
+                "src": src,
+                "size": size,
             }
-        self._frame_meta['units'] = units
+        self._frame_meta["units"] = units
 
     def decrypt(self, cipher):
         """Decrypt AV Data."""
         if self.encrypted:
             self._data = cipher.decrypt(self.data, self.key_pos)
             self._encrypted = False
-
-    @property
-    def type(self) -> int:
-        """Return Packet Type."""
-        return self.__type
 
     @property
     def has_nalu(self) -> bool:
@@ -540,22 +559,22 @@ class AVPacket(PacketSection):
     @property
     def frame_length(self) -> int:
         """Return the length of units."""
-        return self._frame_meta['units']['total']
+        return self._frame_meta["units"]["total"]
 
     @property
     def frame_length_src(self) -> int:
         """Return the length of src units."""
-        return self._frame_meta['units']['src']
+        return self._frame_meta["units"]["src"]
 
     @property
     def frame_length_fec(self) -> int:
         """Return the length of fec units."""
-        return self._frame_meta['units']['fec']
+        return self._frame_meta["units"]["fec"]
 
     @property
     def frame_size_audio(self) -> int:
         """Return frame size for audio packet."""
-        return self._frame_meta['units']['size']
+        return self._frame_meta["units"]["size"]
 
     @property
     def codec(self) -> int:
@@ -568,9 +587,9 @@ class AVPacket(PacketSection):
         return self._key_pos
 
     @property
-    def adapative_stream_index(self) -> int:
+    def adaptive_stream_index(self) -> int:
         """Return the Adaptive Stream Index."""
-        return self._adapative_stream_index
+        return self._adaptive_stream_index
 
     @property
     def is_last(self) -> bool:
@@ -610,14 +629,12 @@ class FeedbackHeader(PacketSection):
 
     class Type(IntEnum):
         """Enums for Feedback Header."""
+
         EVENT = Header.Type.FEEDBACK_EVENT
         STATE = Header.Type.FEEDBACK_STATE
 
     def __repr__(self) -> str:
-        return (
-            f"<RP Feedback Header "
-            f"type={self.type}>"
-        )
+        return f"<RP Feedback Header " f"type={self.type}>"
 
     def __init__(self, feedback_type: int, **kwargs):
         super().__init__(feedback_type)
@@ -640,13 +657,30 @@ class FeedbackHeader(PacketSection):
 
 class FeedbackState(PacketSection):
     """Feedback Event."""
+
     LENGTH = 25
 
-    PREFIX = bytes([
-        0xa0, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff,
-        0x7f, 0x99, 0x99, 0xff, 0x7f, 0xfe, 0xf7, 0xef,
-        0x1f,
-    ])
+    PREFIX = bytes(
+        [
+            0xA0,
+            0xFF,
+            0x7F,
+            0xFF,
+            0x7F,
+            0xFF,
+            0x7F,
+            0xFF,
+            0x7F,
+            0x99,
+            0x99,
+            0xFF,
+            0x7F,
+            0xFE,
+            0xF7,
+            0xEF,
+            0x1F,
+        ]
+    )
 
     DEFAULT = {
         "left": {"x": 0, "y": 0},
@@ -655,13 +689,11 @@ class FeedbackState(PacketSection):
 
     class Type(IntEnum):
         """Enums for State."""
+
         STATE = 0
 
     def __repr__(self) -> str:
-        return (
-            f"<RP Feedback State "
-            f"state={self.state}>"
-        )
+        return f"<RP Feedback State " f"state={self.state}>"
 
     def __init__(self, state_type, **kwargs):
         super().__init__(state_type)
@@ -683,11 +715,13 @@ class FeedbackState(PacketSection):
 
 class FeedbackEvent(PacketSection):
     """Feedback Event."""
+
     LENGTH = 3
     PREFIX = 0x80
 
     class Type(IntEnum):
         """Enums for Buttons."""
+
         UP = 0x80
         DOWN = 0x81
         LEFT = 0x82
@@ -698,21 +732,17 @@ class FeedbackEvent(PacketSection):
         R2 = 0x87
         CROSS = 0x88
         CIRCLE = 0x89
-        SQUARE = 0x8a
-        TRIANGLE = 0x8b
-        OPTIONS = 0x8c
-        SHARE = 0x8d
-        PS = 0x8e
-        L3 = 0x8f
+        SQUARE = 0x8A
+        TRIANGLE = 0x8B
+        OPTIONS = 0x8C
+        SHARE = 0x8D
+        PS = 0x8E
+        L3 = 0x8F
         R3 = 0x90
         TOUCHPAD = 0x91
 
     def __repr__(self) -> str:
-        return (
-            f"<RP Feedback Event "
-            f"button={self.type.name} "
-            f"state={self.state}>"
-        )
+        return f"<RP Feedback Event " f"button={self.type.name} " f"state={self.state}>"
 
     def __init__(self, button_type: int, **kwargs):
         super().__init__(button_type)
@@ -732,14 +762,14 @@ class FeedbackEvent(PacketSection):
     @property
     def state(self) -> int:
         """Return State."""
-        return 0xff if self.is_active else 0x00
+        return 0xFF if self.is_active else 0x00
 
     @property
     def button_id(self) -> int:
         """Return Button ID."""
         if not self._button_id:
             button_id = int(self.type)
-            if button_id >= 0x8c and self.is_active:
+            if button_id >= 0x8C and self.is_active:
                 # Some buttons have different ID for active.
                 self._button_id = button_id + 32
             else:
@@ -755,17 +785,21 @@ class FeedbackEvent(PacketSection):
 class FeedbackPacket(PacketSection):
     """Feedback Packet."""
 
+    class Type(IntEnum):
+        """Enums for Feedback Packet."""
+
+        EVENT = Header.Type.FEEDBACK_EVENT
+        STATE = Header.Type.FEEDBACK_STATE
+
     def __repr__(self) -> str:
-        return (
-            f"<RP Feedback Packet "
-            f"type={self.header.type.name}>"
-        )
+        return f"<RP Feedback Packet " f"type={self.header.type.name}>"
 
     def __init__(self, feedback_type: int, **kwargs):
+        super().__init__(feedback_type)
         self.header = FeedbackHeader(feedback_type, **kwargs)
         self.chunk = None
-        self.data = kwargs.get("data") or b''
-        if feedback_type == FeedbackHeader.Type.EVENT:
+        self.data = kwargs.get("data") or b""
+        if feedback_type == self.Type.EVENT:
             if not self.data:
                 raise ValueError("Button must to be specified")
         else:
@@ -774,7 +808,11 @@ class FeedbackPacket(PacketSection):
 
     def bytes(self, cipher=None, encrypt=False) -> bytes:
         """Pack compiled bytes."""
-        data_length = len(self.data) if self.header.type == FeedbackHeader.Type.EVENT else FeedbackState.LENGTH
+        data_length = (
+            len(self.data)
+            if self.header.type == FeedbackHeader.Type.EVENT
+            else FeedbackState.LENGTH
+        )
         length = data_length + FeedbackHeader.LENGTH
         buf = bytearray(length)
         self.header.pack(buf)
@@ -784,13 +822,13 @@ class FeedbackPacket(PacketSection):
             self.chunk.pack(buf)
 
         if cipher is not None:  # Should always require cipher.
-            payload = buf[FeedbackHeader.LENGTH:]
+            payload = buf[FeedbackHeader.LENGTH :]
             self.header.key_pos = cipher.key_pos
             self.header.pack(buf)
             advance_by = data_length
             if encrypt:
                 payload = cipher.encrypt(payload)
-                buf[FeedbackHeader.LENGTH:] = payload
+                buf[FeedbackHeader.LENGTH :] = payload
             # gmac needs to be 0 when calculating gmac
             gmac = cipher.get_gmac(bytes(buf))
             gmac = int.from_bytes(gmac, "big")
@@ -807,6 +845,7 @@ class CongestionPacket(PacketSection):
 
     class Type(IntEnum):
         """Enums for Buttons."""
+
         CONGESTION = Header.Type.CONGESTION
 
     def __repr__(self) -> str:
@@ -827,7 +866,9 @@ class CongestionPacket(PacketSection):
         key_pos = cipher.key_pos
         buf = bytearray(CongestionPacket.LENGTH)
         gmac = 0
-        pack_into("!BxxHHII", buf, 0, self.type, self.received, self.lost, gmac, key_pos)
+        pack_into(
+            "!BxxHHII", buf, 0, self.type, self.received, self.lost, gmac, key_pos
+        )
         gmac = cipher.get_gmac(bytes(buf))
         gmac = int.from_bytes(gmac, "big")
         pack_into("!I", buf, 7, gmac)
@@ -835,24 +876,35 @@ class CongestionPacket(PacketSection):
         return bytes(buf)
 
 
-class ProtoHandler():
+class ProtoHandler:
     """Handler for Protobuf Messages."""
 
+    @staticmethod
     def message():
         """Return New Protobuf message."""
         msg = TakionMessage()
-        msg.ClearField('type')
+        msg.ClearField("type")
         return msg
 
+    @staticmethod
     def get_payload_type(proto_msg) -> str:
         payload_type = proto_msg.type
-        name = proto_msg.DESCRIPTOR.fields_by_name['type']\
-            .enum_type.values_by_number[payload_type].name
+        name = (
+            proto_msg.DESCRIPTOR.fields_by_name["type"]
+            .enum_type.values_by_number[payload_type]
+            .name
+        )
         return name
 
+    @staticmethod
     def big_payload(
-            client_version=7, session_key=b'', launch_spec=b'',
-            encrypted_key=b'', ecdh_pub_key=None, ecdh_sig=None):
+        client_version=7,
+        session_key=b"",
+        launch_spec=b"",
+        encrypted_key=b"",
+        ecdh_pub_key=None,
+        ecdh_sig=None,
+    ):
         """Big Payload."""
         msg = ProtoHandler.message()
         msg.type = msg.PayloadType.BIG
@@ -867,6 +919,7 @@ class ProtoHandler():
         data = msg.SerializeToString()
         return data
 
+    @staticmethod
     def send_corrupt_frame(start: int, end: int):
         """Notify of corrupt or missing frame."""
         msg = ProtoHandler.message()
@@ -876,6 +929,7 @@ class ProtoHandler():
         data = msg.SerializeToString()
         return data
 
+    @staticmethod
     def disconnect_payload():
         """Disconnect Payload."""
         reason = "Client Disconnecting".encode()
@@ -885,6 +939,7 @@ class ProtoHandler():
         data = msg.SerializeToString()
         return data
 
+    @staticmethod
     def senkusha_echo(enable: bool):
         """Senkusha Echo Payload."""
         msg = ProtoHandler.message()
@@ -894,6 +949,7 @@ class ProtoHandler():
         data = msg.SerializeToString()
         return data
 
+    @staticmethod
     def senkusha_mtu(req_id: int, mtu_req: int, num: int):
         """Senkusha MTU Payload."""
         msg = ProtoHandler.message()
@@ -905,14 +961,12 @@ class ProtoHandler():
         data = msg.SerializeToString()
         return data
 
-    def senkusha_mtu_client(
-            state: bool, mtu_id: int, mtu_req: int,
-            mtu_down: int):
+    @staticmethod
+    def senkusha_mtu_client(state: bool, mtu_id: int, mtu_req: int, mtu_down: int):
         """Senkusha MTU Client Payload."""
         msg = ProtoHandler.message()
         msg.type = msg.PayloadType.SENKUSHA
-        msg.senkusha_payload.command =\
-            SenkushaPayload.Command.CLIENT_MTU_COMMAND
+        msg.senkusha_payload.command = SenkushaPayload.Command.CLIENT_MTU_COMMAND
         msg.senkusha_payload.client_mtu_command.state = state
         msg.senkusha_payload.client_mtu_command.id = mtu_id
         msg.senkusha_payload.client_mtu_command.mtu_req = mtu_req
@@ -956,28 +1010,29 @@ class ProtoHandler():
         p_type = ProtoHandler.get_payload_type(msg)
         _LOGGER.debug("RECV Payload Type: %s", p_type)
 
-        if p_type == 'STREAMINFO':
+        if p_type == "STREAMINFO":
             if not self._recv_info:
                 self._recv_info = True
                 res = msg.stream_info_payload.resolution[0]
                 v_header = res.video_header
-                s_width = self._stream.resolution['width']
-                s_height = self._stream.resolution['height']
+                s_width = self._stream.resolution["width"]
+                s_height = self._stream.resolution["height"]
                 if s_width != res.width or s_height != res.height:
-                    _LOGGER.warning("RECV Unexpected resolution: %s x %s", res.width, res.height)
+                    _LOGGER.warning(
+                        "RECV Unexpected resolution: %s x %s", res.width, res.height
+                    )
 
                 _LOGGER.debug("RECV Stream Info")
-                self._parse_streaminfo(
-                    msg.stream_info_payload, v_header)
+                self._parse_streaminfo(msg.stream_info_payload, v_header)
             channel = 9
             msg = ProtoHandler.message()
             msg.type = msg.PayloadType.STREAMINFOACK
             self._ack(msg, channel)
 
-        elif p_type == 'BANG' and not self._recv_bang:
+        elif p_type == "BANG" and not self._recv_bang:
             _LOGGER.debug("RECV Bang")
-            ecdh_pub_key = b''
-            ecdh_sig = b''
+            ecdh_pub_key = b""
+            ecdh_sig = b""
             accepted = True
             if not msg.bang_payload.version_accepted:
                 _LOGGER.error("Version not accepted")
@@ -994,18 +1049,18 @@ class ProtoHandler():
         elif p_type == "BIG":
             return
 
-        elif p_type == 'HEARTBEAT':
+        elif p_type == "HEARTBEAT":
             channel = 1
             msg = ProtoHandler.message()
             msg.type = msg.PayloadType.HEARTBEAT
             self._ack(msg, channel)
 
-        elif p_type == 'DISCONNECT':
+        elif p_type == "DISCONNECT":
             _LOGGER.info("Host Disconnected; Reason: %s", msg.disconnect_payload.reason)
             self._stream._stop_event.set()
 
         # Test Packets
-        elif p_type == 'SENKUSHA':
+        elif p_type == "SENKUSHA":
             if self._stream._is_test and self._stream._test:
                 mtu_req = msg.senkusha_payload.mtu_command.mtu_req
                 mtu_sent = msg.senkusha_payload.mtu_command.mtu_sent

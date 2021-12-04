@@ -16,17 +16,17 @@ from .const import TYPE_PS4, TYPE_PS5
 
 _LOGGER = logging.getLogger(__name__)
 
-BROADCAST_IP = '255.255.255.255'
-UDP_IP = '0.0.0.0'
+BROADCAST_IP = "255.255.255.255"
+UDP_IP = "0.0.0.0"
 UDP_PORT = 0
 DEFAULT_UDP_PORT = 9103
 
 DDP_PORT_PS4 = 987
 DDP_PORT_PS5 = 9032
-DDP_VERSION = '00030010'
-DDP_TYPE_SEARCH = 'SRCH'
-DDP_TYPE_LAUNCH = 'LAUNCH'
-DDP_TYPE_WAKEUP = 'WAKEUP'
+DDP_VERSION = "00030010"
+DDP_TYPE_SEARCH = "SRCH"
+DDP_TYPE_LAUNCH = "LAUNCH"
+DDP_TYPE_WAKEUP = "WAKEUP"
 DDP_MSG_TYPES = (DDP_TYPE_SEARCH, DDP_TYPE_LAUNCH, DDP_TYPE_WAKEUP)
 
 DDP_PORTS = {
@@ -42,13 +42,13 @@ STATUS_OK = 200
 STATUS_STANDBY = 620
 
 
-class DDPDevice():
+class DDPDevice:
     def __init__(self, host, protocol, direct=False):
         self._host = host
         self._direct = direct
         self._host_type = None
         self._callback = None
-        self._protocol = None
+        self._protocol = protocol
         self._standby_start = 0
         self._poll_count = 0
         self._unreachable = False
@@ -59,7 +59,7 @@ class DDPDevice():
     def set_unreachable(self, state: bool):
         self._unreachable = state
 
-    def set_callback(self, callback):
+    def set_callback(self, callback: callable):
         self._callback = callback
 
     def set_status(self, data):
@@ -75,7 +75,7 @@ class DDPDevice():
 
         # Assume Device is not available.
         if not data:
-            if self.poll_count > self._protocol.max_polls:
+            if self._poll_count > self._protocol.max_polls:
                 self._status = {}
                 if self.callback:
                     self.callback()
@@ -83,7 +83,7 @@ class DDPDevice():
 
         if self.host_type is None:
             self._host_type = data.get("host-type")
-        self.poll_count = 0
+        self._poll_count = 0
         self._unreachable = False
         old_status = self.status
         self._status = data
@@ -98,14 +98,17 @@ class DDPDevice():
             if not title_id and self.callback:
                 self.callback()
             # Status changed from OK to Standby/Turned Off
-            if old_status is not None and \
-                    old_status.get('status_code') == STATUS_OK and \
-                    self.status.get('status_code') == STATUS_STANDBY:
+            if (
+                old_status is not None
+                and old_status.get("status_code") == STATUS_OK
+                and self.status.get("status_code") == STATUS_STANDBY
+            ):
                 self._standby_start = time.time()
                 _LOGGER.debug(
                     "Status changed from OK to Standby."
                     "Disabling polls for %s seconds",
-                    DEFAULT_STANDBY_DELAY)
+                    DEFAULT_STANDBY_DELAY,
+                )
 
     async def get_media_info(self, title_id):
         result = await async_search_ps_store(title_id, "United States")
@@ -168,7 +171,7 @@ class DDPDevice():
     @property
     def image(self):
         return self._image
-    
+
 
 class DDPProtocol(asyncio.DatagramProtocol):
     """Async UDP Client."""
@@ -185,15 +188,14 @@ class DDPProtocol(asyncio.DatagramProtocol):
         self._standby_start = 0
         self._event_stop = asyncio.Event()
         self._event_stop.clear()
+        self._remote_port = None
 
     def __repr__(self):
-        return (
-            "<{}.{} local_port={} max_polls={}>".format(
-                self.__module__,
-                self.__class__.__name__,
-                self.local_port,
-                self.max_polls,
-            )
+        return "<{}.{} local_port={} max_polls={}>".format(
+            self.__module__,
+            self.__class__.__name__,
+            self.local_port,
+            self.max_polls,
         )
 
     def _set_write_port(self, port):
@@ -207,13 +209,13 @@ class DDPProtocol(asyncio.DatagramProtocol):
     def connection_made(self, transport):
         """On Connection."""
         self._transport = transport
-        sock = self._transport.get_extra_info('socket')
+        sock = self._transport.get_extra_info("socket")
         self._local_port = sock.getsockname()[1]
         _LOGGER.debug("DDP Transport created with port: %s", self.local_port)
 
     def send_msg(self, device=None, message=None):
         """Send Message."""
-        sock = self._transport.get_extra_info('socket')
+        sock = self._transport.get_extra_info("socket")
         ports = []
         if message is None:
             message = self._message
@@ -227,23 +229,23 @@ class DDPProtocol(asyncio.DatagramProtocol):
         for port in ports:
             _LOGGER.debug(
                 "SENT MSG @ DDP Proto SPORT=%s DEST=%s",
-                sock.getsockname()[1], (host, port))
-            self._transport.sendto(
-                message.encode('utf-8'),
-                (host, port))
+                sock.getsockname()[1],
+                (host, port),
+            )
+            self._transport.sendto(message.encode("utf-8"), (host, port))
 
     def datagram_received(self, data, addr):
         """When data is received."""
         if data is not None:
-            sock = self._transport.get_extra_info('socket')
+            sock = self._transport.get_extra_info("socket")
             _LOGGER.debug(
-                "RECV MSG @ DDP Proto DPORT=%s SRC=%s",
-                sock.getsockname()[1], addr)
+                "RECV MSG @ DDP Proto DPORT=%s SRC=%s", sock.getsockname()[1], addr
+            )
             self._handle(data, addr)
 
     def _handle(self, data, addr):
-        data = parse_ddp_response(data.decode('utf-8'))
-        data['host-ip'] = addr[0]
+        data = parse_ddp_response(data.decode("utf-8"))
+        data["host-ip"] = addr[0]
         address = addr[0]
 
         if address in self._devices:
@@ -266,9 +268,7 @@ class DDPProtocol(asyncio.DatagramProtocol):
         """Close Transport."""
         self._transport.close()
         self._transport = None
-        _LOGGER.debug(
-            "Closing DDP Transport: Port=%s",
-            self._local_port)
+        _LOGGER.debug("Closing DDP Transport: Port=%s", self._local_port)
 
     def add_device(self, host, callback=None, direct=True):
         if host in self._devices:
@@ -327,7 +327,7 @@ class DDPProtocol(asyncio.DatagramProtocol):
     @property
     def devices(self):
         return self._devices
-    
+
     @property
     def device_status(self):
         return [device.status for device in self._devices.values()]
@@ -356,13 +356,12 @@ def get_host_type(response: dict) -> str:
 def get_ddp_message(msg_type, data=None):
     """Get DDP message."""
     if msg_type not in DDP_MSG_TYPES:
-        raise TypeError(
-            "DDP MSG type: '{}' is not a valid type".format(msg_type))
-    msg = u'{} * HTTP/1.1\n'.format(msg_type)
+        raise TypeError("DDP MSG type: '{}' is not a valid type".format(msg_type))
+    msg = "{} * HTTP/1.1\n".format(msg_type)
     if data is not None:
         for key, value in data.items():
-            msg += '{}:{}\n'.format(key, value)
-    msg += 'device-discovery-protocol-version:{}\n'.format(DDP_VERSION)
+            msg += "{}:{}\n".format(key, value)
+    msg += "device-discovery-protocol-version:{}\n".format(DDP_VERSION)
     return msg
 
 
@@ -374,22 +373,22 @@ def parse_ddp_response(rsp):
         return data
     app_name = None
     for line in rsp.splitlines():
-        if 'running-app-name' in line:
+        if "running-app-name" in line:
             app_name = line
-            app_name = app_name.replace('running-app-name:', '')
-        re_status = re.compile(r'HTTP/1.1 (?P<code>\d+) (?P<status>.*)')
+            app_name = app_name.replace("running-app-name:", "")
+        re_status = re.compile(r"HTTP/1.1 (?P<code>\d+) (?P<status>.*)")
         line = line.strip()
         # skip empty lines
         if not line:
             continue
         if re_status.match(line):
-            data[u'status_code'] = int(re_status.match(line).group('code'))
-            data[u'status'] = re_status.match(line).group('status')
+            data["status_code"] = int(re_status.match(line).group("code"))
+            data["status"] = re_status.match(line).group("status")
         else:
-            values = line.split(':')
+            values = line.split(":")
             data[values[0]] = values[1]
     if app_name is not None:
-        data['running-app-name'] = app_name
+        data["running-app-name"] = app_name
     return data
 
 
@@ -413,9 +412,9 @@ def get_ddp_wake_message(credential):
 def get_ddp_launch_message(credential):
     """Get DDP launch message."""
     data = {
-        'user-credential': credential,
-        'client-type': 'a',
-        'auth-type': 'C',
+        "user-credential": credential,
+        "client-type": "a",
+        "auth-type": "C",
     }
     return get_ddp_message(DDP_TYPE_LAUNCH, data)
 
@@ -429,11 +428,12 @@ def get_socket(port: Optional[int] = DEFAULT_UDP_PORT):
         sock.settimeout(0)
         try:
             if hasattr(socket, "SO_REUSEPORT"):
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)  # noqa: pylint: disable=no-member
+                sock.setsockopt(
+                    socket.SOL_SOCKET, socket.SO_REUSEPORT, 1
+                )  # noqa: pylint: disable=no-member
             sock.bind((UDP_IP, port))
         except socket.error as error:
-            _LOGGER.error(
-                "Error getting DDP socket with port: %s: %s", port, error)
+            _LOGGER.error("Error getting DDP socket with port: %s: %s", port, error)
             sock = None
             retries += 1
             port = UDP_PORT
@@ -443,13 +443,13 @@ def get_socket(port: Optional[int] = DEFAULT_UDP_PORT):
 
 
 def _send_recv_msg(
-        host,
-        msg,
-        host_type=TYPE_PS4,
-        receive=True,
-        send=True,
-        sock=None,
-        close=True,
+    host,
+    msg,
+    host_type=TYPE_PS4,
+    receive=True,
+    send=True,
+    sock=None,
+    close=True,
 ):
     """Send a ddp message and receive the response."""
     response = None
@@ -466,18 +466,18 @@ def _send_recv_msg(
         if port is None:
             raise ValueError(f"Invalid host type: {host_type}")
 
-        sock.sendto(msg.encode('utf-8'), (host, port))
+        sock.sendto(msg.encode("utf-8"), (host, port))
         _LOGGER.debug(
-            "SENT DDP MSG: SPORT=%s DEST=%s",
-            sock.getsockname()[1], (host, port))
+            "SENT DDP MSG: SPORT=%s DEST=%s", sock.getsockname()[1], (host, port)
+        )
 
     if receive:
         available, _, _ = select.select([sock], [], [], 0.01)
         if sock in available:
             response = sock.recvfrom(1024)
             _LOGGER.debug(
-                "RECV DDP MSG: DPORT=%s SRC=%s",
-                sock.getsockname()[1], response[1])
+                "RECV DDP MSG: DPORT=%s SRC=%s", sock.getsockname()[1], response[1]
+            )
     if close:
         sock.close()
     return response
@@ -514,7 +514,9 @@ def send_search_msg(host, host_type=TYPE_PS4, sock=None):
     return _send_msg(host, msg, host_type=host_type, sock=sock)
 
 
-def search(host=BROADCAST_IP, port=UDP_PORT, host_type=None, sock=None, timeout=3) -> list:
+def search(
+    host=BROADCAST_IP, port=UDP_PORT, host_type=None, sock=None, timeout=3
+) -> list:
     """Return list of discovered PS4s."""
     ps_list = []
     msg = get_ddp_search_message()
@@ -537,9 +539,9 @@ def search(host=BROADCAST_IP, port=UDP_PORT, host_type=None, sock=None, timeout=
         if response is not None:
             data, addr = response
         if data is not None and addr is not None:
-            data = parse_ddp_response(data.decode('utf-8'))
+            data = parse_ddp_response(data.decode("utf-8"))
             if data not in ps_list and data:
-                data[u'host-ip'] = addr[0]
+                data["host-ip"] = addr[0]
                 ps_list.append(data)
             if host != BROADCAST_IP:
                 break

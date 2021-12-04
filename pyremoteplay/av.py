@@ -20,7 +20,7 @@ except ModuleNotFoundError as err:
 _LOGGER = logging.getLogger(__name__)
 
 
-class AVHandler():
+class AVHandler:
     """AV Handler."""
 
     def __init__(self, session):
@@ -59,7 +59,9 @@ class AVHandler():
             self._queue.clear()
             self._waiting = True
             _LOGGER.warning("AV Handler max queue size exceeded")
-            self._session.error = "Decoder could not keep up. Try lowering framerate / resolution"
+            self._session.error = (
+                "Decoder could not keep up. Try lowering framerate / resolution"
+            )
             self._session.stop()
             event_emitter.emit("stop")
             return
@@ -76,7 +78,7 @@ class AVHandler():
             return
         packet.decrypt(self._cipher)
         self._handle(packet)
-        #self._send_congestion()
+        # self._send_congestion()
 
     def worker(self):
         while not self._session._stop_event.is_set():
@@ -118,7 +120,7 @@ class AVHandler():
         return self._v_stream.received + self._a_stream.received
 
 
-class AVStream():
+class AVStream:
     """AV Stream."""
 
     TYPE_VIDEO = "video"
@@ -168,20 +170,26 @@ class AVStream():
             # Packet is in order
             if packet.unit_index == self.last_unit + 1:
                 self._last_unit += 1
-                # Don't include first two decrypted bytes 
+                # Don't include first two decrypted bytes
                 self._buf.write(packet.data[2:])
             else:
                 if not self._frame_bad_order:
-                    _LOGGER.warning("Received unit out of order: %s, expected: %s", packet.unit_index, self.last_unit + 1)
+                    _LOGGER.warning(
+                        "Received unit out of order: %s, expected: %s",
+                        packet.unit_index,
+                        self.last_unit + 1,
+                    )
                     self._frame_bad_order = True
                 if self._lost > 65535:
                     self._lost = 0
-                self._lost += (packet.index - self._last_index - 1)
+                self._lost += packet.index - self._last_index - 1
                 if self._lost > 65535:
                     self._lost = 1
                 self._last_unit = packet.unit_index
             if packet.is_last_src:
-                _LOGGER.debug("Frame: %s finished with length: %s", self.frame, self._buf.tell())
+                _LOGGER.debug(
+                    "Frame: %s finished with length: %s", self.frame, self._buf.tell()
+                )
                 self._callback(self._buf.getvalue())
 
     @property
@@ -209,12 +217,13 @@ class AVReceiver(abc.ABC):
     """Base Class for AV Receiver."""
 
     AV_CODEC_OPTIONS_H264 = {
-        #"profile": "0",
+        # "profile": "0",
         # "level": "3.2",
         "tune": "zerolatency",
         "preset": "ultrafast",
     }
 
+    @staticmethod
     def video_frame(buf, codec, to_rgb=True):
         """Decode H264 Frame to raw image.
         Return AV Frame.
@@ -232,13 +241,14 @@ class AVReceiver(abc.ABC):
         if frame.is_corrupt:
             _LOGGER.error("Corrupt Frame: %s", frame)
             return None
-        #_LOGGER.debug(f"Frame: Key:{frame.key_frame}, Interlaced:{frame.interlaced_frame} Pict:{frame.pict_type}")
+        # _LOGGER.debug(f"Frame: Key:{frame.key_frame}, Interlaced:{frame.interlaced_frame} Pict:{frame.pict_type}")
         if to_rgb:
             frame = frame.reformat(frame.width, frame.height, "rgb24")
         elif frame.format.name == "nv12":  # HW Decode will output NV12 frames
             frame = frame.reformat(format="yuv420p")
         return frame
 
+    @staticmethod
     def find_video_decoder(video_format="h264", use_hw=False):
         decoders = {
             "h264": [
@@ -248,7 +258,7 @@ class AVReceiver(abc.ABC):
                 "h264_videotoolbox",
                 "h264_omx",
                 "h264_vaapi",
-                "h264"
+                "h264",
             ]
         }
         _LOGGER.debug("Using HW: %s", use_hw)
@@ -265,12 +275,15 @@ class AVReceiver(abc.ABC):
         _LOGGER.info("Found Decoder: %s", decoder)
         return decoder
 
+    @staticmethod
     def video_codec(video_format="h264", use_hw=False):
-        decoder = AVReceiver.find_video_decoder(video_format=video_format, use_hw=use_hw)
+        decoder = AVReceiver.find_video_decoder(
+            video_format=video_format, use_hw=use_hw
+        )
         codec = av.codec.Codec(decoder, "r").create()
         codec.options = AVReceiver.AV_CODEC_OPTIONS_H264
         codec.pix_fmt = "yuv420p"
-        #codec.flags = av.codec.context.Flags.LOW_DELAY
+        # codec.flags = av.codec.context.Flags.LOW_DELAY
         codec.flags2 = av.codec.context.Flags2.FAST
         codec.thread_type = av.codec.context.ThreadType.AUTO
         return codec
@@ -293,11 +306,15 @@ class AVReceiver(abc.ABC):
         _LOGGER.info("Audio Config: %s", self.audio_config)
 
         if not self.audio_decoder:
-            self.audio_decoder = OpusDecoder(self.audio_config['rate'], self.audio_config['channels'])
+            self.audio_decoder = OpusDecoder(
+                self.audio_config["rate"], self.audio_config["channels"]
+            )
             event_emitter.emit("audio_config")
 
     def get_video_codec(self):
-        self.codec = AVReceiver.video_codec(video_format=self._session.video_format, use_hw=self._session.use_hw)
+        self.codec = AVReceiver.video_codec(
+            video_format=self._session.video_format, use_hw=self._session.use_hw
+        )
 
     def notify_started(self):
         self._session.receiver_started.set()
@@ -384,7 +401,7 @@ class QueueReceiver(AVReceiver):
             _LOGGER.warning("AV Receiver max video queue size exceeded")
             self.v_queue.clear()
         self.v_queue.append(frame)
-        event_emitter.emit('video_frame')
+        event_emitter.emit("video_frame")
 
     def handle_audio(self, packet):
         frame = self.decode_audio_frame(packet)
@@ -394,94 +411,4 @@ class QueueReceiver(AVReceiver):
             _LOGGER.warning("AV Receiver max audio queue size exceeded")
             self.a_queue.clear()
         self.a_queue.append(frame)
-        event_emitter.emit('audio_frame')
-
-
-class AVFileReceiver(AVReceiver):
-    """Writes AV to file."""
-
-    def process(pipe, av_file):
-        import ffmpeg
-
-        video = ffmpeg.input('pipe:', format='h264')
-        audio = ffmpeg.input('pipe:', format='s16le', ac=2, ar=48000)
-        #joined = ffmpeg.concat(video, audio, v=1, a=1).node
-        #outputs = ffmpeg.merge_outputs(video, audio)
-        process = (
-            ffmpeg
-            .output(video, audio, av_file, format='mp4', pix_fmt='yuv420p')
-            .overwrite_output()
-            .run_async(pipe_stdin=True)
-        )
-
-        frame = 0
-
-        if process.poll() is None:
-            _LOGGER.info("FFMPEG Started")
-            pipe.send(1)
-        last = time.time()
-        while True:
-            try:
-                data = pipe.recv_bytes()
-                written = process.stdin.write(data)
-                frame += 1
-                _LOGGER.debug(f"File Receiver wrote: Frame {frame} {written} bytes\n")
-                now = time.time()
-                _LOGGER.debug("Receiver FPS: %s", 1 / (now - last))
-                last = now
-            except KeyboardInterrupt:
-                break
-            except Exception as err:
-                _LOGGER.error(err)
-                break
-        process.stdin.write(b'')
-        process.stdin.close()
-        pipe.close()
-        process.wait()
-
-    def __init__(self, session):
-        super().__init__(session)
-        self._session = session
-        self._worker = None
-        self._pipe = None
-        self.file = None
-        self.v_queue = deque()
-
-    def start(self):
-        _LOGGER.debug("File Receiver Starting")
-        if self.file is None:
-            self.file = "rp_output.mp4"
-        recv_pipe, self._pipe = multiprocessing.Pipe()
-        self._worker = multiprocessing.Process(
-            target=AVFileReceiver.process,
-            args=(recv_pipe, self.file),
-            daemon=True,
-        )
-        self._worker.start()
-        status = self._pipe.recv()
-        if status == 1:
-            _LOGGER.info("File Receiver started")
-            self.notify_started()
-
-    def handle_video(self, data: bytes):
-        """Handle Video frame."""
-        self.send_process(data)
-
-    def handle_audio(self, data: bytes):
-        self.send_process(data)
-
-    def send_process(self, data):
-        try:
-            self._pipe.send_bytes(data)
-        except Exception as error:
-            if error.errno != errno.EPIPE and not self._session.is_running:
-                _LOGGER.error("File Receiver error: %s", error)
-                _LOGGER.info("File Receiver closing pipe")
-                self._pipe.close()
-                self._session.stop()
-
-    def close(self):
-        if self._worker:
-            self._worker.terminate()
-            self._worker.join()
-            self._worker.close()
+        event_emitter.emit("audio_frame")

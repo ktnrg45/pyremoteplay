@@ -24,11 +24,27 @@ _LOGGER = logging.getLogger(__name__)
 
 def main():
     """Main entrypoint."""
-    parser = argparse.ArgumentParser(description='Start Remote Play.')
-    parser.add_argument('host', type=str, help="IP address of Remote Play host")
-    parser.add_argument('-r', '--resolution', default="720p", type=str, choices=RESOLUTIONS, help="Resolution to use")
-    parser.add_argument('-f', '--fps', default="high", type=str, choices=FPS_CHOICES, help="Max FPS to use")
-    parser.add_argument('--register', action="store_true", help='Register with Remote Play host.')
+    parser = argparse.ArgumentParser(description="Start Remote Play.")
+    parser.add_argument("host", type=str, help="IP address of Remote Play host")
+    parser.add_argument(
+        "-r",
+        "--resolution",
+        default="720p",
+        type=str,
+        choices=RESOLUTIONS,
+        help="Resolution to use",
+    )
+    parser.add_argument(
+        "-f",
+        "--fps",
+        default="high",
+        type=str,
+        choices=FPS_CHOICES,
+        help="Max FPS to use",
+    )
+    parser.add_argument(
+        "--register", action="store_true", help="Register with Remote Play host."
+    )
 
     args = parser.parse_args()
     host = args.host
@@ -135,10 +151,7 @@ def cli(host: str, resolution: str, fps: str):
 def cb_curses(session, status: bool):
     if status:
         instance = CLIInstance(session)
-        worker = threading.Thread(
-            target=curses.wrapper,
-            args=(start, instance)
-        )
+        worker = threading.Thread(target=curses.wrapper, args=(start, instance))
         worker.start()
     else:
         _LOGGER.error("Session Failed to Start: %s", session.error)
@@ -165,7 +178,7 @@ def start(stdscr, instance):
     instance.run(stdscr)
 
 
-class CLIInstance():
+class CLIInstance:
     """Emulated Keyboard."""
 
     MAP = {
@@ -207,24 +220,24 @@ class CLIInstance():
         curses.init_pair(5, curses.COLOR_GREEN, curses.COLOR_BLACK)
 
     def _show_mapping(self):
-        self.stdscr.addstr('\n')
+        self.stdscr.addstr("\n")
         _key_mapping = OrderedDict()
-        _key_mapping.update({'Key': 'Action'})
+        _key_mapping.update({"Key": "Action"})
         _key_mapping.update(self.map)
         item = 0
         for key, value in _key_mapping.items():
-            if key == '\n':
-                key = 'KEY_ENTER'
+            if key == "\n":
+                key = "KEY_ENTER"
             self.stdscr.addstr(key, curses.color_pair(5))
-            self.stdscr.addstr(' : ')
+            self.stdscr.addstr(" : ")
             self.stdscr.addstr(value, curses.color_pair(4))
             item += 1
             if item >= 4:
                 item = 0
-                self.stdscr.addstr('\n')
+                self.stdscr.addstr("\n")
             else:
-                self.stdscr.addstr(' | ')
-        self.stdscr.addstr('\n\n')
+                self.stdscr.addstr(" | ")
+        self.stdscr.addstr("\n\n")
         self._pos = self.stdscr.getyx()
         self.stdscr.clrtobot()
         self.stdscr.refresh()
@@ -235,7 +248,8 @@ class CLIInstance():
         self.stdscr.clear()
         self.stdscr.refresh()
         self.stdscr.addstr(
-            0, 0,
+            0,
+            0,
             "Remote Play - Interactive mode, press 'q' to exit\n",
         )
         self._show_mapping()

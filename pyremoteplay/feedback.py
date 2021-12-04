@@ -1,7 +1,6 @@
 """Feedback for pyremoteplay."""
 import logging
 import threading
-import time
 from collections import deque
 
 from .stream_packets import FeedbackEvent, FeedbackHeader
@@ -9,8 +8,9 @@ from .stream_packets import FeedbackEvent, FeedbackHeader
 _LOGGER = logging.getLogger(__name__)
 
 
-class Controller():
+class Controller:
     """Emulated controller input."""
+
     MAX_EVENTS = 16
     ACTION_TAP = "tap"
     ACTION_RELEASE = "release"
@@ -18,8 +18,8 @@ class Controller():
     ACTIONS = (ACTION_TAP, ACTION_RELEASE, ACTION_PRESS)
     STATE_INTERVAL_MAX_MS = 0.200
     STATE_INTERVAL_MIN_MS = 0.100
-    STICK_STATE_MAX = 0x7fff
-    STICK_STATE_MIN = -0x7fff
+    STICK_STATE_MAX = 0x7FFF
+    STICK_STATE_MIN = -0x7FFF
 
     def __init__(self, session, **kwargs):
         self._session = session
@@ -49,14 +49,18 @@ class Controller():
             self._should_send.clear()
 
     def send_state(self):
-        self._session._stream.send_feedback(FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state)
+        self._session._stream.send_feedback(
+            FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state
+        )
         self._sequence_state += 1
 
     def send_event(self):
         while self._event_queue:
             self.add_event_buffer(self._event_queue.pop(0))
             data = b"".join(self._event_buf)
-            self._session._stream.send_feedback(FeedbackHeader.Type.EVENT, self.sequence_event, data=data)
+            self._session._stream.send_feedback(
+                FeedbackHeader.Type.EVENT, self.sequence_event, data=data
+            )
             self._sequence_event += 1
 
     def add_event_buffer(self, event: FeedbackEvent):
@@ -97,7 +101,9 @@ class Controller():
 
         def scale_value(value):
             value = int(Controller.STICK_STATE_MAX * value)
-            return max([min([Controller.STICK_STATE_MAX, value]), Controller.STICK_STATE_MIN])
+            return max(
+                [min([Controller.STICK_STATE_MAX, value]), Controller.STICK_STATE_MIN]
+            )
 
         stick = stick.lower()
         if stick not in ("left", "right"):
@@ -137,8 +143,3 @@ class Controller():
     def stick_state(self) -> dict:
         """Return stick state as dict."""
         return self._stick_state
-
-    @property
-    def has_sticks(self) -> bool:
-        """Return True if has sticks."""
-        return self._has_sticks
