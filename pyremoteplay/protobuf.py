@@ -22,6 +22,7 @@ class ProtoHandler:
 
     @staticmethod
     def get_payload_type(proto_msg) -> str:
+        """Return Payload type."""
         payload_type = proto_msg.type
         name = (
             proto_msg.DESCRIPTOR.fields_by_name["type"]
@@ -113,9 +114,6 @@ class ProtoHandler:
         self._recv_bang = False
         self._recv_info = False
 
-    def handle_exc(self, exc, message, p_type):
-        raise exc(message)
-
     def _ack(self, msg, channel: int):
         chunk_flag = 1
         msg = msg.SerializeToString()
@@ -134,7 +132,7 @@ class ProtoHandler:
         self._stream.recv_stream_info(info)
 
     def handle(self, data: bytes):
-
+        """Handle message."""
         msg = ProtoHandler.message()
         try:
             msg.ParseFromString(data)
@@ -191,13 +189,13 @@ class ProtoHandler:
 
         elif p_type == "DISCONNECT":
             _LOGGER.info("Host Disconnected; Reason: %s", msg.disconnect_payload.reason)
-            self._stream._stop_event.set()
+            self._stream.stop_event.set()
 
         # Test Packets
         elif p_type == "SENKUSHA":
-            if self._stream._is_test and self._stream._test:
+            if self._stream.is_test and self._stream.test:
                 mtu_req = msg.senkusha_payload.mtu_command.mtu_req
                 mtu_sent = msg.senkusha_payload.mtu_command.mtu_sent
-                self._stream._test.recv_mtu_in(mtu_req, mtu_sent)
+                self._stream.test.recv_mtu_in(mtu_req, mtu_sent)
         else:
             _LOGGER.info("RECV Unhandled Payload Type: %s", p_type)

@@ -80,7 +80,7 @@ async def _fetch_account_info(token):
     auth = aiohttp.BasicAuth(CLIENT_ID, password=CLIENT_SECRET)
     async with aiohttp.ClientSession() as session:
         async with session.get(
-            url="{}/{}".format(TOKEN_URL, token), auth=auth, timeout=3
+            url=f"{TOKEN_URL}/{token}", auth=auth, timeout=3
         ) as resp:
             if resp.status == 200:
                 account_info = await resp.json()
@@ -117,9 +117,7 @@ def _format_user_id(user_id: str, encoding="base64"):
     """Format user id into useable encoding."""
     valid_encodings = {"base64", "sha256"}
     if encoding not in valid_encodings:
-        raise TypeError(
-            "{} encoding is not valid. Use {}".format(encoding, valid_encodings)
-        )
+        raise TypeError(f"{encoding} encoding is not valid. Use {valid_encodings}")
 
     if user_id is not None:
         if encoding == "sha256":
@@ -131,11 +129,12 @@ def _format_user_id(user_id: str, encoding="base64"):
 
 
 def prompt():
+    """Prompt for input and return account info."""
     msg = (
         "\r\n\r\nGo to the url below in a web browser, "
         "log into your PSN Account, "
         "then copy and paste the URL of the page that shows 'redirect'."
-        "\r\n\r\n{} \r\n\r\nEnter Redirect URL >".format(LOGIN_URL)
+        f"\r\n\r\n{LOGIN_URL} \r\n\r\nEnter Redirect URL >"
     )
 
     redirect_url = input(msg)

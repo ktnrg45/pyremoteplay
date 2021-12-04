@@ -1,10 +1,11 @@
+"""Remote Play Session."""
 import asyncio
 import logging
 import socket
 import threading
 import time
 from base64 import b64decode, b64encode
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from enum import IntEnum
 from functools import partial
 from struct import pack_into
@@ -25,7 +26,7 @@ from .const import (
     Resolution,
 )
 from .crypt import SessionCipher
-from .ddp import get_status, wakeup
+from .ddp import get_status, wakeup as ddp_wakeup
 from .errors import RemotePlayError, RPErrorHandler
 from .feedback import Controller
 from .keys import SESSION_KEY_0, SESSION_KEY_1
@@ -111,7 +112,7 @@ def _gen_did() -> bytes:
 
 
 class Session:
-    """Controller for RP Session."""
+    """Synchronous RP Session. Used as base. Deprecated. Use AsyncSession."""
 
     STATE_INIT = "init"
     STATE_READY = "ready"
@@ -157,6 +158,7 @@ class Session:
         self._profile = profile
         self._regist_data = {}
         self._session_id = b""
+        self._server_type = None
         self._type = ""
         self._mac_address = ""
         self._name = ""
@@ -168,6 +170,7 @@ class Session:
         self._cipher = None
         self._state = Session.STATE_INIT
         self._stream = None
+        self._worker = None
         self._kwargs = kwargs
         self.quality = quality
         self.use_hw = use_hw
@@ -232,7 +235,7 @@ class Session:
     def _get_rp_url(self, request_type: str) -> str:
         valid_types = ["init", "session"]
         if request_type not in valid_types:
-            raise ValueError("Unknown ")
+            raise RemotePlayError("Unknown request type")
         url_slug = RP_INIT_URL if request_type == "init" else RP_SESSION_URL
         url = f"http://{self.host}:{RP_PORT}{url_slug}"
         return url
@@ -301,7 +304,7 @@ class Session:
         )
         return True
 
-    def _handle(self, data: bytes):
+    def handle(self, data: bytes):
         """Handle Data."""
 
         def invalid_session_id(session_id: bytes) -> bytes:
@@ -373,6 +376,12 @@ class Session:
         msg = self._build_msg(Session.MessageType.HEARTBEAT_REQUEST)
         self.send(msg)
 
+    def encrypt(self, data: bytes, counter: int = None):
+        """Return Encypted Data."""
+        if not self._cipher:
+            raise RemotePlayError("Session cipher not created")
+        return self._cipher.encrypt(data, counter=counter)
+
     def standby(self):
         """Set host to standby."""
         msg = self._build_msg(Session.MessageType.STANDBY)
@@ -388,7 +397,7 @@ class Session:
     def wakeup(self):
         """Wakeup Host."""
         regist_key = format_regist_key(self._regist_key)
-        wakeup(self.host, regist_key, host_type=self.type)
+        ddp_wakeup(self.host, regist_key, host_type=self.type)
 
     def start(self, wakeup=True, autostart=True) -> bool:
         """Start Session/RP Session."""
@@ -416,7 +425,7 @@ class Session:
         self._state = Session.STATE_READY
         self._worker = threading.Thread(
             target=listener,
-            args=("Session", self._sock, self._handle, self._stop_event),
+            args=("Session", self._sock, self.handle, self._stop_event),
         )
         self._worker.start()
         self._ready_event.wait()
@@ -513,7 +522,13 @@ class Session:
         return self._session_id
 
     @property
-    def video_format(self):
+    def stream(self):
+        """Return Stream."""
+        return self._stream
+
+    @property
+    def video_format(self) -> str:
+        """Return video format"""
         formats = {
             TYPE_PS4: "h264",
             TYPE_PS5: "h265",
@@ -522,19 +537,26 @@ class Session:
 
 
 class SessionAsync(Session):
+    """Async Session."""
+
     class Protocol(asyncio.Protocol):
+        """Protocol for session."""
+
         def __init__(self, session):
             self.transport = None
             self.session = session
 
         def connection_made(self, transport):
+            """Callback for connection made."""
             _LOGGER.debug("Connected")
             self.transport = transport
 
         def data_received(self, data):
-            self.session._handle(data)
+            """Callback for data received."""
+            self.session.handle(data)
 
         def close(self):
+            """Close Transport."""
             self.transport.close()
 
     def __init__(
@@ -559,11 +581,13 @@ class SessionAsync(Session):
         self._thread_executor = ThreadPoolExecutor()
 
     async def run_io(self, func, *args, **kwargs):
+        """Run blocking function in executor."""
         return await self.loop.run_in_executor(
             self._thread_executor, partial(func, *args, **kwargs)
         )
 
     def sync_run_io(self, func, *args, **kwargs):
+        """Run blocking function in executor. Called from sync method."""
         asyncio.ensure_future(self.run_io(func, *args, **kwargs))
 
     async def start(self, wakeup=True, autostart=True) -> bool:
@@ -603,7 +627,7 @@ class SessionAsync(Session):
     def send(self, data: bytes):
         """Send Data."""
         self._protocol.transport.write(data)
-        log_bytes(f"Session Send", data)
+        log_bytes("Session Send", data)
 
     def start_stream(self, test=True, mtu=None, rtt=None):
         """Start Stream."""
@@ -628,6 +652,7 @@ class SessionAsync(Session):
             )
 
     async def wait_for_test(self, stop_event):
+        """Wait for network test to complete. Uses defaults if timed out."""
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=3.0)
         except asyncio.exceptions.TimeoutError:
@@ -635,6 +660,7 @@ class SessionAsync(Session):
             self._stream.stop()
 
     def init_av_handler(self):
+        """Run AV Handler."""
         self._tasks.append(self.loop.create_task(self.run_io(self.av_handler.worker)))
 
     def stop(self):

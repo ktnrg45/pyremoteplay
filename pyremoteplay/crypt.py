@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from .errors import CryptError
 from .keys import HMAC_KEY
-from .util import from_b, log_bytes, timeit, to_b
+from .util import from_b, log_bytes, to_b
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -23,10 +23,10 @@ GMAC_REFRESH_IV = 44910
 GMAC_REFRESH_KEY_POS = 45000
 
 
-def get_gmac_key(gmac_index: int, key: bytes, iv: bytes) -> bytes:
+def get_gmac_key(gmac_index: int, key: bytes, init_vector: bytes) -> bytes:
     """Return GMAC key."""
     gmac_index *= GMAC_REFRESH_IV
-    out_array = counter_add(gmac_index, iv)
+    out_array = counter_add(gmac_index, init_vector)
     out_key = b"".join([key, out_array])
     gcm = SHA256.new(out_key)
     gcm = gcm.digest()
@@ -34,46 +34,60 @@ def get_gmac_key(gmac_index: int, key: bytes, iv: bytes) -> bytes:
     return gcm
 
 
-def counter_add(counter: int, iv: bytes) -> bytes:
-    """Increment IV by counter."""
-    # LE to BE -> Add counter -> BE to LE
-    # iv = bytes(bytearray(to_b(from_b(bytes(bytearray(iv)[::-1])) + counter, 16))[::-1])
-    iv = bytearray(iv)
-    for index, value in enumerate(iv):
+def counter_add(counter: int, init_vector: bytes) -> bytes:
+    """Increment IV by counter.
+    Operations:
+    - Convert IV from LE to BE -> Add counter -> convert from BE to LE
+    """
+    # init_vector = bytes(
+    #     bytearray(to_b(from_b(bytes(bytearray(init_vector)[::-1])) + counter, 16))[::-1]
+    # )
+    init_vector = bytearray(init_vector)
+    for index, value in enumerate(init_vector):
         add = value + counter
-        iv[index] = add & 0xFF
+        init_vector[index] = add & 0xFF
         if (counter := add >> 8) <= 0 or index >= 15:
             break
-    return bytes(iv)
+    return bytes(init_vector)
 
 
 def get_base_key_iv(secret: bytes, handshake_key: bytes, index: int) -> bytes:
+    """Return Base Key and IV.
+
+    Operations:
+    - Concat index and handshake key
+    - Get HMAC hash of the above using the secret as the key
+    - Split hash into key and iv
+    """
     key_iv = b"".join([bytes([0x01, index, 0x00]), handshake_key, bytes([0x01, 0x00])])
     hmac = HMAC.new(key=secret, msg=key_iv, digestmod=SHA256)
     hmac = hmac.digest()
     hmac = bytearray(hmac)
     key = bytes(hmac[0:16])
-    iv = bytes(hmac[16:])
-    return key, iv
+    init_vector = bytes(hmac[16:])
+    return key, init_vector
 
 
-def get_gmac_cipher(key: bytes, iv: bytes) -> bytes:
+def get_gmac_cipher(key: bytes, init_vector: bytes) -> bytes:
     """Return GMAC Cipher."""
-    cipher = AES.new(key, AES.MODE_GCM, nonce=iv, mac_len=4)
+    cipher = AES.new(key, AES.MODE_GCM, nonce=init_vector, mac_len=4)
     return cipher
 
 
-def get_gmac_tag(data: bytes, key: bytes, iv: bytes) -> bytes:
+def get_gmac_tag(data: bytes, key: bytes, init_vector: bytes) -> bytes:
     """Return GMAC tag of packet."""
     cipher = AESGCM(key)
-    return cipher.encrypt(iv, b"", data)[:4]
-    # cipher = get_gmac_cipher(key, iv)
+    return cipher.encrypt(init_vector, b"", data)[:4]
+    # cipher = get_gmac_cipher(key, init_vector)
     # cipher.update(data)
     # return cipher.digest()
 
 
-def gen_iv_stream(buf: bytearray, iv: bytes, key_pos: int):
-    """Pack buf with stream of incremented IVs."""
+def gen_iv_stream(buf: bytearray, init_vector: bytes, key_pos: int):
+    """Pack buf with stream of incremented IVs.
+
+    This concats the next block of IVs needed like AES CTR.
+    """
     length = len(buf)
     assert length % 16 == 0
     blocks = length // 16
@@ -81,12 +95,14 @@ def gen_iv_stream(buf: bytearray, iv: bytes, key_pos: int):
     stop = blocks + block_offset
     current = 0
     for block in range(block_offset, stop):
-        pack_into("!16s", buf, current, counter_add(block, iv))
+        pack_into("!16s", buf, current, counter_add(block, init_vector))
         current += 16
 
 
 # TODO: Make more efficient
-def get_key_stream(key: bytes, iv: bytes, key_pos: int, data_len: int) -> bytes:
+def get_key_stream(
+    key: bytes, init_vector: bytes, key_pos: int, data_len: int
+) -> bytes:
     """Return the minimum CTR Keystream at key position."""
     padding = key_pos % 16
     key_pos = key_pos - padding
@@ -94,7 +110,7 @@ def get_key_stream(key: bytes, iv: bytes, key_pos: int, data_len: int) -> bytes:
     key_stream_len = ((padding + data_len + 16 - 1) // 16) * 16
 
     key_stream = bytearray(key_stream_len)
-    gen_iv_stream(key_stream, iv, key_pos)
+    gen_iv_stream(key_stream, init_vector, key_pos)
 
     # cipher = Cipher(algorithms.AES(key), modes.ECB())
     # encryptor = cipher.encryptor()
@@ -110,16 +126,21 @@ def get_key_stream(key: bytes, iv: bytes, key_pos: int, data_len: int) -> bytes:
     return key_stream
 
 
-def decrypt_encrypt(key: bytes, iv: bytes, key_pos: int, data: bytes, key_stream=b""):
-    """Return Decrypted or Encrypted packet. Two way."""
+def decrypt_encrypt(
+    key: bytes, init_vector: bytes, key_pos: int, data: bytes, key_stream=b""
+):
+    """Return Decrypted or Encrypted packet. Two way. Essentially AES ECB."""
     if not key_stream:
-        key_stream = get_key_stream(key, iv, key_pos, len(data))
+        key_stream = get_key_stream(key, init_vector, key_pos, len(data))
     enc_data = strxor(data, key_stream)
     return enc_data
 
 
 class BaseCipher:
-    """Base AES CTR Cipher."""
+    """Base AES CTR Cipher.
+
+    Allows for random access.
+    """
 
     KEYSTREAM_LEN = 0x1000
 
@@ -154,6 +175,7 @@ class BaseCipher:
             self.keystream_index += 1
 
     def get_key_stream(self, key_pos: int, data_len: int) -> bytes:
+        """Return required key stream."""
         self._next_key_stream()
         # Remove block if key pos not in queue.
         for index, key_stream in enumerate(self.keystreams):
@@ -180,6 +202,7 @@ class BaseCipher:
         return key_stream
 
     def gen_new_key(self):
+        """Generate new GMAC Key."""
         if self.base_gmac_key is None:
             raise CryptError("Base GMAC Key is None")
         self.current_key = get_gmac_key(self.index, self.base_gmac_key, self.base_iv)
@@ -188,7 +211,7 @@ class BaseCipher:
 
     def get_gmac(self, data: bytes, key_pos: int):
         """Get GMAC tag of packet."""
-        iv = counter_add(key_pos // 16, self.base_iv)
+        init_vector = counter_add(key_pos // 16, self.base_iv)
         if key_pos > 0:
             index = (key_pos - 1) // GMAC_REFRESH_KEY_POS
         else:
@@ -200,7 +223,7 @@ class BaseCipher:
             key = get_gmac_key(index, self.base_key, self.base_iv)
         else:
             key = self.current_key
-        tag = get_gmac_tag(data, key, iv)
+        tag = get_gmac_tag(data, key, init_vector)
         return tag
 
 
@@ -240,7 +263,7 @@ class LocalCipher(BaseCipher):
         self._key_pos = 0
         self._init_cipher()
 
-    def get_gmac(self, data: bytes) -> bytes:
+    def get_gmac(self, data: bytes) -> bytes:  # pylint: disable=arguments-differ
         """Return GMAC Tag."""
         tag = super().get_gmac(data, self.key_pos)
         return tag
@@ -300,14 +323,16 @@ class StreamCipher:
         return self._local_cipher.key_pos
 
 
-def get_aes_cipher(key: bytes, iv: bytes, segment_size=128):
-    """Get AES Cipher."""
-    # Segment size is in bits. AES-CFB-128.
-    cipher = AES.new(key, AES.MODE_CFB, iv, segment_size=segment_size)
+def get_aes_cipher(key: bytes, init_vector: bytes, segment_size=128):
+    """Get AES Cipher.
+
+    Segment size is in bits. AES-CFB-128.
+    """
+    cipher = AES.new(key, AES.MODE_CFB, init_vector, segment_size=segment_size)
     return cipher
 
 
-def get_hmac(nonce: bytes):
+def get_hmac(nonce: bytes) -> bytes:
     """Return HMAC for the IV."""
     hmac = HMAC.new(key=HMAC_KEY, msg=nonce, digestmod=SHA256)
     current_hmac = hmac.digest()
@@ -325,22 +350,22 @@ def get_aes_iv(nonce: bytes, counter: int):
         shift -= 8
     nonce = b"".join([nonce, bytes(suffix)])
     current_hmac = get_hmac(bytes(nonce))
-    iv = current_hmac[:16]  # Truncate to IV length.
-    return iv
+    init_vector = current_hmac[:16]  # Truncate to IV length.
+    return init_vector
 
 
 def get_ciphers(key: bytes, nonce: bytes, counter=0) -> tuple:
     """Return tuple of AES CFB Ciphers."""
-    iv = get_aes_iv(nonce, counter=counter)
-    enc_cipher = get_aes_cipher(key=key, iv=iv)
-    dec_cipher = get_aes_cipher(key=key, iv=iv)
+    init_vector = get_aes_iv(nonce, counter=counter)
+    enc_cipher = get_aes_cipher(key=key, init_vector=init_vector)
+    dec_cipher = get_aes_cipher(key=key, init_vector=init_vector)
     return enc_cipher, dec_cipher
 
 
 def get_cipher(key: bytes, nonce: bytes, counter=0):
     """Return a AES CFB Cipher."""
-    iv = get_aes_iv(nonce, counter=counter)
-    cipher = get_aes_cipher(key=key, iv=iv)
+    init_vector = get_aes_iv(nonce, counter=counter)
+    cipher = get_aes_cipher(key=key, init_vector=init_vector)
     return cipher
 
 

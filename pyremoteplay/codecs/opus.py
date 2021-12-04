@@ -1,3 +1,5 @@
+"""Decoder for Opus Audio."""
+
 import array
 import ctypes
 
@@ -7,7 +9,9 @@ SAMPLE_RATE = 48000
 CHANNELS = 2
 
 
-class OpusDecoder():
+class OpusDecoder:
+    """Decoder for Opus frames"""
+
     def __init__(self, sample_rate=SAMPLE_RATE, channels=CHANNELS):
         self.sample_rate = sample_rate
         self.channels = channels
@@ -34,13 +38,19 @@ class OpusDecoder():
         buf_size = ctypes.c_int(max_samples)
         return (buf, buf_ptr, buf_size)
 
-    def decode(self, data):
+    def decode(self, data: bytes) -> bytes:
+        """Return raw PCM bytes from Opus frames."""
         buf = ctypes.c_char * len(data)
         buf = buf.from_buffer(bytearray(data))
         buf_ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_ubyte))
         length = opus.opus_int32(len(data))
 
-        pcm, pcm_ptr, pcm_size = self._get_pcm_buffer()
+        (
+            pcm,  # pylint: disable=unused-variable
+            pcm_ptr,
+            pcm_size,
+        ) = self._get_pcm_buffer()
+
         samples = opus.opus_decode(
             self._decoder,
             buf_ptr,
@@ -49,4 +59,4 @@ class OpusDecoder():
             pcm_size,
             0,
         )
-        return array.array('h', pcm_ptr[:samples * self.channels]).tobytes()
+        return array.array("h", pcm_ptr[: samples * self.channels]).tobytes()

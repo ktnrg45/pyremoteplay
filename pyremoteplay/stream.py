@@ -46,25 +46,32 @@ class RPStream:
     STATE_READY = "ready"
 
     class Protocol(asyncio.Protocol):
+        """Protocol for stream."""
+
         def __init__(self, stream):
             self.transport = None
             self.stream = stream
 
         def connection_made(self, transport):
+            """Callback for connection made."""
             _LOGGER.debug("Connected Stream")
             self.transport = transport
 
-        def datagram_received(self, data, addr):
-            self.stream._handle(data)
+        def datagram_received(self, data, addr):  # pylint: disable=unused-argument
+            """Callback for data received"""
+            self.stream.handle(data)
 
         def sendto(self, data, addr):
+            """Send data."""
             self.transport.sendto(data, addr)
 
         def close(self):
+            """Close Protocol"""
             self.transport.close()
 
         @property
         def socket(self):
+            """Return the socket for transport."""
             if self.transport is None:
                 return None
             return self.transport.get_extra_info("socket")
@@ -110,7 +117,7 @@ class RPStream:
         self._state = RPStream.STATE_INIT
         self._worker = threading.Thread(
             target=listener,
-            args=("Stream", self._protocol, self._handle, self._stop_event),
+            args=("Stream", self._protocol, self.handle, self._stop_event),
         )
         self._worker.start()
         self._send_init()
@@ -123,11 +130,12 @@ class RPStream:
         self._send_init()
 
     def ready(self):
+        """Notify Session that stream is ready."""
         _LOGGER.info("Stream Ready")
         self._state = RPStream.STATE_READY
         self._session.stream_ready.set()
 
-    def _advance_sequence(self):
+    def advance_sequence(self):
         """Advance SCTP sequence number."""
         if self.state == RPStream.STATE_INIT:
             return
@@ -155,7 +163,7 @@ class RPStream:
         """Send Data Packet."""
         advance_by = 0
         if self.cipher:
-            self._advance_sequence()
+            self.advance_sequence()
             if proto:
                 advance_by = len(data)
 
@@ -197,8 +205,8 @@ class RPStream:
         log_bytes("Stream Send", msg)
         self._protocol.sendto(msg, (self._host, self._port))
 
-    def _handle(self, msg):
-        """Handle packets."""
+    def handle(self, msg):
+        """Handle received packets."""
         av_type = Packet.is_av(msg[:1])
         if av_type:
             if self.av_handler.has_receiver and not self._is_test:
@@ -308,7 +316,7 @@ class RPStream:
             return launch_spec
 
         launch_spec_enc = bytearray(len(launch_spec))
-        launch_spec_enc = self._session._cipher.encrypt(launch_spec_enc, counter=0)
+        launch_spec_enc = self._session.encrypt(launch_spec_enc, counter=0)
 
         if format_type == "encrypted":
             return launch_spec_enc
@@ -333,7 +341,7 @@ class RPStream:
         _LOGGER.info("Stream Disconnecting")
         chunk_flag = channel = 1
         data = ProtoHandler.disconnect_payload()
-        self._advance_sequence()
+        self.advance_sequence()
         self.send_data(data, chunk_flag, channel)
 
     def stop(self):
@@ -361,7 +369,7 @@ class RPStream:
                 self.set_ciphers(ecdh_pub_key, ecdh_sig)
             else:
                 _LOGGER.error("RP Launch Spec not accepted")
-                self._session._stop_event.set()
+                self._session.stop()
 
     def wait_for_ack(self, tsn: int, callback: callable):
         """Wait for ack received."""
@@ -373,8 +381,30 @@ class RPStream:
         """Return State."""
         return self._state
 
+    @property
+    def tsn(self) -> int:
+        """Return transmission sequence number."""
+        return self._tsn
+
+    @property
+    def stop_event(self):
+        """Return Stop Event."""
+        return self._stop_event
+
+    @property
+    def is_test(self):
+        """Return True if is test."""
+        return self._is_test
+
+    @property
+    def test(self):
+        """Return Current Test."""
+        return self._test
+
 
 class StreamTest:
+    """Network tests for stream. Calculates RTT and MTU."""
+
     def __init__(self, stream: RPStream):
         self._stream = stream
         self._index = 0
@@ -391,8 +421,8 @@ class StreamTest:
         channel = 8
         data = ProtoHandler.senkusha_echo(enable)
         callback = self.send_rtt if enable else self.stop_rtt
-        self._stream._advance_sequence()
-        self._stream.wait_for_ack(self._stream._tsn, callback)
+        self._stream.advance_sequence()
+        self._stream.wait_for_ack(self._stream.tsn, callback)
         self._stream.send_data(data, chunk_flag, channel)
 
     def _send_mtu_in(self):
@@ -400,7 +430,7 @@ class StreamTest:
         channel = 8
         self._index += 1
         data = ProtoHandler.senkusha_mtu(self._index, self._cur_mtu, 1)
-        self._stream._advance_sequence()
+        self._stream.advance_sequence()
         self._stream.send_data(data, chunk_flag, channel)
 
     def _send_mtu_out(self):
@@ -410,7 +440,7 @@ class StreamTest:
         data = ProtoHandler.senkusha_mtu_client(
             True, self._index, self._mtu_in, self._mtu_in
         )
-        self._stream._advance_sequence()
+        self._stream.advance_sequence()
         self._stream.send_data(data, chunk_flag, channel)
 
     def _get_test_packet(self, length) -> bytes:

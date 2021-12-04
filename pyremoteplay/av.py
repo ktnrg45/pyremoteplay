@@ -1,8 +1,6 @@
 """AV for pyremoteplay."""
 import abc
-import errno
 import logging
-import multiprocessing
 import time
 from collections import deque
 from io import BytesIO
@@ -10,7 +8,7 @@ from struct import unpack_from
 
 from .codecs.opus import OpusDecoder
 from .stream_packets import AVPacket, Packet
-from .util import event_emitter, log_bytes, timeit
+from .util import event_emitter
 
 try:
     import av
@@ -28,12 +26,14 @@ class AVHandler:
         self._receiver = None
         self._v_stream = None
         self._a_stream = None
+        self._cipher = None
         self._queue = deque(maxlen=5000)
         self._worker = None
         self._last_congestion = 0
         self._waiting = False
 
     def add_receiver(self, receiver):
+        """Add AV reciever and run."""
         if self._receiver:
             raise RuntimeError("Cannot add Receiver more than once")
         if receiver is not None:
@@ -41,13 +41,13 @@ class AVHandler:
             self._receiver.start()
 
     def set_cipher(self, cipher):
+        """Set cipher. Schedules handler to run."""
         self._cipher = cipher
         self._session.init_av_handler()
 
     def set_headers(self, v_header, a_header):
         """Set headers."""
         if self._receiver:
-            self._receiver._v_header = v_header
             self._v_stream = AVStream("video", v_header, self._receiver.handle_video)
             self._a_stream = AVStream("audio", a_header, self._receiver.handle_audio)
             self._receiver.get_audio_config(a_header)
@@ -71,6 +71,7 @@ class AVHandler:
             self._queue.append(packet)
 
     def process_packet(self):
+        """Process AV Packet."""
         try:
             packet = self._queue.popleft()
         except IndexError:
@@ -81,7 +82,8 @@ class AVHandler:
         # self._send_congestion()
 
     def worker(self):
-        while not self._session._stop_event.is_set():
+        """Worker for AV Handler. Run in thread."""
+        while not self._session.is_stopped:
             self.process_packet()
         _LOGGER.info("Closing AV Receiver")
         self._receiver.close()
@@ -91,7 +93,7 @@ class AVHandler:
     def _send_congestion(self):
         now = time.time()
         if now - self._last_congestion > 0.2:
-            self._session._stream.send_congestion(self.received, self.lost)
+            self._session.stream.send_congestion(self.received, self.lost)
             self._last_congestion = now
 
     def _handle(self, packet: AVPacket):
@@ -241,7 +243,12 @@ class AVReceiver(abc.ABC):
         if frame.is_corrupt:
             _LOGGER.error("Corrupt Frame: %s", frame)
             return None
-        # _LOGGER.debug(f"Frame: Key:{frame.key_frame}, Interlaced:{frame.interlaced_frame} Pict:{frame.pict_type}")
+        # _LOGGER.debug(
+        #     "Frame: Key:%s, Interlaced:%s Pict:%s",
+        #     frame.key_frame,
+        #     frame.interlaced_frame,
+        #     frame.pict_type,
+        # )
         if to_rgb:
             frame = frame.reformat(frame.width, frame.height, "rgb24")
         elif frame.format.name == "nv12":  # HW Decode will output NV12 frames
@@ -250,6 +257,7 @@ class AVReceiver(abc.ABC):
 
     @staticmethod
     def find_video_decoder(video_format="h264", use_hw=False):
+        """Return CPU decoder or first found HW decoder. Return CPU decoder if no HW decoders."""
         decoders = {
             "h264": [
                 "h264_amf",
@@ -261,6 +269,7 @@ class AVReceiver(abc.ABC):
                 "h264",
             ]
         }
+        decoder = None
         _LOGGER.debug("Using HW: %s", use_hw)
         if not use_hw:
             _LOGGER.debug("%s - %s - %s", video_format, use_hw, decoders)
@@ -277,6 +286,7 @@ class AVReceiver(abc.ABC):
 
     @staticmethod
     def video_codec(video_format="h264", use_hw=False):
+        """Return Codec Context."""
         decoder = AVReceiver.find_video_decoder(
             video_format=video_format, use_hw=use_hw
         )
@@ -312,24 +322,27 @@ class AVReceiver(abc.ABC):
             event_emitter.emit("audio_config")
 
     def get_video_codec(self):
+        """Get Codec Context."""
         self.codec = AVReceiver.video_codec(
             video_format=self._session.video_format, use_hw=self._session.use_hw
         )
 
     def notify_started(self):
+        """Notify session that receiver has started."""
         self._session.receiver_started.set()
 
     def start(self):
+        """Start receiver."""
         self.get_video_codec()
         self.notify_started()
 
     def decode_video_frame(self, buf: bytes) -> bytes:
-        """Decode Video Frame."""
+        """Return decoded Video Frame."""
         frame = AVReceiver.video_frame(buf, self.codec)
         return frame
 
     def decode_audio_frame(self, packet: AVPacket) -> bytes:
-        """Return Audio Frame."""
+        """Return decoded Audio Frame."""
         if not self.audio_config:
             return None
 
@@ -366,20 +379,20 @@ class AVReceiver(abc.ABC):
 
 
 class QueueReceiver(AVReceiver):
+    """Receiver which stores decoded frames in queues."""
+
     def __init__(self, session):
         super().__init__(session)
         self.v_queue = deque(maxlen=10)
         self.a_queue = deque(maxlen=10)
 
-    def start(self):
-        self.get_video_codec()
-        self.notify_started()
-
     def close(self):
+        """Close Receiver."""
         super().close()
         self.v_queue.clear()
 
     def get_video_frame(self):
+        """Return oldest Video Frame from queue."""
         try:
             frame = self.v_queue.popleft()
             return frame
@@ -387,6 +400,7 @@ class QueueReceiver(AVReceiver):
             return None
 
     def get_audio_frame(self):
+        """Return oldest Audio Frame from queue."""
         try:
             frame = self.a_queue.popleft()
             return frame
@@ -394,6 +408,7 @@ class QueueReceiver(AVReceiver):
             return None
 
     def handle_video(self, buf):
+        """Handle video frame. Add to queue."""
         frame = self.decode_video_frame(buf)
         if frame is None:
             return
@@ -403,8 +418,9 @@ class QueueReceiver(AVReceiver):
         self.v_queue.append(frame)
         event_emitter.emit("video_frame")
 
-    def handle_audio(self, packet):
-        frame = self.decode_audio_frame(packet)
+    def handle_audio(self, buf):
+        """Handle Audio Frame. Add to queue."""
+        frame = self.decode_audio_frame(buf)
         if frame is None:
             return
         if len(self.a_queue) >= self.a_queue.maxlen:

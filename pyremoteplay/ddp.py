@@ -10,7 +10,7 @@ from typing import Optional
 
 import aiohttp
 from aiohttp.client_exceptions import ContentTypeError
-from pyps4_2ndscreen.media_art import async_search_ps_store
+from pyps4_2ndscreen.media_art import async_search_ps_store, ResultItem
 
 from .const import TYPE_PS4, TYPE_PS5
 
@@ -43,6 +43,8 @@ STATUS_STANDBY = 620
 
 
 class DDPDevice:
+    """Represents a DDP device."""
+
     def __init__(self, host, protocol, direct=False):
         self._host = host
         self._direct = direct
@@ -57,12 +59,15 @@ class DDPDevice:
         self._image = None
 
     def set_unreachable(self, state: bool):
+        """Set unreachable attribute."""
         self._unreachable = state
 
     def set_callback(self, callback: callable):
+        """Set callback for status changes."""
         self._callback = callback
 
     def set_status(self, data):
+        """Set status."""
         # Device won't respond to polls right after standby
         if self.polls_disabled:
             elapsed = time.time() - self._standby_start
@@ -78,7 +83,7 @@ class DDPDevice:
             if self._poll_count > self._protocol.max_polls:
                 self._status = {}
                 if self.callback:
-                    self.callback()
+                    self.callback()  # pylint: disable=not-callable
             return
 
         if self.host_type is None:
@@ -96,7 +101,7 @@ class DDPDevice:
                 self._media_info = None
                 self._image = None
             if not title_id and self.callback:
-                self.callback()
+                self.callback()  # pylint: disable=not-callable
             # Status changed from OK to Standby/Turned Off
             if (
                 old_status is not None
@@ -110,15 +115,17 @@ class DDPDevice:
                     DEFAULT_STANDBY_DELAY,
                 )
 
-    async def get_media_info(self, title_id):
-        result = await async_search_ps_store(title_id, "United States")
+    async def get_media_info(self, title_id, region="United States"):
+        """Retrieve Media info."""
+        result = await async_search_ps_store(title_id, region)
         self._media_info = result
         if self._media_info.cover_art:
             await self.get_image(self.media_info.cover_art)
         if self.callback:
-            self.callback()
+            self.callback()  # pylint: disable=not-callable
 
     async def get_image(self, url):
+        """Get media image."""
         try:
             async with aiohttp.ClientSession() as session:
                 response = await session.get(url, timeout=3)
@@ -128,19 +135,22 @@ class DDPDevice:
             pass
 
     @property
-    def host(self):
+    def host(self) -> str:
+        """Return host address."""
         return self._host
 
     @property
-    def host_type(self):
+    def host_type(self) -> str:
+        """Return Host Type."""
         return self._host_type
 
     @property
-    def remote_port(self):
+    def remote_port(self) -> int:
+        """Return DDP port of device."""
         return DDP_PORTS.get(self.host_type)
 
     @property
-    def polls_disabled(self):
+    def polls_disabled(self) -> bool:
         """Return true if polls disabled."""
         elapsed = time.time() - self._standby_start
         if elapsed < DEFAULT_STANDBY_DELAY:
@@ -149,27 +159,33 @@ class DDPDevice:
         return False
 
     @property
-    def unreachable(self):
+    def unreachable(self) -> bool:
+        """Return True if unreachable"""
         return self._unreachable
 
     @property
-    def callback(self):
+    def callback(self) -> callable:
+        """Return callback for status updates."""
         return self._callback
 
     @property
-    def status(self):
+    def status(self) -> dict:
+        """Return Status as dict."""
         return self._status
 
     @property
     def direct(self) -> bool:
+        """Return True if explicitly polling."""
         return self._direct
 
     @property
-    def media_info(self):
+    def media_info(self) -> ResultItem:
+        """Return media info."""
         return self._media_info
 
     @property
-    def image(self):
+    def image(self) -> bytes:
+        """Return raw media image."""
         return self._image
 
 
@@ -191,11 +207,10 @@ class DDPProtocol(asyncio.DatagramProtocol):
         self._remote_port = None
 
     def __repr__(self):
-        return "<{}.{} local_port={} max_polls={}>".format(
-            self.__module__,
-            self.__class__.__name__,
-            self.local_port,
-            self.max_polls,
+        return (
+            f"<{self.__module__}.{self.__class__.__name__} "
+            f"local_port={self.local_port} "
+            f"max_polls={self.max_polls}>"
         )
 
     def _set_write_port(self, port):
@@ -271,6 +286,7 @@ class DDPProtocol(asyncio.DatagramProtocol):
         _LOGGER.debug("Closing DDP Transport: Port=%s", self._local_port)
 
     def add_device(self, host, callback=None, direct=True):
+        """Add device to track."""
         if host in self._devices:
             return None
         self._devices[host] = DDPDevice(host, self, direct)
@@ -280,6 +296,7 @@ class DDPProtocol(asyncio.DatagramProtocol):
         return self._devices[host]
 
     def remove_device(self, host):
+        """Remove device from tracking."""
         if host in self.devices:
             self._devices.pop(host)
 
@@ -312,24 +329,27 @@ class DDPProtocol(asyncio.DatagramProtocol):
         self._event_stop.set()
 
     def start(self):
+        """Start polling."""
         self._event_stop.clear()
 
     @property
-    def local_port(self):
+    def local_port(self) -> int:
         """Return local port."""
         return self._local_port
 
     @property
-    def remote_ports(self):
+    def remote_ports(self) -> dict:
         """Return remote ports."""
         return DDP_PORTS
 
     @property
-    def devices(self):
+    def devices(self) -> dict:
+        """Return devices that are tracked."""
         return self._devices
 
     @property
-    def device_status(self):
+    def device_status(self) -> list:
+        """Return all device status."""
         return [device.status for device in self._devices.values()]
 
 
@@ -356,12 +376,12 @@ def get_host_type(response: dict) -> str:
 def get_ddp_message(msg_type, data=None):
     """Get DDP message."""
     if msg_type not in DDP_MSG_TYPES:
-        raise TypeError("DDP MSG type: '{}' is not a valid type".format(msg_type))
-    msg = "{} * HTTP/1.1\n".format(msg_type)
+        raise TypeError(f"DDP MSG type: '{msg_type}' is not a valid type")
+    msg = f"{msg_type} * HTTP/1.1\n"
     if data is not None:
         for key, value in data.items():
-            msg += "{}:{}\n".format(key, value)
-    msg += "device-discovery-protocol-version:{}\n".format(DDP_VERSION)
+            msg = f"{msg}{key}:{value}\n"
+    msg = f"{msg}device-discovery-protocol-version:{DDP_VERSION}\n"
     return msg
 
 
@@ -517,7 +537,7 @@ def send_search_msg(host, host_type=TYPE_PS4, sock=None):
 def search(
     host=BROADCAST_IP, port=UDP_PORT, host_type=None, sock=None, timeout=3
 ) -> list:
-    """Return list of discovered PS4s."""
+    """Return list of discovered devices."""
     ps_list = []
     msg = get_ddp_search_message()
     start = time.time()

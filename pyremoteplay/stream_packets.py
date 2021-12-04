@@ -118,7 +118,7 @@ class PacketSection(abc.ABC):
         pass
 
     @staticmethod
-    def parse(msg: bytes):
+    def parse(msg: bytes):  # pylint: disable=used-before-assignment
         """Return new instance from bytes."""
         raise NotImplementedError
 
@@ -374,7 +374,7 @@ class Packet(PacketSection):
         PAD_EVENT = Header.Type.PAD_EVENT
 
     @staticmethod
-    def is_av(header_type: bytes) -> int:
+    def is_av(header_type: bytes) -> int:  # pylint: disable=used-before-assignment
         """Return AV type if packet is AV else return 0."""
         av_mask = int.from_bytes(header_type, "big") & 0x0F
         if av_mask in [Header.Type.VIDEO, Header.Type.AUDIO]:

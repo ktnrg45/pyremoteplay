@@ -49,16 +49,18 @@ class Controller:
             self._should_send.clear()
 
     def send_state(self):
-        self._session._stream.send_feedback(
+        """Send controller stick state."""
+        self._session.stream.send_feedback(
             FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state
         )
         self._sequence_state += 1
 
     def send_event(self):
+        """Send controller button event."""
         while self._event_queue:
             self.add_event_buffer(self._event_queue.pop(0))
             data = b"".join(self._event_buf)
-            self._session._stream.send_feedback(
+            self._session.stream.send_feedback(
                 FeedbackHeader.Type.EVENT, self.sequence_event, data=data
             )
             self._sequence_event += 1
