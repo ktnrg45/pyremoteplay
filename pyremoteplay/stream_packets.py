@@ -5,8 +5,10 @@ import logging
 from base64 import b64encode
 from enum import IntEnum
 from struct import pack, pack_into, unpack_from
+from typing import Union
 
 from .const import Quality
+from .crypt import StreamCipher
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,13 +21,9 @@ INBOUND_STREAMS = 0x64
 class UnexpectedMessage(Exception):
     """Message not Expected."""
 
-    pass
-
 
 class UnexpectedData(Exception):
     """Data incorrect or not expected."""
-
-    pass
 
 
 LAUNCH_SPEC = {
@@ -84,6 +82,7 @@ def get_launch_spec(
     mtu_in: int,
     quality: str,
 ) -> bytes:
+    """Return launch spec."""
     quality = quality.upper()
     if quality == "DEFAULT":
         bitrate = resolution["bitrate"]
@@ -115,10 +114,11 @@ class PacketSection(abc.ABC):
     class Type(IntEnum):
         """Abstract Type Class."""
 
-        pass
-
     @staticmethod
-    def parse(msg: bytes):  # pylint: disable=used-before-assignment
+    def parse(
+        buf: bytes,  # pylint: disable=used-before-assignment
+        params: Union[dict, None],
+    ):
         """Return new instance from bytes."""
         raise NotImplementedError
 
@@ -126,6 +126,9 @@ class PacketSection(abc.ABC):
         self._length = self.LENGTH if self.LENGTH != 0 else 0
         if not self._type_valid(_type):
             raise ValueError(f"Invalid type: {_type} for {self.__class__.__name__}")
+        self._set_type(_type)
+
+    def _set_type(self, _type):
         self.__type = self.__class__.Type(_type)
 
     def __repr__(self) -> str:
@@ -140,11 +143,7 @@ class PacketSection(abc.ABC):
             valid = _type in list(self.__class__.Type)
         return valid
 
-    def bytes(self) -> bytes:
-        """Abstract method. Return compiled bytes."""
-        raise NotImplementedError
-
-    def pack(self):
+    def pack(self, buf: bytearray):
         """Abstract method. Pack compiled bytes."""
         raise NotImplementedError
 
@@ -157,6 +156,34 @@ class PacketSection(abc.ABC):
     def length(self) -> int:
         """Return size in bytes."""
         return self._length
+
+
+class AbstractPacket(PacketSection):
+    """Abstract Packet."""
+
+    def _set_type(self, _type):
+        self.__type = Header.Type(_type)
+
+    def _type_valid(self, _type: int) -> bool:
+        """Return True if type is valid."""
+        valid = True
+        if issubclass(self.__class__, AbstractPacket):
+            if len(self.__class__.Type) == 0:
+                valid = _type in list(Header.Type)
+            else:
+                valid = _type in list(self.__class__.Type)
+        return valid
+
+    def bytes(
+        self, cipher: Union[StreamCipher, None] = None, encrypt=False, advance_by=0
+    ) -> bytes:
+        """Abstract method. Return compiled bytes."""
+        raise NotImplementedError
+
+    @property
+    def type(self) -> PacketSection.Type:
+        """Return Packet Type."""
+        return self.__type
 
 
 class Header(PacketSection):
@@ -304,8 +331,8 @@ class Chunk(PacketSection):
         return pack("!IIHH", tsn, A_RWND, gap_acks, dup_tsns)
 
     @staticmethod
-    def cookie(parse=False, **kwargs) -> bytes:
-        """Return Cookie PL."""
+    def cookie(**kwargs) -> bytes:
+        """Return Cookie PL. No parsing."""
         return kwargs.get("data") or b""
 
     @staticmethod
@@ -356,22 +383,8 @@ class Chunk(PacketSection):
         return len(self.payload) + 4
 
 
-class Packet(PacketSection):
-    """Full RP Packet."""
-
-    class Type(IntEnum):
-        """Enums for RP Packet."""
-
-        CONTROL = Header.Type.CONTROL
-        FEEDBACK_EVENT = Header.Type.FEEDBACK_EVENT
-        VIDEO = Header.Type.VIDEO
-        AUDIO = Header.Type.AUDIO
-        HANDSHAKE = Header.Type.HANDSHAKE
-        CONGESTION = Header.Type.CONGESTION
-        FEEDBACK_STATE = Header.Type.FEEDBACK_STATE
-        RUMBLE_EVENT = Header.Type.RUMBLE_EVENT
-        CLIENT_INFO = Header.Type.CLIENT_INFO
-        PAD_EVENT = Header.Type.PAD_EVENT
+class Packet(AbstractPacket):
+    """Generic RP Packet."""
 
     @staticmethod
     def is_av(header_type: bytes) -> int:  # pylint: disable=used-before-assignment
@@ -382,14 +395,14 @@ class Packet(PacketSection):
         return 0
 
     @staticmethod
-    def parse(msg: bytes):
+    def parse(buf: bytes, params=None):
         """Return new instance from bytes.
 
         Params is updated when parsing each section.
         """
-        buf = bytearray(msg)
+        buf = bytearray(buf)
         params = {}
-        av_mask = Packet.is_av(msg[:1])
+        av_mask = Packet.is_av(buf[:1])
         if av_mask:
             return AVPacket(av_mask, buf, **params)
         h_type = Header.parse(buf, params)
@@ -437,7 +450,7 @@ class Packet(PacketSection):
         return bytes(buf)
 
 
-class AVPacket(PacketSection):
+class AVPacket(AbstractPacket):
     """AV Packet. Parsing capability only."""
 
     class Type(IntEnum):
@@ -463,6 +476,7 @@ class AVPacket(PacketSection):
             f"{self.frame_meta['units']['total']}>"
         )
 
+    # pylint: disable=unused-argument
     def __init__(self, av_type: int, buf: bytearray, **kwargs):
         super().__init__(av_type)
         self._has_nalu = (unpack_from("!B", buf, 0)[0] >> 4) & 1 != 0
@@ -479,7 +493,7 @@ class AVPacket(PacketSection):
         self._nalu = None
 
         offset = 1
-        if self.type == self.Type.VIDEO:
+        if self.type == Header.Type.VIDEO:
             offset = 3
             self._unit_index = (self._dword2 >> 0x15) & 0x7FF
             self._adaptive_stream_index = unpack_from("!b", buf, 20)[0] >> 5
@@ -498,7 +512,7 @@ class AVPacket(PacketSection):
             "frame": self.frame_index,
             "index": self.unit_index,
         }
-        if self.type == self.Type.VIDEO:
+        if self.type == Header.Type.VIDEO:
             total = ((self._dword2 >> 0xA) & 0x7FF) + 1
             fec = self._dword2 & 0x3FF
             src = total - fec
@@ -749,12 +763,6 @@ class FeedbackEvent(PacketSection):
         """Pack compiled bytes."""
         pack_into("!BBB", buf, 0, self.PREFIX, self.button_id, self.state)
 
-    def bytes(self) -> bytes:
-        """Return compiled bytes."""
-        buf = bytearray(self.length)
-        self.pack(buf)
-        return buf
-
     @property
     def state(self) -> int:
         """Return State."""
@@ -778,14 +786,14 @@ class FeedbackEvent(PacketSection):
         return self._is_active
 
 
-class FeedbackPacket(PacketSection):
+class FeedbackPacket(AbstractPacket):
     """Feedback Packet."""
 
     class Type(IntEnum):
         """Enums for Feedback Packet."""
 
-        EVENT = Header.Type.FEEDBACK_EVENT
-        STATE = Header.Type.FEEDBACK_STATE
+        EVENT = FeedbackHeader.Type.EVENT
+        STATE = FeedbackHeader.Type.STATE
 
     def __repr__(self) -> str:
         return f"<RP Feedback Packet " f"type={self.header.type.name}>"
@@ -795,14 +803,14 @@ class FeedbackPacket(PacketSection):
         self.header = FeedbackHeader(feedback_type, **kwargs)
         self.chunk = None
         self.data = kwargs.get("data") or b""
-        if feedback_type == self.Type.EVENT:
+        if feedback_type == FeedbackHeader.Type.EVENT:
             if not self.data:
                 raise ValueError("Button must to be specified")
         else:
             self.chunk = FeedbackState(FeedbackState.Type.STATE, **kwargs)
         self.params = kwargs
 
-    def bytes(self, cipher=None, encrypt=False) -> bytes:
+    def bytes(self, cipher=None, encrypt=False, advance_by=0) -> bytes:
         """Pack compiled bytes."""
         data_length = (
             len(self.data)
@@ -834,7 +842,7 @@ class FeedbackPacket(PacketSection):
         return bytes(buf)
 
 
-class CongestionPacket(PacketSection):
+class CongestionPacket(AbstractPacket):
     """Congestion Packet."""
 
     LENGTH = 15
@@ -857,16 +865,17 @@ class CongestionPacket(PacketSection):
         self.received = kwargs.get("received") or 0
         self.lost = kwargs.get("lost") or 0
 
-    def bytes(self, cipher) -> bytes:
+    def bytes(self, cipher=None, encrypt=False, advance_by=0) -> bytes:
         """Return compiled bytes."""
-        key_pos = cipher.key_pos
+        key_pos = cipher.key_pos if cipher else 0
         buf = bytearray(CongestionPacket.LENGTH)
         gmac = 0
         pack_into(
             "!BxxHHII", buf, 0, self.type, self.received, self.lost, gmac, key_pos
         )
-        gmac = cipher.get_gmac(bytes(buf))
-        gmac = int.from_bytes(gmac, "big")
-        pack_into("!I", buf, 7, gmac)
-        cipher.advance_key_pos(CongestionPacket.LENGTH)
+        if cipher:
+            gmac = cipher.get_gmac(bytes(buf))
+            gmac = int.from_bytes(gmac, "big")
+            pack_into("!I", buf, 7, gmac)
+            cipher.advance_key_pos(CongestionPacket.LENGTH)
         return bytes(buf)
