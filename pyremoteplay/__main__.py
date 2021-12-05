@@ -97,7 +97,6 @@ def register_profile(host: str):
         return
     if status.get("status_code") != 200:
         return
-    mac_address = status.get("host-id")
 
     profiles = get_profiles()
     if profiles:
@@ -138,6 +137,7 @@ def register_profile(host: str):
 
 
 def cli(host: str, resolution: str, fps: str):
+    """Start CLI."""
     profiles = get_profiles()
     if profiles:
         name = select_profile(profiles, True, False)
@@ -149,6 +149,7 @@ def cli(host: str, resolution: str, fps: str):
 
 
 def cb_curses(session, status: bool):
+    """Start Curses."""
     if status:
         instance = CLIInstance(session)
         worker = threading.Thread(target=curses.wrapper, args=(start, instance))
@@ -157,18 +158,20 @@ def cb_curses(session, status: bool):
         _LOGGER.error("Session Failed to Start: %s", session.error)
 
 
-def async_start(session, cb: callable):
+def async_start(session, callback: callable):
+    """Sync method for starting session."""
     loop = asyncio.get_event_loop()
     session.loop = loop
-    task = loop.create_task(async_start_session(session, cb))
+    task = loop.create_task(async_start_session(session, callback))
     loop.run_until_complete(task)
     loop.run_forever()
 
 
-async def async_start_session(session, cb: callable):
+async def async_start_session(session, callback: callable):
+    """Start Session."""
     status = await session.start()
     if status:
-        cb(session, status)
+        callback(session, status)
     else:
         asyncio.get_event_loop().stop()
 

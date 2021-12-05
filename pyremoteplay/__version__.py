@@ -1,3 +1,4 @@
+"""Version for pyremoteplay."""
 VERSION = "0.2.0"
 MIN_PY_VERSION = "3.8"
 

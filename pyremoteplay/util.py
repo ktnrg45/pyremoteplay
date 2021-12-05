@@ -27,7 +27,7 @@ def check_dir() -> pathlib.Path:
 def check_file(path: pathlib.Path):
     """Check if file exists and create."""
     if not path.is_file():
-        with open(path, "w") as _file:
+        with open(path, "w", encoding="utf-8") as _file:
             json.dump({}, _file)
 
 
@@ -40,7 +40,7 @@ def get_mapping(path=None) -> dict:
     else:
         path = pathlib.Path(path)
     check_file(path)
-    with open(path, "r") as _file:
+    with open(path, "r", encoding="utf-8") as _file:
         data = json.load(_file)
     return data
 
@@ -51,7 +51,7 @@ def write_mapping(mapping: dict, path=None):
         path = pathlib.Path.home() / PROFILE_DIR / CONTROLS_FILE
     else:
         path = pathlib.Path(path)
-    with open(path, "w") as _file:
+    with open(path, "w", encoding="utf-8") as _file:
         json.dump(mapping, _file)
 
 
@@ -64,7 +64,7 @@ def get_options(path=None) -> dict:
     else:
         path = pathlib.Path(path)
     check_file(path)
-    with open(path, "r") as _file:
+    with open(path, "r", encoding="utf-8") as _file:
         data = json.load(_file)
     return data
 
@@ -75,7 +75,7 @@ def write_options(options: dict, path=None):
         path = pathlib.Path.home() / PROFILE_DIR / OPTIONS_FILE
     else:
         path = pathlib.Path(path)
-    with open(path, "w") as _file:
+    with open(path, "w", encoding="utf-8") as _file:
         json.dump(options, _file)
 
 
@@ -88,7 +88,7 @@ def get_profiles(path=None) -> list:
     else:
         path = pathlib.Path(path)
     check_file(path)
-    with open(path, "r") as _file:
+    with open(path, "r", encoding="utf-8") as _file:
         data = json.load(_file)
     return data
 
@@ -99,7 +99,7 @@ def write_profiles(profiles: dict, path=None):
         path = pathlib.Path.home() / PROFILE_DIR / PROFILE_FILE
     else:
         path = pathlib.Path(path)
-    with open(path, "w") as _file:
+    with open(path, "w", encoding="utf-8") as _file:
         json.dump(profiles, _file)
 
 
