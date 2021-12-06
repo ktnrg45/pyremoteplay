@@ -3,12 +3,17 @@ from textwrap import dedent
 from OpenGL import GL
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtGui import QOpenGLFunctions, QSurfaceFormat
-from PySide6.QtOpenGL import (QOpenGLShader, QOpenGLShaderProgram,
-                              QOpenGLTexture, QOpenGLVertexArrayObject)
+from PySide6.QtOpenGL import (
+    QOpenGLShader,
+    QOpenGLShaderProgram,
+    QOpenGLTexture,
+    QOpenGLVertexArrayObject,
+)
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from shiboken6 import VoidPtr
 
-YUV_VERT = dedent("""
+YUV_VERT = dedent(
+    """
     #version 150 core
     uniform mat4 pos_matrix;
     uniform vec4 draw_pos;
@@ -37,10 +42,12 @@ YUV_VERT = dedent("""
        gl_Position = pos_matrix * p;
        v_coord = texcoords[gl_VertexID];
     }
-""")
+"""
+)
 
 
-YUV_FRAG = dedent("""
+YUV_FRAG = dedent(
+    """
     #version 150 core
     uniform sampler2D plane1;
     uniform sampler2D plane2;
@@ -59,7 +66,8 @@ YUV_FRAG = dedent("""
             1.28033,    -0.38059,   0.0) * yuv;
         out_color = vec4(rgb, 1.0);
     }
-""")
+"""
+)
 
 
 class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
@@ -120,7 +128,7 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
 
         self.program.setUniformValue("pos_matrix", matrix)
 
-        #self.glViewport(0, 0, self.width(), self.height())
+        # self.glViewport(0, 0, self.width(), self.height())
 
         for index, plane in enumerate(self.frame.planes):
             self.update_texture(index, plane.to_bytes(), plane.line_size)
@@ -158,7 +166,17 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         self.glActiveTexture(GL.GL_TEXTURE0 + index)
         texture = self.textures[index]
         texture.bind(GL.GL_TEXTURE0 + index)
-        texture.setData(0, 0, 0, width, height, 0, QOpenGLTexture.Red, QOpenGLTexture.UInt8, VoidPtr(pixels))
+        texture.setData(
+            0,
+            0,
+            0,
+            width,
+            height,
+            0,
+            QOpenGLTexture.Red,
+            QOpenGLTexture.UInt8,
+            VoidPtr(pixels),
+        )
 
     def next_video_frame(self, frame):
         self.frame = frame
@@ -181,6 +199,10 @@ class VideoWidget(QtWidgets.QLabel):
         )
         pixmap = QtGui.QPixmap.fromImage(image)
         if self.parent().fullscreen:
-            pixmap = pixmap.scaled(self.parent().size(), aspectMode=QtCore.Qt.KeepAspectRatio, mode=QtCore.Qt.SmoothTransformation)
+            pixmap = pixmap.scaled(
+                self.parent().size(),
+                aspectMode=QtCore.Qt.KeepAspectRatio,
+                mode=QtCore.Qt.SmoothTransformation,
+            )
         self.setPixmap(pixmap)
         self.parent().fps_update.emit()

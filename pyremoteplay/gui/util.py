@@ -16,12 +16,15 @@ def spacer():
     return QtWidgets.QSpacerItem(20, 40)
 
 
-def message(widget, title, text, level="critical", cb=None, escape=False, should_exec=True):
+def message(
+    widget, title, text, level="critical", cb=None, escape=False, should_exec=True
+):
     def clicked(message, cb):
         button = message.clickedButton()
         text = button.text().lower()
         if "ok" in text:
             cb()
+
     icon = QtWidgets.QMessageBox.Critical
     if level == "critical":
         icon = QtWidgets.QMessageBox.Critical
@@ -34,7 +37,9 @@ def message(widget, title, text, level="critical", cb=None, escape=False, should
     message.setWindowTitle(title)
     message.setText(text)
     if escape:
-        message.setStandardButtons(QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel)
+        message.setStandardButtons(
+            QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel
+        )
     else:
         message.setStandardButtons(QtWidgets.QMessageBox.Ok)
     if cb is not None:

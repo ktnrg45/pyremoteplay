@@ -5,9 +5,16 @@ from pyremoteplay.av import AVReceiver
 from pyremoteplay.const import RESOLUTION_PRESETS, Quality
 from pyremoteplay.oauth import LOGIN_URL, get_user_account
 from pyremoteplay.register import register
-from pyremoteplay.util import (add_profile, add_regist_data, get_mapping,
-                               get_options, get_profiles, write_mapping,
-                               write_options, write_profiles)
+from pyremoteplay.util import (
+    add_profile,
+    add_regist_data,
+    get_mapping,
+    get_options,
+    get_profiles,
+    write_mapping,
+    write_options,
+    write_profiles,
+)
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtCore import Qt
 from PySide6.QtMultimedia import QMediaDevices
@@ -17,7 +24,6 @@ from .widgets import AnimatedToggle
 
 
 class ControlsTable(QtWidgets.QTableWidget):
-
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
         self.parent().table_mousePressEvent(event)
@@ -28,34 +34,34 @@ class ControlsTable(QtWidgets.QTableWidget):
 
 class ControlsWidget(QtWidgets.QWidget):
     KEYS = (
-        'STANDBY',
-        'QUIT',
-        'STICK_RIGHT_UP',
-        'STICK_RIGHT_DOWN',
-        'STICK_RIGHT_LEFT',
-        'STICK_RIGHT_RIGHT',
-        'STICK_LEFT_UP',
-        'STICK_LEFT_DOWN',
-        'STICK_LEFT_LEFT',
-        'STICK_LEFT_RIGHT',
-        'UP',
-        'DOWN',
-        'LEFT',
-        'RIGHT',
-        'L1',
-        'L2',
-        'L3',
-        'R1',
-        'R2',
-        'R3',
-        'CROSS',
-        'CIRCLE',
-        'SQUARE',
-        'TRIANGLE',
-        'OPTIONS',
-        'SHARE',
-        'PS',
-        'TOUCHPAD'
+        "STANDBY",
+        "QUIT",
+        "STICK_RIGHT_UP",
+        "STICK_RIGHT_DOWN",
+        "STICK_RIGHT_LEFT",
+        "STICK_RIGHT_RIGHT",
+        "STICK_LEFT_UP",
+        "STICK_LEFT_DOWN",
+        "STICK_LEFT_LEFT",
+        "STICK_LEFT_RIGHT",
+        "UP",
+        "DOWN",
+        "LEFT",
+        "RIGHT",
+        "L1",
+        "L2",
+        "L3",
+        "R1",
+        "R2",
+        "R3",
+        "CROSS",
+        "CIRCLE",
+        "SQUARE",
+        "TRIANGLE",
+        "OPTIONS",
+        "SHARE",
+        "PS",
+        "TOUCHPAD",
     )
 
     DEFAULT_MAPPING = {
@@ -103,7 +109,7 @@ class ControlsWidget(QtWidgets.QWidget):
         self.table.setColumnCount(2)
         self.table.setHorizontalHeaderLabels(["Control", "Remote Play Control"])
         self.input = None
-        header = self.table.horizontalHeader()       
+        header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
         header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
         self.left_joystick = AnimatedToggle("Show Left Joystick", self)
@@ -134,10 +140,10 @@ class ControlsWidget(QtWidgets.QWidget):
         super().hide()
 
     def get_map(self):
-        return self.mapping['maps'][self.selected_map]["map"]
+        return self.mapping["maps"][self.selected_map]["map"]
 
     def get_options(self):
-        return self.mapping['maps'][self.selected_map]["options"]
+        return self.mapping["maps"][self.selected_map]["options"]
 
     def default_mapping(self):
         if not self.options:
@@ -151,7 +157,7 @@ class ControlsWidget(QtWidgets.QWidget):
                         "map": ControlsWidget.DEFAULT_MAPPING.copy(),
                         "options": options,
                     }
-                }
+                },
             }
         )
         write_mapping(self.mapping)
@@ -162,7 +168,7 @@ class ControlsWidget(QtWidgets.QWidget):
         self.mapping = get_mapping()
         if not self.mapping:
             self.default_mapping()
-        self.selected_map = self.mapping['selected']
+        self.selected_map = self.mapping["selected"]
         self.set_map(self.get_map())
         self.set_options(self.get_options())
         self.set_table()
@@ -176,19 +182,19 @@ class ControlsWidget(QtWidgets.QWidget):
 
     def set_joysticks(self):
         options = self.get_options()
-        joysticks = options['joysticks']
-        if joysticks['left']:
+        joysticks = options["joysticks"]
+        if joysticks["left"]:
             self.left_joystick.setChecked(True)
-        if joysticks['right']:
+        if joysticks["right"]:
             self.right_joystick.setChecked(True)
 
     def set_options(self, options):
-        self.mapping['maps'][self.selected_map]['options'] = options
+        self.mapping["maps"][self.selected_map]["options"] = options
         write_mapping(self.mapping)
 
     def set_map(self, _map):
         self.input = None
-        self.mapping['maps'][self.selected_map]["map"] = _map
+        self.mapping["maps"][self.selected_map]["map"] = _map
         write_mapping(self.mapping)
 
     def set_keyboard(self):
@@ -206,7 +212,9 @@ class ControlsWidget(QtWidgets.QWidget):
             if rp_key not in ControlsWidget.KEYS:
                 remove_keys.append(key)
                 continue
-            item = QtWidgets.QTableWidgetItem(key.replace("Key_", "").replace("Button", " Click"))
+            item = QtWidgets.QTableWidgetItem(
+                key.replace("Key_", "").replace("Button", " Click")
+            )
             item.setFlags(Qt.ItemIsEnabled)
             self.table.setItem(ControlsWidget.KEYS.index(rp_key), 0, item)
         if remove_keys:
@@ -225,8 +233,8 @@ class ControlsWidget(QtWidgets.QWidget):
 
     def click_joystick(self, stick):
         options = self.get_options()
-        value = not options['joysticks'][stick]
-        options['joysticks'][stick] = value
+        value = not options["joysticks"][stick]
+        options["joysticks"][stick] = value
         self.set_options(options)
 
     def click_table(self, item):
@@ -255,13 +263,15 @@ class ControlsWidget(QtWidgets.QWidget):
 
     def click_reset(self):
         text = "Reset input mapping to default?"
-        message(self, "Reset Mapping", text, "warning", self.default_mapping, escape=True)
+        message(
+            self, "Reset Mapping", text, "warning", self.default_mapping, escape=True
+        )
 
     def get_current_map_key(self, rp_key):
         _map = self.get_map()
         rp_keys = list(_map.values())
         if rp_key not in rp_keys:
-            return None 
+            return None
         index = rp_keys.index(rp_key)
         key = list(_map.keys())[index]
         return key
@@ -473,20 +483,22 @@ class OptionsWidget(QtWidgets.QWidget):
         accounts = list(self.profiles.keys())
         for profile, data in self.profiles.items():
             item = QtWidgets.QTreeWidgetItem(self.accounts)
-            hosts = data.get('hosts')
+            hosts = data.get("hosts")
             mac_addresses = []
             if hosts:
                 for host in hosts.keys():
                     mac_addresses.append(host)
-            is_registered = "Yes" if data.get('hosts') else "No"
+            is_registered = "Yes" if data.get("hosts") else "No"
             item.setText(0, profile)
             item.setText(1, "No")
             item.setText(2, is_registered)
             item.setText(3, ", ".join(mac_addresses))
-        if not self.options['profile']:
-            self.options['profile'] = accounts[0]
+        if not self.options["profile"]:
+            self.options["profile"] = accounts[0]
             write_options(self.options)
-        selected = self.accounts.findItems(self.options['profile'], Qt.MatchFixedString, column=0)
+        selected = self.accounts.findItems(
+            self.options["profile"], Qt.MatchFixedString, column=0
+        )
         if selected and len(selected) == 1:
             selected[0].setSelected(True)
             selected[0].setText(1, "Yes")
@@ -547,7 +559,9 @@ class OptionsWidget(QtWidgets.QWidget):
         try:
             socket.getaddrinfo(host, None)
         except socket.gaierror:
-            QtWidgets.QMessageBox.critical(self, "Invalid IP Address", f"Could not find device at: {host}")
+            QtWidgets.QMessageBox.critical(
+                self, "Invalid IP Address", f"Could not find device at: {host}"
+            )
             return
         if host in self.options["devices"]:
             text = "Device is already added."
@@ -580,12 +594,19 @@ class OptionsWidget(QtWidgets.QWidget):
             return
         name = item.text(0)
         text = f"Are you sure you want to delete account: {name}"
-        message(self, "Delete Account" , text, "warning", lambda: self.remove_profile(name), escape=True)
+        message(
+            self,
+            "Delete Account",
+            text,
+            "warning",
+            lambda: self.remove_profile(name),
+            escape=True,
+        )
 
     def remove_profile(self, name):
         self.profiles.pop(name)
         write_profiles(self.profiles)
-        self.options['profile'] = list(self.profiles.keys())[0] if self.profiles else ""
+        self.options["profile"] = list(self.profiles.keys())[0] if self.profiles else ""
         write_options(self.options)
         self.set_options()
         self.set_profiles()
@@ -593,7 +614,9 @@ class OptionsWidget(QtWidgets.QWidget):
     def new_profile(self):
         title = "Add PSN Account"
         text = "To Add a New PSN Account you will have to sign in to your PSN Account. Continue?"
-        new_message = message(self.main_window, title, text, "info", self.new_account, escape=True)
+        new_message = message(
+            self.main_window, title, text, "info", self.new_account, escape=True
+        )
         new_message.hide()
 
     def new_account(self):
@@ -624,7 +647,9 @@ class OptionsWidget(QtWidgets.QWidget):
         dialog = QtWidgets.QInputDialog(self)
         dialog.setWindowTitle(title)
         dialog.setInputMode(QtWidgets.QInputDialog.TextInput)
-        dialog.setLabelText("Copy and Paste the URL of the page that says 'Redirect' below:")
+        dialog.setLabelText(
+            "Copy and Paste the URL of the page that says 'Redirect' below:"
+        )
         if not dialog.exec():
             return
         url = dialog.textValue()
@@ -639,7 +664,7 @@ class OptionsWidget(QtWidgets.QWidget):
             user_id = account.get("online_id")
             assert user_id in profiles
             write_profiles(profiles)
-            self.options['profile'] = user_id
+            self.options["profile"] = user_id
             write_options(self.options)
             self.set_options()
             self.set_profiles()

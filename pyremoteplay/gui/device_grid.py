@@ -42,25 +42,27 @@ class DeviceButton(QtWidgets.QPushButton):
             self.border_color = ("#6EA8FE", "#0D6EFD")
         else:
             self.border_color = ("#FEB272", "#FFC107")
-        self.setStyleSheet("".join(
-            [
-                "QPushButton {border-radius:25%;",
-                f"border: 5px solid {self.border_color[0]};",
-                f"color: {self.text_color};",
-                f"background-color: {self.bg_color};",
-                "}",
-                "QPushButton:hover {",
-                f"border: 5px solid {self.border_color[1]};",
-                f"color: {self.text_color};",
-                "}",
-            ]
-        ))
+        self.setStyleSheet(
+            "".join(
+                [
+                    "QPushButton {border-radius:25%;",
+                    f"border: 5px solid {self.border_color[0]};",
+                    f"color: {self.text_color};",
+                    f"background-color: {self.bg_color};",
+                    "}",
+                    "QPushButton:hover {",
+                    f"border: 5px solid {self.border_color[1]};",
+                    f"color: {self.text_color};",
+                    "}",
+                ]
+            )
+        )
 
     def update_state(self, state):
         cur_id = self.status.get("running-app-titleid")
         new_id = state.get("running-app-titleid")
-        cur_status = self.status.get('status_code')
-        new_status = state.get('status_code')
+        cur_status = self.status.get("status_code")
+        new_status = state.get("status_code")
         self.status = state
         self.get_info()
         self.get_text()
@@ -69,7 +71,9 @@ class DeviceButton(QtWidgets.QPushButton):
         if cur_status == 200 and new_status != cur_status:
             # Disable Wakeup since device won't do anything right away.
             self.action_power.setDisabled(True)
-            QtCore.QTimer.singleShot(DEFAULT_STANDBY_DELAY * 1000, self.enable_toggle_power)
+            QtCore.QTimer.singleShot(
+                DEFAULT_STANDBY_DELAY * 1000, self.enable_toggle_power
+            )
         self.set_style()
 
     def set_image(self):
@@ -110,31 +114,25 @@ class DeviceButton(QtWidgets.QPushButton):
         for index in range(0, 3):
             start = 2 * index
             rgb = int.from_bytes(
-                bytes.fromhex(hex_color[start: start + 2]),
-                'little',
+                bytes.fromhex(hex_color[start : start + 2]),
+                "little",
             )
             rgb /= 255
             rgb = rgb / 12.92 if rgb <= 0.04045 else ((rgb + 0.055) / 1.055) ** 2.4
             color.append(rgb)
-        luminance = (
-            (0.2126 * color[0]) + (0.7152 * color[1]) + (0.0722 * color[2])
-        )
+        luminance = (0.2126 * color[0]) + (0.7152 * color[1]) + (0.0722 * color[2])
         return luminance
 
     def get_text(self):
-        device_type = self.status['host-type']
-        if self.status['host-type'] == "PS4":
+        device_type = self.status["host-type"]
+        if self.status["host-type"] == "PS4":
             device_type = "PlayStation 4"
-        elif self.status['host-type'] == "PS5":
+        elif self.status["host-type"] == "PS5":
             device_type = "PlayStation 5"
-        app = self.status.get('running-app-name')
+        app = self.status.get("running-app-name")
         if not app:
-            app = "Idle" if self.status["status_code"] == 200 else "Standby" 
-        self.main_text = (
-            f"{self.status['host-name']}\n"
-            f"{device_type}\n\n"
-            f"{app}"
-        )
+            app = "Idle" if self.status["status_code"] == 200 else "Standby"
+        self.main_text = f"{self.status['host-name']}\n" f"{device_type}\n\n" f"{app}"
         if not self.info_show:
             self.setText(self.main_text)
 
@@ -151,7 +149,7 @@ class DeviceButton(QtWidgets.QPushButton):
     def contextMenuEvent(self, event):
         text = "View Info" if not self.info_show else "Hide Info"
         self.action_info.setText(text)
-        if self.status['status_code'] == 200:
+        if self.status["status_code"] == 200:
             self.action_power.setText("Standby")
         else:
             self.action_power.setText("Wakeup")
@@ -163,7 +161,7 @@ class DeviceButton(QtWidgets.QPushButton):
         self.info_show = not self.info_show
 
     def toggle_power(self):
-        if self.status['status_code'] == 200:
+        if self.status["status_code"] == 200:
             self.main_window.standby_host(self.status)
         else:
             self.main_window.wakeup_host(self.status)
@@ -173,7 +171,6 @@ class DeviceButton(QtWidgets.QPushButton):
 
 
 class DeviceGridWidget(QtWidgets.QWidget):
-
     def __init__(self, parent, main_window):
         super().__init__(parent)
         self.main_window = main_window
@@ -215,8 +212,10 @@ class DeviceGridWidget(QtWidgets.QWidget):
                 else:
                     button = DeviceButton(self.main_window, device)
                 self.add(button, row, col)
-            if not self.main_window.toolbar.options.isChecked() \
-                    and not self.main_window.toolbar.controls.isChecked():
+            if (
+                not self.main_window.toolbar.options.isChecked()
+                and not self.main_window.toolbar.controls.isChecked()
+            ):
                 self.show()
             self.main_window.center_text.hide()
 

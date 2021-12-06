@@ -71,7 +71,9 @@ class MainWindow(QtWidgets.QWidget):
         self.setWindowTitle("PyRemotePlay")
         self.main_frame = QtWidgets.QWidget(self)
         self.main_frame.layout = QtWidgets.QVBoxLayout(self.main_frame)
-        self.center_text = QtWidgets.QLabel("Searching for devices...", alignment=Qt.AlignCenter)
+        self.center_text = QtWidgets.QLabel(
+            "Searching for devices...", alignment=Qt.AlignCenter
+        )
         self.center_text.setWordWrap(True)
         self.center_text.setObjectName("center-text")
         self.device_grid = DeviceGridWidget(self.main_frame, self)
@@ -106,8 +108,7 @@ class MainWindow(QtWidgets.QWidget):
     def startup_check_grid(self):
         if not self.device_grid.widgets:
             self.set_center_text(
-                "No Devices Found.\n"
-                "Try adding a device in options."
+                "No Devices Found.\n" "Try adding a device in options."
             )
 
     def set_style(self):
@@ -128,11 +129,22 @@ class MainWindow(QtWidgets.QWidget):
     def check_profile(self, name, host):
         profile = self.options.profiles.get(name)
         if not profile:
-            message(self, "Error: No PSN Accounts found", "Click 'Options' -> 'Add Account' to add PSN Account.")
+            message(
+                self,
+                "Error: No PSN Accounts found",
+                "Click 'Options' -> 'Add Account' to add PSN Account.",
+            )
             return None
         if host["host-id"] not in profile["hosts"]:
             text = f"PSN account: {name} has not been registered with this device. Click 'Ok' to register."
-            message(self, "Needs Registration", text, "info", cb=lambda: self.options.register(host, name), escape=True)
+            message(
+                self,
+                "Needs Registration",
+                text,
+                "info",
+                cb=lambda: self.options.register(host, name),
+                escape=True,
+            )
             return None
         return profile
 
@@ -167,7 +179,12 @@ class MainWindow(QtWidgets.QWidget):
         regist_key = profile["hosts"][mac_address]["data"]["RegistKey"]
         regist_key = format_regist_key(regist_key)
         wakeup(ip_address, regist_key, host_type=host["host-type"])
-        message(self, "Wakeup Sent", f"Sent Wakeup command to device at {ip_address}", "info")
+        message(
+            self,
+            "Wakeup Sent",
+            f"Sent Wakeup command to device at {ip_address}",
+            "info",
+        )
 
     def connect_host(self, host):
         self.device_grid.stop_update()
@@ -177,12 +194,12 @@ class MainWindow(QtWidgets.QWidget):
         if not profile:
             return
         ip_address = host["host-ip"]
-        resolution = options['resolution']
-        fps = options['fps']
-        show_fps = options['show_fps']
-        fullscreen = options['fullscreen']
-        use_hw = options['use_hw']
-        quality = options['quality']
+        resolution = options["resolution"]
+        fps = options["fps"]
+        show_fps = options["show_fps"]
+        fullscreen = options["fullscreen"]
+        use_hw = options["use_hw"]
+        quality = options["quality"]
         use_opengl = options["use_opengl"]
         audio_device = self.options.get_audio_device()
         self._stream_window = StreamWindow(self)
