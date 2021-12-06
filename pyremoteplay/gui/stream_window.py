@@ -1,13 +1,14 @@
+# pylint: disable=c-extension-no-member,invalid-name
 """Stream Window for GUI."""
 import time
 from collections import deque
-from enum import Enum
+
+from PySide6 import QtCore, QtMultimedia, QtWidgets
+from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 
 from pyremoteplay.av import AVReceiver
 from pyremoteplay.session import SessionAsync
-from pyremoteplay.util import event_emitter, timeit
-from PySide6 import QtCore, QtGui, QtMultimedia, QtWidgets
-from PySide6.QtCore import Qt
+from pyremoteplay.util import event_emitter
 
 from .joystick import JoystickWidget
 from .options import ControlsWidget
@@ -16,6 +17,8 @@ from .video import VideoWidget, YUVGLWidget
 
 
 class QtReceiver(AVReceiver):
+    """AV Receiver for QT."""
+
     def __init__(self, session):
         super().__init__(session)
         self.video_signal = None
@@ -29,24 +32,29 @@ class QtReceiver(AVReceiver):
         return frame
 
     def handle_video(self, buf):
+        """Handle video frame."""
         frame = self.decode_video_frame(buf)
         if frame is None:
             return
         self.video_signal.emit(frame)
 
-    def handle_audio(self, packet):
-        frame = self.decode_audio_frame(packet)
+    def handle_audio(self, buf):
+        """Handle Audio Frame."""
+        frame = self.decode_audio_frame(buf)
         if frame is None:
             return
         self.audio_queue.append(QtCore.QByteArray(frame))
         self.audio_signal.emit()
 
     def set_signals(self, video_signal, audio_signal):
+        """Set signals."""
         self.video_signal = video_signal
         self.audio_signal = audio_signal
 
 
 class RPWorker(QtCore.QObject):
+    """Worker to interface with RP Session."""
+
     finished = QtCore.Signal()
     started = QtCore.Signal()
     standby_done = QtCore.Signal()
@@ -62,6 +70,7 @@ class RPWorker(QtCore.QObject):
         event_emitter.on("stop", self.stop)
 
     def run(self, standby=False):
+        """Run Session."""
         if not self.session:
             print("No Session")
             self.stop()
@@ -74,6 +83,7 @@ class RPWorker(QtCore.QObject):
         self.session.loop.create_task(self.start(standby))
 
     def stop(self, standby=False):
+        """Stop session."""
         if self.session:
             print(f"Stopping Session @ {self.session.host}")
             self.session.stop()
@@ -94,6 +104,7 @@ class RPWorker(QtCore.QObject):
         use_hw=False,
         quality="default",
     ):
+        """Setup session."""
         self.window = window
         self.session = SessionAsync(
             host,
@@ -106,6 +117,7 @@ class RPWorker(QtCore.QObject):
         )
 
     async def start(self, standby=False):
+        """Start Session."""
         print("Session Start")
         self.session.av_receiver.rgb = False if self.window.use_opengl else True
         status = await self.session.start()
@@ -124,21 +136,24 @@ class RPWorker(QtCore.QObject):
         if standby:
             await self.session.stream_ready.wait()
             self.send_standby()
-        elif self.session._stop_event:
-            await self.session._stop_event.wait()
+        elif self.session.stop_event:
+            await self.session.stop_event.wait()
             print("Session Finished")
 
     def send_standby(self):
+        """Send standby."""
         self.session.standby()
         self.stop(standby=True)
 
     def standby_finished(self):
+        """Callback when standby command sent."""
         host = self.session.host if self.session else "Unknown"
         self.main_window.standby_callback(host)
 
     def stick_state(
         self, stick: str, direction: str = None, value: float = None, point=None
     ):
+        """Send stick state"""
         if point is not None:
             self.session.controller.stick(stick, point=point)
             return
@@ -152,16 +167,27 @@ class RPWorker(QtCore.QObject):
         self.session.controller.stick(stick, axis, value)
 
     def send_button(self, button, action):
+        """Send button."""
         self.session.controller.button(button, action)
 
 
 class StreamWindow(QtWidgets.QWidget):
+    """Window for stream."""
+
     started = QtCore.Signal()
     fps_update = QtCore.Signal()
     video_frame = QtCore.Signal(object)
     audio_frame = QtCore.Signal()
 
     def __init__(self, main_window):
+        self.mapping = None
+        self.fps = None
+        self.fullscreen = False
+        self.use_opengl = False
+        self.show_fps = False
+        self.audio_device = None
+        self.fps_sample = 0
+        self.last_time = time.time()
         super().__init__()
         self.main_window = main_window
         self.hide()
@@ -191,12 +217,12 @@ class StreamWindow(QtWidgets.QWidget):
         self.joystick.hide()
         self.input_options = None
         self.fps_label = label(self, "FPS: ")
-        self.fps_update.connect(self.set_fps)
+        self.fps_update.connect(self._set_fps)
 
         self.rp_worker = self.main_window.rp_worker
-        self.rp_worker.started.connect(self.show_video)
+        self.rp_worker.started.connect(self._show_video)
         self.rp_worker.finished.connect(self.close)
-        event_emitter.on("audio_config", self.init_audio)
+        event_emitter.on("audio_config", self._init_audio)
 
     def start(
         self,
@@ -214,6 +240,7 @@ class StreamWindow(QtWidgets.QWidget):
         audio_device=None,
         use_opengl=False,
     ):
+        """Start Session."""
         self.center_text.show()
         self.input_options = input_options
         self.mapping = (
@@ -222,7 +249,8 @@ class StreamWindow(QtWidgets.QWidget):
         self.fps = fps
         self.fullscreen = fullscreen
         self.use_opengl = use_opengl
-        self.ms_refresh = 1000.0 / self.fps * 0.4
+        self.show_fps = show_fps
+        self.audio_device = audio_device
         self.setWindowTitle(f"Session {name} @ {host}")
         self.rp_worker.setup(self, host, profile, resolution, fps, use_hw, quality)
         self.resize(
@@ -238,11 +266,9 @@ class StreamWindow(QtWidgets.QWidget):
         self.layout.addWidget(self.video_output)
         self.joystick.setParent(self.video_output)
         self.fps_label.setParent(self.video_output)
-        self.show_fps = show_fps
-        self.audio_device = audio_device
 
         if self.show_fps:
-            self.init_fps()
+            self._init_fps()
             self.fps_label.show()
         else:
             self.fps_label.hide()
@@ -253,7 +279,8 @@ class StreamWindow(QtWidgets.QWidget):
         else:
             self.show()
 
-    def show_video(self):
+    def _show_video(self):
+        """Show Video Output."""
         self.center_text.hide()
         self.video_output.show()
         joysticks = self.input_options.get("joysticks")
@@ -263,7 +290,7 @@ class StreamWindow(QtWidgets.QWidget):
             self.joystick.default_pos()
         self.setFixedSize(self.width(), self.height())
 
-    def init_audio(self):
+    def _init_audio(self):
         if not self.rp_worker.session:
             return
         config = self.rp_worker.session.av_receiver.audio_config
@@ -285,15 +312,16 @@ class StreamWindow(QtWidgets.QWidget):
         self.audio_buffer.moveToThread(self.audio_thread)
 
     def next_audio_frame(self):
+        """Handle next audio frame."""
         if self.audio_output is None:
-            self.init_audio()
+            self._init_audio()
         if len(self.audio_queue) < 4:
             return
         data = self.audio_queue.popleft()
         if self.audio_buffer:
             self.audio_buffer.write(data)
 
-    def init_fps(self):
+    def _init_fps(self):
         self.fps_label.move(20, 20)
         self.fps_label.resize(80, 20)
         self.fps_label.setStyleSheet(
@@ -302,7 +330,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.fps_sample = 0
         self.last_time = time.time()
 
-    def set_fps(self):
+    def _set_fps(self):
         if self.fps_label is not None:
             self.fps_sample += 1
             if self.fps_sample < self.fps:
@@ -314,22 +342,26 @@ class StreamWindow(QtWidgets.QWidget):
             self.fps_sample = 0
 
     def mousePressEvent(self, event):
+        """Mouse Press Event."""
         button = event.button().name.decode()
         self._handle_press(button)
         event.accept()
 
     def mouseReleaseEvent(self, event):
+        """Mouse Release Event."""
         button = event.button().name.decode()
         self._handle_release(button)
         event.accept()
 
     def keyPressEvent(self, event):
+        """Key Press Event."""
         key = Qt.Key(event.key()).name.decode()
         if not event.isAutoRepeat():
             self._handle_press(key)
         event.accept()
 
     def keyReleaseEvent(self, event):
+        """Key Release Event."""
         if event.isAutoRepeat():
             return
         key = Qt.Key(event.key()).name.decode()
@@ -349,7 +381,7 @@ class StreamWindow(QtWidgets.QWidget):
                 "Standby",
                 "Set host to standby?",
                 level="info",
-                cb=self.send_standby,
+                callback=self.send_standby,
                 escape=True,
             )
             return
@@ -377,16 +409,19 @@ class StreamWindow(QtWidgets.QWidget):
             self.rp_worker.send_button(button, "release")
 
     def send_standby(self):
+        """Place host in standby."""
         if self.rp_worker.session is not None:
             self.rp_worker.session.standby()
 
     def closeEvent(self, event):
+        """Close Event."""
         self.hide()
         self.cleanup()
         self.deleteLater()
         event.accept()
 
     def cleanup(self):
+        """Cleanup session."""
         print("Cleaning up window")
         event_emitter.remove_all_listeners()
         if self.video_output:

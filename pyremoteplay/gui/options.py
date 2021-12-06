@@ -1,5 +1,10 @@
+# pylint: disable=c-extension-no-member,invalid-name
 """Options Window."""
 import socket
+
+from PySide6 import QtWidgets
+from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
+from PySide6.QtMultimedia import QMediaDevices  # pylint: disable=no-name-in-module
 
 from pyremoteplay.av import AVReceiver
 from pyremoteplay.const import RESOLUTION_PRESETS, Quality
@@ -15,24 +20,28 @@ from pyremoteplay.util import (
     write_options,
     write_profiles,
 )
-from PySide6 import QtCore, QtWidgets
-from PySide6.QtCore import Qt
-from PySide6.QtMultimedia import QMediaDevices
 
 from .util import label, message, spacer
 from .widgets import AnimatedToggle
 
 
 class ControlsTable(QtWidgets.QTableWidget):
+    """Table for controls."""
+
     def mousePressEvent(self, event):
+        """Mouse Press Event."""
         super().mousePressEvent(event)
-        self.parent().table_mousePressEvent(event)
+        button = event.button().name.decode()
+        self.parent().set_control(button)
 
     def keyPressEvent(self, event):
+        """Key Press Event."""
         self.parent().keyPressEvent(event)
 
 
 class ControlsWidget(QtWidgets.QWidget):
+    """Widget for controls options."""
+
     KEYS = (
         "STANDBY",
         "QUIT",
@@ -117,8 +126,8 @@ class ControlsWidget(QtWidgets.QWidget):
         self.reset = QtWidgets.QPushButton("Reset to Default")
         self.clear = QtWidgets.QPushButton("Clear")
         self.cancel = QtWidgets.QPushButton("Cancel")
-        self.init_controls()
-        self.instructions()
+        self._init_controls()
+        self._set_instructions()
         self.layout.addWidget(self.left_joystick, 0, 0, 1, 2)
         self.layout.addWidget(self.right_joystick, 1, 0, 1, 2)
         self.layout.addWidget(self.reset, 2, 0)
@@ -128,24 +137,28 @@ class ControlsWidget(QtWidgets.QWidget):
         self.layout.addWidget(self.label, 3, 3)
         self.cancel.hide()
         self.clear.hide()
-        self.left_joystick.clicked.connect(lambda: self.click_joystick("left"))
-        self.right_joystick.clicked.connect(lambda: self.click_joystick("right"))
-        self.cancel.clicked.connect(self.click_cancel)
-        self.reset.clicked.connect(self.click_reset)
-        self.clear.clicked.connect(self.click_clear)
-        self.table.clicked.connect(self.click_table)
+        self.left_joystick.clicked.connect(lambda: self._click_joystick("left"))
+        self.right_joystick.clicked.connect(lambda: self._click_joystick("right"))
+        self.cancel.clicked.connect(self._click_cancel)
+        self.reset.clicked.connect(self._click_reset)
+        self.clear.clicked.connect(self._click_clear)
+        self.table.clicked.connect(self._click_table)
 
     def hide(self):
-        self.click_cancel()
+        """Hide widget."""
+        self._click_cancel()
         super().hide()
 
     def get_map(self):
+        """Return Controller Map."""
         return self.mapping["maps"][self.selected_map]["map"]
 
     def get_options(self):
+        """Return options."""
         return self.mapping["maps"][self.selected_map]["options"]
 
     def default_mapping(self):
+        """Return Default map."""
         if not self.options:
             options = {"joysticks": {"left": False, "right": False}}
         self.mapping = {}
@@ -161,26 +174,26 @@ class ControlsWidget(QtWidgets.QWidget):
             }
         )
         write_mapping(self.mapping)
-        self.set_map(self.get_map())
-        self.set_table()
+        self._set_map(self.get_map())
+        self._set_table()
 
-    def init_controls(self):
+    def _init_controls(self):
         self.mapping = get_mapping()
         if not self.mapping:
             self.default_mapping()
         self.selected_map = self.mapping["selected"]
-        self.set_map(self.get_map())
-        self.set_options(self.get_options())
-        self.set_table()
-        self.set_joysticks()
+        self._set_map(self.get_map())
+        self._set_options(self.get_options())
+        self._set_table()
+        self._set_joysticks()
 
-    def set_table(self):
+    def _set_table(self):
         self.table.clearContents()
-        self.click_cancel()
+        self._click_cancel()
         if self.selected_map == "keyboard":
-            self.set_keyboard()
+            self._set_keyboard()
 
-    def set_joysticks(self):
+    def _set_joysticks(self):
         options = self.get_options()
         joysticks = options["joysticks"]
         if joysticks["left"]:
@@ -188,16 +201,16 @@ class ControlsWidget(QtWidgets.QWidget):
         if joysticks["right"]:
             self.right_joystick.setChecked(True)
 
-    def set_options(self, options):
+    def _set_options(self, options):
         self.mapping["maps"][self.selected_map]["options"] = options
         write_mapping(self.mapping)
 
-    def set_map(self, _map):
+    def _set_map(self, _map):
         self.input = None
         self.mapping["maps"][self.selected_map]["map"] = _map
         write_mapping(self.mapping)
 
-    def set_keyboard(self):
+    def _set_keyboard(self):
         remove_keys = []
         _map = self.get_map()
 
@@ -220,9 +233,9 @@ class ControlsWidget(QtWidgets.QWidget):
         if remove_keys:
             for key in remove_keys:
                 _map.pop(key)
-        self.set_map(_map)
+        self._set_map(_map)
 
-    def instructions(self):
+    def _set_instructions(self):
         text = (
             "To set a Control, click on the corresponding row "
             "and then press the key that you would like to map "
@@ -231,23 +244,23 @@ class ControlsWidget(QtWidgets.QWidget):
         self.label = QtWidgets.QLabel(text)
         self.label.setWordWrap(True)
 
-    def click_joystick(self, stick):
+    def _click_joystick(self, stick):
         options = self.get_options()
         value = not options["joysticks"][stick]
         options["joysticks"][stick] = value
-        self.set_options(options)
+        self._set_options(options)
 
-    def click_table(self, item):
+    def _click_table(self, item):
         self.input = item.row()
         self.cancel.show()
         self.clear.show()
 
-    def click_cancel(self):
+    def _click_cancel(self):
         self.input = None
         self.cancel.hide()
         self.clear.hide()
 
-    def click_clear(self):
+    def _click_clear(self):
         if self.input is None:
             return
         item = self.table.item(self.input, 0).text()
@@ -258,16 +271,16 @@ class ControlsWidget(QtWidgets.QWidget):
         _map = self.get_map()
         if key in _map:
             _map.pop(key)
-        self.set_map(_map)
-        self.set_table()
+        self._set_map(_map)
+        self._set_table()
 
-    def click_reset(self):
+    def _click_reset(self):
         text = "Reset input mapping to default?"
         message(
             self, "Reset Mapping", text, "warning", self.default_mapping, escape=True
         )
 
-    def get_current_map_key(self, rp_key):
+    def _get_current_map_key(self, rp_key):
         _map = self.get_map()
         rp_keys = list(_map.values())
         if rp_key not in rp_keys:
@@ -276,20 +289,18 @@ class ControlsWidget(QtWidgets.QWidget):
         key = list(_map.keys())[index]
         return key
 
-    def table_mousePressEvent(self, event):
-        button = event.button().name.decode()
-        self.set_item(button)
-
     def keyPressEvent(self, event):
+        """Key Press Event."""
         if self.input is not None:
             key = Qt.Key(event.key()).name.decode()
-            self.set_item(key)
+            self.set_control(key)
 
-    def set_item(self, key):
+    def set_control(self, key):
+        """Set RP Control to Qt Key."""
         if self.input is not None:
             item = self.table.item(self.input, 0)
             rp_key = self.table.item(self.input, 1).text()
-            current = self.get_current_map_key(rp_key)
+            current = self._get_current_map_key(rp_key)
             _map = self.get_map()
 
             # Delete the current key
@@ -299,11 +310,13 @@ class ControlsWidget(QtWidgets.QWidget):
 
             _map[key] = rp_key
             item.setText(key.replace("Key_", ""))
-            self.set_map(_map)
-            self.set_table()
+            self._set_map(_map)
+            self._set_table()
 
 
 class OptionsWidget(QtWidgets.QWidget):
+    """Widget for Options."""
+
     def __init__(self, main_window):
         super().__init__(main_window)
         self.main_window = main_window
@@ -326,7 +339,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self._media_devices = QMediaDevices()
         self._media_devices.audioOutputsChanged.connect(self.get_audio_devices)
 
-        self.init_options()
+        self._init_options()
         self.load_options()
         success = self.set_options()
         if not success:
@@ -336,7 +349,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.set_devices()
         self.main_window.add_devices(self.options["devices"])
 
-    def init_options(self):
+    def _init_options(self):
         set_account = QtWidgets.QPushButton("Select Account")
         add_account = QtWidgets.QPushButton("Add Account")
         del_account = QtWidgets.QPushButton("Delete Account")
@@ -345,7 +358,7 @@ class OptionsWidget(QtWidgets.QWidget):
         add_device.clicked.connect(self.new_device)
         del_device.clicked.connect(self.delete_device)
         del_device.clicked.connect(del_device.hide)
-        set_account.clicked.connect(self.change_profile)
+        set_account.clicked.connect(self._change_profile)
         add_account.clicked.connect(self.new_profile)
         del_account.clicked.connect(self.delete_profile)
         res_label = label(self, "**1080p is for PS4 Pro, PS5 only**", wrap=False)
@@ -362,40 +375,42 @@ class OptionsWidget(QtWidgets.QWidget):
 
         self.quality = QtWidgets.QComboBox(self)
         self.quality.addItems([item.name for item in Quality])
-        self.quality.currentTextChanged.connect(self.change_quality)
+        self.quality.currentTextChanged.connect(self._change_quality)
         self.use_opengl = AnimatedToggle("Use OpenGL", self)
-        self.use_opengl.stateChanged.connect(self.change_opengl)
+        self.use_opengl.stateChanged.connect(self._change_opengl)
         self.use_opengl.setToolTip("Recommended if using Hardware Decoding")
         self.fps = QtWidgets.QComboBox(self)
         self.fps.addItems(["30", "60"])
-        self.fps.currentTextChanged.connect(self.change_fps)
+        self.fps.currentTextChanged.connect(self._change_fps)
         self.fps_show = AnimatedToggle("Show FPS", self)
-        self.fps_show.stateChanged.connect(self.change_fps_show)
+        self.fps_show.stateChanged.connect(self._change_fps_show)
         self.fullscreen = AnimatedToggle("Show Fullscreen", self)
-        self.fullscreen.stateChanged.connect(self.change_fullscreen)
+        self.fullscreen.stateChanged.connect(self._change_fullscreen)
         self.use_hw = AnimatedToggle("Use Hardware Decoding", self)
-        self.use_hw.stateChanged.connect(self.change_use_hw)
+        self.use_hw.stateChanged.connect(self._change_use_hw)
         self.resolution = QtWidgets.QComboBox(self)
         self.resolution.addItems(list(RESOLUTION_PRESETS.keys()))
-        self.resolution.currentTextChanged.connect(self.change_resolution)
+        self.resolution.currentTextChanged.connect(self._change_resolution)
         self.accounts = QtWidgets.QTreeWidget()
-        self.accounts.itemDoubleClicked.connect(self.change_profile)
+        self.accounts.itemDoubleClicked.connect(self._change_profile)
         self.devices = QtWidgets.QTreeWidget()
         self.devices.itemClicked.connect(del_device.show)
         self.audio_output = QtWidgets.QComboBox(self)
         self.audio_output.addItems(list(self.audio_devices.keys()))
 
-        self.add(self.quality, 0, 1, label=label(self, "Quality:"))
+        self.add(self.quality, 0, 1, label_text=label(self, "Quality:"))
         self.add(self.use_opengl, 0, 2)
-        self.add(self.fps, 1, 1, label=label(self, "FPS:"))
+        self.add(self.fps, 1, 1, label_text=label(self, "FPS:"))
         self.add(self.fps_show, 1, 2)
-        self.add(self.resolution, 2, 1, label=label(self, "Resolution:"))
+        self.add(self.resolution, 2, 1, label_text=label(self, "Resolution:"))
         self.add(self.fullscreen, 2, 2)
         self.layout.addWidget(res_label, 3, 0, 1, 2)
-        self.add(hw_label, 4, 1, label=label(self, "Available Decoder:"))
+        self.add(hw_label, 4, 1, label_text=label(self, "Available Decoder:"))
         self.layout.addWidget(self.use_hw, 4, 2)
         self.layout.addWidget(devices_label, 4, 4, 1, 2)
-        self.add(self.audio_output, 5, 1, width=3, label=label(self, "Audio Output"))
+        self.add(
+            self.audio_output, 5, 1, width=3, label_text=label(self, "Audio Output")
+        )
         self.layout.addItem(spacer(), 6, 0)
         self.add(set_account, 7, 0)
         self.add(add_account, 7, 1)
@@ -407,7 +422,8 @@ class OptionsWidget(QtWidgets.QWidget):
         self.layout.addWidget(self.devices, 8, 4, 3, 2)
         del_device.hide()
 
-    def get_decoder(self):
+    def get_decoder(self) -> str:
+        """Return HW decoder or CPU if not found."""
         decoder = AVReceiver.find_video_decoder(video_format="h264", use_hw=True)
         decoder = decoder.replace("h264", "").replace("_", "")
         if not decoder:
@@ -415,6 +431,7 @@ class OptionsWidget(QtWidgets.QWidget):
         return decoder
 
     def get_audio_devices(self):
+        """Return Audio devices."""
         devices = QMediaDevices.audioOutputs()
         default = QMediaDevices.defaultAudioOutput()
         audio_devices = {f"{default.description()} (Default)": default}
@@ -429,9 +446,11 @@ class OptionsWidget(QtWidgets.QWidget):
         return audio_devices
 
     def get_audio_device(self):
+        """Return Selected Audio Device."""
         return self.audio_devices.get(self.audio_output.currentText())
 
     def set_options(self) -> bool:
+        """Set Options."""
         try:
             self.quality.setCurrentText(str(self.options["quality"]))
             self.use_opengl.setChecked(self.options["use_opengl"])
@@ -447,6 +466,7 @@ class OptionsWidget(QtWidgets.QWidget):
         return True
 
     def default_options(self) -> dict:
+        """Return Default Options."""
         options = {
             "quality": "Default",
             "use_opengl": False,
@@ -462,12 +482,14 @@ class OptionsWidget(QtWidgets.QWidget):
         return options
 
     def load_options(self):
+        """Load Options."""
         options = get_options()
         if not options:
             options = self.default_options()
         self.options = options
 
     def set_devices(self):
+        """Set devices."""
         self.devices.clear()
         self.devices.setHeaderLabels(["Devices"])
         for host in self.options["devices"]:
@@ -475,6 +497,7 @@ class OptionsWidget(QtWidgets.QWidget):
             item.setText(0, host)
 
     def set_profiles(self):
+        """Set Profiles."""
         self.profiles = get_profiles()
         self.accounts.clear()
         self.accounts.setHeaderLabels(["PSN ID", "Active", "Is Registered", "Devices"])
@@ -503,41 +526,42 @@ class OptionsWidget(QtWidgets.QWidget):
             selected[0].setSelected(True)
             selected[0].setText(1, "Yes")
 
-    def add(self, item, row, col, width=2, label=None):
-        if label is not None:
+    def add(self, item, row, col, width=2, label_text=None):
+        """Convenience method to add label and widget."""
+        if label_text is not None:
             width -= 1
-            self.layout.addWidget(label, row, col - 1, Qt.AlignLeft)
+            self.layout.addWidget(label_text, row, col - 1, Qt.AlignLeft)
         self.layout.addWidget(item, row, col, 1, width, Qt.AlignLeft)
 
-    def change_quality(self, text):
+    def _change_quality(self, text):
         self.options["quality"] = text
         write_options(self.options)
 
-    def change_opengl(self):
+    def _change_opengl(self):
         self.options["use_opengl"] = self.use_opengl.isChecked()
         write_options(self.options)
 
-    def change_fps(self, text):
+    def _change_fps(self, text):
         self.options["fps"] = int(text)
         write_options(self.options)
 
-    def change_fps_show(self):
+    def _change_fps_show(self):
         self.options["show_fps"] = self.fps_show.isChecked()
         write_options(self.options)
 
-    def change_resolution(self, text):
+    def _change_resolution(self, text):
         self.options["resolution"] = text
         write_options(self.options)
 
-    def change_use_hw(self):
+    def _change_use_hw(self):
         self.options["use_hw"] = self.use_hw.isChecked()
         write_options(self.options)
 
-    def change_fullscreen(self):
+    def _change_fullscreen(self):
         self.options["fullscreen"] = self.fullscreen.isChecked()
         write_options(self.options)
 
-    def change_profile(self):
+    def _change_profile(self):
         item = self.accounts.selectedItems()[0]
         if not item:
             return
@@ -546,6 +570,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.set_profiles()
 
     def new_device(self):
+        """Run New Device flow."""
         title = "Add Device"
         dialog = QtWidgets.QInputDialog(self)
         dialog.setWindowTitle(title)
@@ -578,6 +603,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.main_window.add_devices(self.options["devices"])
 
     def delete_device(self):
+        """Delete Device."""
         items = self.devices.selectedItems()
         if not items:
             return
@@ -589,6 +615,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.main_window.remove_device(host)
 
     def delete_profile(self):
+        """Delete profile."""
         item = self.accounts.selectedItems()[0]
         if not item:
             return
@@ -604,6 +631,7 @@ class OptionsWidget(QtWidgets.QWidget):
         )
 
     def remove_profile(self, name):
+        """Remove profile from config."""
         self.profiles.pop(name)
         write_profiles(self.profiles)
         self.options["profile"] = list(self.profiles.keys())[0] if self.profiles else ""
@@ -612,6 +640,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.set_profiles()
 
     def new_profile(self):
+        """Run new profile flow."""
         title = "Add PSN Account"
         text = "To Add a New PSN Account you will have to sign in to your PSN Account. Continue?"
         new_message = message(
@@ -620,6 +649,7 @@ class OptionsWidget(QtWidgets.QWidget):
         new_message.hide()
 
     def new_account(self):
+        """Run prompts to add PSN Account."""
         title = "Add PSN Account"
         dialog = QtWidgets.QInputDialog(self)
         dialog.setWindowTitle(title)
@@ -638,9 +668,9 @@ class OptionsWidget(QtWidgets.QWidget):
             "You will be redirected after signing in to a blank page that says 'Redirect'.\n"
             "When you reach this page, copy the page URL and click 'Ok' to continue"
         )
-        cb = QtWidgets.QApplication.clipboard()
-        cb.clear(mode=cb.Clipboard)
-        cb.setText(LOGIN_URL, mode=cb.Clipboard)
+        clipboard = QtWidgets.QApplication.clipboard()
+        clipboard.clear(mode=clipboard.Clipboard)
+        clipboard.setText(LOGIN_URL, mode=clipboard.Clipboard)
         if not dialog.exec():
             return
 
@@ -673,6 +703,7 @@ class OptionsWidget(QtWidgets.QWidget):
         message(self, title, text, level)
 
     def register(self, host, name):
+        """Register profile with RP Host."""
         user_id = self.profiles[name]["id"]
         dialog = QtWidgets.QInputDialog(self)
         dialog.setWindowTitle("Register")

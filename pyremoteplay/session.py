@@ -527,6 +527,11 @@ class Session:
         return self._stream
 
     @property
+    def stop_event(self):
+        """Return Stop Event."""
+        return self._stop_event
+
+    @property
     def video_format(self) -> str:
         """Return video format"""
         formats = {

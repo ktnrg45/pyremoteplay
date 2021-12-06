@@ -1,25 +1,29 @@
+# pylint: disable=c-extension-no-member,invalid-name
+"""Main Window for pyremoteplay GUI."""
 import asyncio
 import logging
 import sys
 import time
 
+from PySide6 import QtCore, QtWidgets
+from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
+
 from pyremoteplay.__version__ import VERSION
 from pyremoteplay.ddp import async_create_ddp_endpoint, wakeup
-from pyremoteplay.session import Session
-from pyremoteplay.util import format_regist_key, timeit
-from PySide6 import QtCore, QtWidgets
-from PySide6.QtCore import Qt
+from pyremoteplay.util import format_regist_key
 
 from .device_grid import DeviceGridWidget
 from .options import ControlsWidget, OptionsWidget
 from .stream_window import RPWorker, StreamWindow
 from .toolbar import ToolbarWidget
-from .util import Popup, message
+from .util import message
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class AsyncHandler(QtCore.QObject):
+    """Handler for async methods."""
+
     status_updated = QtCore.Signal()
 
     def __init__(self, main_window):
@@ -29,6 +33,7 @@ class AsyncHandler(QtCore.QObject):
         self.main_window = main_window
 
     def start(self):
+        """Start and run polling."""
         if sys.platform == "win32":
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         self.loop = asyncio.new_event_loop()
@@ -37,17 +42,22 @@ class AsyncHandler(QtCore.QObject):
         self.loop.run_forever()
 
     def poll(self):
+        """Start polling."""
         self.protocol.start()
 
     def stop_poll(self):
+        """Stop Polling."""
         self.protocol.stop()
 
     async def run(self):
+        """Start poll service."""
         _, self.protocol = await async_create_ddp_endpoint(self.status_updated.emit)
         await self.protocol.run()
 
 
 class MainWindow(QtWidgets.QWidget):
+    """Main Window."""
+
     session_finished = QtCore.Signal()
 
     def __init__(self, app):
@@ -91,27 +101,27 @@ class MainWindow(QtWidgets.QWidget):
         self.layout.setAlignment(self.toolbar, Qt.AlignTop)
         self.layout.addWidget(self.main_frame)
         self.layout.addWidget(QtWidgets.QLabel(f"v{VERSION}", alignment=Qt.AlignBottom))
-        self.set_style()
+        self._set_style()
         self.toolbar.refresh.setChecked(True)
-        self.toolbar.refresh_click()
+        self.device_grid.start_update()
         self.session_finished.connect(self.check_error_finish)
-        QtCore.QTimer.singleShot(7000, self.startup_check_grid)
-
-    def event_status_updated(self):
-        devices = self.async_handler.protocol.devices
-        self.device_grid.create_grid(devices)
+        QtCore.QTimer.singleShot(7000, self._startup_check_grid)
 
     def _init_rp_worker(self):
         self.rp_worker = RPWorker(self)
         self.rp_worker.moveToThread(self.async_thread)
 
-    def startup_check_grid(self):
+    def _startup_check_grid(self):
         if not self.device_grid.widgets:
-            self.set_center_text(
+            self._set_center_text(
                 "No Devices Found.\n" "Try adding a device in options."
             )
 
-    def set_style(self):
+    def _set_center_text(self, text):
+        self.center_text.setText(text)
+        self.center_text.show()
+
+    def _set_style(self):
         style = (
             "QPushButton {border: 1px solid #0a58ca;border-radius: 10px;padding: 10px;}"
             "QPushButton:hover {background-color:#6ea8fe;color:black;}"
@@ -121,12 +131,13 @@ class MainWindow(QtWidgets.QWidget):
         )
         self.setStyleSheet(style)
 
-    def show_popup(self):
-        self.popup = Popup()
-        self.popup.setGeometry(QtCore.QRect(100, 100, 400, 200))
-        self.popup.show()
+    def event_status_updated(self):
+        """Callback for status updates."""
+        devices = self.async_handler.protocol.devices
+        self.device_grid.create_grid(devices)
 
     def check_profile(self, name, host):
+        """Return profile if profile is registered."""
         profile = self.options.profiles.get(name)
         if not profile:
             message(
@@ -136,19 +147,23 @@ class MainWindow(QtWidgets.QWidget):
             )
             return None
         if host["host-id"] not in profile["hosts"]:
-            text = f"PSN account: {name} has not been registered with this device. Click 'Ok' to register."
+            text = (
+                f"PSN account: {name} has not been registered with this device. "
+                "Click 'Ok' to register."
+            )
             message(
                 self,
                 "Needs Registration",
                 text,
                 "info",
-                cb=lambda: self.options.register(host, name),
+                callback=lambda: self.options.register(host, name),
                 escape=True,
             )
             return None
         return profile
 
     def standby_host(self, host):
+        """Place host in standby mode."""
         name = self.options.options.get("profile")
         profile = self.check_profile(name, host)
         if not profile:
@@ -156,20 +171,16 @@ class MainWindow(QtWidgets.QWidget):
         ip_address = host["host-ip"]
         self.rp_worker.setup(None, ip_address, profile)
         self.rp_worker.run(standby=True)
-        # session = Session(ip_address, profile)
-        # status = session.start(autostart=False)
-        # if status:
-        #     session.standby()
-        # session.stop()
 
     def standby_callback(self, host):
-        """Callback for Standby."""
+        """Callback after attempting standby."""
         if self.rp_worker.error:
             message(self, "Standby Error", self.rp_worker.error)
         else:
             message(self, "Standby Success", f"Set device at {host} to Standby", "info")
 
     def wakeup_host(self, host):
+        """Wakeup Host."""
         name = self.options.options.get("profile")
         profile = self.check_profile(name, host)
         if not profile:
@@ -187,6 +198,7 @@ class MainWindow(QtWidgets.QWidget):
         )
 
     def connect_host(self, host):
+        """Connect to Host."""
         self.device_grid.stop_update()
         options = self.options.options
         name = options.get("profile")
@@ -221,9 +233,11 @@ class MainWindow(QtWidgets.QWidget):
         self._app.setActiveWindow(self._stream_window)
 
     def session_start(self):
+        """Start Session."""
         self.rp_worker.run()
 
     def session_stop(self):
+        """Callback for stopping session."""
         _LOGGER.debug("Detected Session Stop")
         self.rp_worker.stop()
         self._app.setActiveWindow(self)
@@ -234,24 +248,24 @@ class MainWindow(QtWidgets.QWidget):
             self.session_finished.emit()
 
     def add_devices(self, devices):
+        """Add devices to grid."""
         for host in devices:
             if host not in self.async_handler.protocol.devices:
                 self.async_handler.protocol.add_device(host)
 
     def remove_device(self, host):
+        """Remove Device from grid."""
         self.async_handler.protocol.remove_device(host)
         self.event_status_updated()
 
     def check_error_finish(self):
+        """Display error message if session finished with error."""
         if self.rp_worker.error:
             message(self, "Error", self.rp_worker.error)
         self.rp_worker.error = ""
 
-    def set_center_text(self, text):
-        self.center_text.setText(text)
-        self.center_text.show()
-
     def closeEvent(self, event):
+        """Close Event."""
         self.device_grid.stop_update()
         if self._stream_window:
             self._stream_window.close()

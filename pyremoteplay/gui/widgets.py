@@ -1,3 +1,6 @@
+# pylint: disable=c-extension-no-member,invalid-name,no-name-in-module
+"""Generic custom QT Widgets."""
+
 from PySide6.QtCore import (
     Property,
     QEasingCurve,
@@ -14,6 +17,7 @@ from PySide6.QtWidgets import QCheckBox
 
 
 class AnimatedToggle(QCheckBox):
+    """Checkbox shown as a toggle sliding button."""
 
     _TRANSPARENT_PEN = QPen(Qt.transparent)
     _LIGHT_GRAY_PEN = QPen(Qt.lightGray)
@@ -57,18 +61,20 @@ class AnimatedToggle(QCheckBox):
         self.animations_group.addAnimation(self.slide_anim)
         self.animations_group.addAnimation(self.pulse_anim)
 
-        self.stateChanged.connect(self.setup_animation)
+        self.stateChanged.connect(self._setup_animation)
 
     def sizeHint(self):
+        """Return Size Hint."""
         size = super().sizeHint()
         width = size.width() + self._TOGGLE_SIZE * (2 / 3)
         height = max([size.height(), self._TOGGLE_SIZE])
         return QSize(width, height)
 
     def hitButton(self, pos: QPoint):
+        """Return True if pos in rect."""
         return self.container_rect.contains(pos)
 
-    def setup_animation(self, value):
+    def _setup_animation(self, value):
         self.animations_group.stop()
         if value:
             self.slide_anim.setEndValue(1)
@@ -76,7 +82,8 @@ class AnimatedToggle(QCheckBox):
             self.slide_anim.setEndValue(0)
         self.animations_group.start()
 
-    def paintEvent(self, event: QPaintEvent):
+    def paintEvent(self, event: QPaintEvent):  # pylint: disable=unused-argument
+        """Paint Event."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         text_rect = self.contentsRect()
@@ -158,6 +165,7 @@ class AnimatedToggle(QCheckBox):
 
     @Property(float)
     def pulse_radius(self):
+        """Return pulse radius."""
         return self._pulse_radius
 
     @pulse_radius.setter

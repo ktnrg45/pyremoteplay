@@ -1,3 +1,5 @@
+# pylint: disable=c-extension-no-member,invalid-name,no-name-in-module
+"""Video Output for Stream."""
 from textwrap import dedent
 
 from OpenGL import GL
@@ -71,9 +73,13 @@ YUV_FRAG = dedent(
 
 
 class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
+    """YUV to RGB Opengl Widget."""
+
     TEXTURE_NAMES = ("plane1", "plane2", "plane3")
 
+    @staticmethod
     def surface_format():
+        """Return default surface format."""
         surface_format = QSurfaceFormat.defaultFormat()
         surface_format.setProfile(QSurfaceFormat.CoreProfile)
         surface_format.setVersion(3, 3)
@@ -86,7 +92,7 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         if not surface_format:
             surface_format = YUVGLWidget.surface_format()
         self.setFormat(surface_format)
-        self.surface_format = surface_format
+        self._surface_format = surface_format
         self.textures = []
         self.frame_width = width
         self.frame_height = height
@@ -120,6 +126,7 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         self.vao.bind()
 
     def paintGL(self):
+        """Paint GL."""
         if not self.textures or not self.frame:
             return
         self.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
@@ -131,7 +138,7 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         # self.glViewport(0, 0, self.width(), self.height())
 
         for index, plane in enumerate(self.frame.planes):
-            self.update_texture(index, plane.to_bytes(), plane.line_size)
+            self.update_texture(index, plane.to_bytes())
 
         self.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
         if self.parent():
@@ -159,7 +166,8 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
             self.program.setUniformValue1i(self.program.uniformLocation(name), index)
             self.textures.append(texture)
 
-    def update_texture(self, index, pixels, stride):
+    def update_texture(self, index, pixels):
+        """Update texture with video plane."""
         width = self.frame_width if index == 0 else self.frame_width / 2
         height = self.frame_height if index == 0 else self.frame_height / 2
 
@@ -179,17 +187,21 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         )
 
     def next_video_frame(self, frame):
+        """Update widget with next video frame."""
         self.frame = frame
         self.update()
 
 
 class VideoWidget(QtWidgets.QLabel):
+    """Video output widget using Pixmap."""
+
     def __init__(self, width, height, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.frame_width = width
         self.frame_height = height
 
     def next_video_frame(self, frame):
+        """Update widget with next video frame."""
         image = QtGui.QImage(
             bytearray(frame.planes[0]),
             frame.width,
