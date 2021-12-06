@@ -313,6 +313,11 @@ class AVReceiver(abc.ABC):
             "frame_size": unpack_from("!I", header, 6)[0],
             "unknown": unpack_from("!I", header, 10)[0],
         }
+        self.audio_config["packet_size"] = (
+            self.audio_config["channels"]
+            * (self.audio_config["bits"] // 8)
+            * self.audio_config["frame_size"]
+        )
         _LOGGER.info("Audio Config: %s", self.audio_config)
 
         if not self.audio_decoder:

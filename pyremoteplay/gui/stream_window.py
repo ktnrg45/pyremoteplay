@@ -21,6 +21,7 @@ class QtReceiver(AVReceiver):
         self.video_signal = None
         self.audio_signal = None
         self.rgb = True
+        self.audio_queue = deque()
 
     def decode_video_frame(self, buf: bytes) -> bytes:
         """Decode Video Frame."""
@@ -37,7 +38,8 @@ class QtReceiver(AVReceiver):
         frame = self.decode_audio_frame(packet)
         if frame is None:
             return
-        self.audio_signal.emit(frame)
+        self.audio_queue.append(QtCore.QByteArray(frame))
+        self.audio_signal.emit()
 
     def set_signals(self, video_signal, audio_signal):
         self.video_signal = video_signal
@@ -311,7 +313,7 @@ class StreamWindow(QtWidgets.QWidget):
     started = QtCore.Signal()
     fps_update = QtCore.Signal()
     video_frame = QtCore.Signal(object)
-    audio_frame = QtCore.Signal(object)
+    audio_frame = QtCore.Signal()
 
     def __init__(self, main_window):
         super().__init__()
@@ -324,6 +326,9 @@ class StreamWindow(QtWidgets.QWidget):
         self.video_output = None
         self.audio_output = None
         self.audio_device = None
+        self.audio_buffer = None
+        self.audio_queue = None
+        self.audio_thread = QtCore.QThread()
         self.opengl = False
         self.center_text = QtWidgets.QLabel("Starting Stream...", alignment=Qt.AlignCenter)
         self.center_text.setWordWrap(True)
@@ -388,18 +393,27 @@ class StreamWindow(QtWidgets.QWidget):
         if not self.rp_worker.session:
             return
         config = self.rp_worker.session.av_receiver.audio_config
+        if not config:
+            return
+        if self.audio_buffer or self.audio_output:
+            return
+        self.audio_queue = self.rp_worker.session.av_receiver.audio_queue
         audio_format = QtMultimedia.QAudioFormat()
         audio_format.setChannelCount(config['channels'])
         audio_format.setSampleRate(config['rate'])
         audio_format.setSampleFormat(QtMultimedia.QAudioFormat.Int16)
 
         self.audio_output = QtMultimedia.QAudioSink(self.audio_device, format=audio_format)
-        self.audio_output.setBufferSize(3840)
+        self.audio_output.setBufferSize(config['packet_size'] * 4)
         self.audio_buffer = self.audio_output.start()
+        self.audio_buffer.moveToThread(self.audio_thread)
 
-    def next_audio_frame(self, data):
+    def next_audio_frame(self):
         if self.audio_output is None:
             self.init_audio()
+        if len(self.audio_queue) < 4:
+            return
+        data = self.audio_queue.popleft()
         if self.audio_buffer:
             self.audio_buffer.write(data)
 

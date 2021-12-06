@@ -67,8 +67,9 @@ class Controller:
 
     def add_event_buffer(self, event: FeedbackEvent):
         """Append event to end of byte buf."""
-        msg = event.bytes()
-        self._event_buf.appendleft(msg)
+        buf = bytearray(FeedbackEvent.LENGTH)
+        event.pack(buf)
+        self._event_buf.appendleft(buf)
 
     def add_event_queue(self, event: FeedbackEvent):
         """Append event to queue."""
