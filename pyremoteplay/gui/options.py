@@ -32,16 +32,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.options = {}
         self.profiles = {}
         self.layout = QtWidgets.QGridLayout(self, alignment=Qt.AlignTop)
-        self.layout.setColumnMinimumWidth(0, 30)
-        self.layout.setColumnStretch(0, 1)
-        self.layout.setColumnStretch(1, 1)
-        self.layout.setColumnStretch(2, 1)
-        self.layout.setColumnStretch(3, 1)
-        self.layout.setColumnStretch(4, 1)
-        self.layout.setColumnStretch(5, 1)
 
-        # self.layout.setRowMinimumHeight(3, 20)
-        # self.layout.setRowStretch(4, 1)
         self.audio_output = None
         self.audio_devices = {}
         self.get_audio_devices()
@@ -64,9 +55,10 @@ class OptionsWidget(QtWidgets.QWidget):
         del_account = QtWidgets.QPushButton("Delete Account")
         add_device = QtWidgets.QPushButton("Add Device")
         del_device = QtWidgets.QPushButton("Remove Device")
+        del_device.setDisabled(True)
         add_device.clicked.connect(self.new_device)
         del_device.clicked.connect(self.delete_device)
-        del_device.clicked.connect(del_device.hide)
+        del_device.clicked.connect(lambda: del_device.setDisabled(True))
         set_account.clicked.connect(self._change_profile)
         add_account.clicked.connect(self.new_profile)
         del_account.clicked.connect(self.delete_profile)
@@ -103,33 +95,47 @@ class OptionsWidget(QtWidgets.QWidget):
         self.accounts = QtWidgets.QTreeWidget()
         self.accounts.itemDoubleClicked.connect(self._change_profile)
         self.devices = QtWidgets.QTreeWidget()
-        self.devices.itemClicked.connect(del_device.show)
+        self.devices.itemSelectionChanged.connect(lambda: del_device.setDisabled(False))
         self.audio_output = QtWidgets.QComboBox(self)
         self.audio_output.addItems(list(self.audio_devices.keys()))
 
-        self.add(self.quality, 0, 1, label_text=label(self, "Quality:"))
-        self.add(self.use_opengl, 0, 2)
-        self.add(self.fps, 1, 1, label_text=label(self, "FPS:"))
-        self.add(self.fps_show, 1, 2)
-        self.add(self.resolution, 2, 1, label_text=label(self, "Resolution:"))
-        self.add(self.fullscreen, 2, 2)
-        self.layout.addWidget(res_label, 3, 0, 1, 2)
-        self.add(hw_label, 4, 1, label_text=label(self, "Available Decoder:"))
-        self.layout.addWidget(self.use_hw, 4, 2)
-        self.layout.addWidget(devices_label, 4, 4, 1, 2)
-        self.add(
-            self.audio_output, 5, 1, width=3, label_text=label(self, "Audio Output")
+        widgets = (
+            ("Quality", self.quality, self.use_opengl),
+            ("FPS", self.fps, self.fps_show),
+            ("Resolution", self.resolution, self.fullscreen),
+            (res_label,),
+            ("Video Decoder", hw_label, self.use_hw),
+            ("Audio Output", self.audio_output),
         )
-        self.layout.addItem(spacer(), 6, 0)
-        self.add(set_account, 7, 0)
-        self.add(add_account, 7, 1)
-        self.add(del_account, 7, 2)
-        self.add(add_device, 7, 4)
-        self.add(del_device, 7, 5)
-        self.layout.addWidget(self.accounts, 8, 0, 3, 3)
-        self.layout.addItem(spacer(), 8, 3)
-        self.layout.addWidget(self.devices, 8, 4, 3, 2)
-        del_device.hide()
+
+        for row_index, _row in enumerate(widgets):
+            for col_index, item in enumerate(_row):
+                if isinstance(item, str):
+                    item = QtWidgets.QLabel(f"{item}:")
+                self.layout.addWidget(item, row_index, col_index + 1, 1, 3 // len(_row))
+
+        row = len(widgets)
+        self.layout.addWidget(devices_label, row - 2, 5, 2, 2)
+        self.layout.addItem(spacer(), row, 0)
+
+        row += 1
+        account_layout = QtWidgets.QHBoxLayout()
+        account_layout.addWidget(set_account)
+        account_layout.addWidget(add_account)
+        account_layout.addWidget(del_account)
+        self.layout.addLayout(account_layout, row, 1, 1, 3)
+        device_layout = QtWidgets.QHBoxLayout()
+        device_layout.addWidget(add_device)
+        device_layout.addWidget(del_device)
+        self.layout.addLayout(device_layout, row, 5, 1, 2)
+
+        self.layout.addItem(spacer(), row, 4)
+        self.layout.setColumnStretch(4, 1)
+        row += 1
+
+        self.layout.addWidget(self.accounts, row, 1, 2, 3)
+        self.layout.addWidget(self.devices, row, 5, 2, 2)
+        self.layout.setRowStretch(row + 1, 1)
 
     def get_decoder(self) -> str:
         """Return HW decoder or CPU if not found."""
@@ -234,13 +240,6 @@ class OptionsWidget(QtWidgets.QWidget):
         if selected and len(selected) == 1:
             selected[0].setSelected(True)
             selected[0].setText(1, "Yes")
-
-    def add(self, item, row, col, width=2, label_text=None):
-        """Convenience method to add label and widget."""
-        if label_text is not None:
-            width -= 1
-            self.layout.addWidget(label_text, row, col - 1, Qt.AlignLeft)
-        self.layout.addWidget(item, row, col, 1, width, Qt.AlignLeft)
 
     def _change_quality(self, text):
         self.options["quality"] = text

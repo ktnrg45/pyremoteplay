@@ -205,8 +205,9 @@ class DeviceGridWidget(QtWidgets.QWidget):
                 all_devices.append(devices[ip_address])
             else:
                 widget = self.widgets.pop(ip_address)
-                all_devices.append(widget)
-                widget.update_state(widget.device.status)
+                if widget.device.status:
+                    all_devices.append(widget)
+                    widget.update_state(widget.device.status)
         for widget in self.widgets.values():
             widget.setParent(None)
             widget.deleteLater()
@@ -220,7 +221,8 @@ class DeviceGridWidget(QtWidgets.QWidget):
                 if isinstance(device, DeviceButton):
                     button = device
                 else:
-                    button = DeviceButton(self.main_window, device)
+                    if device.status:
+                        button = DeviceButton(self.main_window, device)
                 self.add(button, row, col)
             if (
                 not self.main_window.toolbar.options.isChecked()
