@@ -11,7 +11,7 @@ from pyremoteplay.session import SessionAsync
 from pyremoteplay.util import event_emitter
 
 from .joystick import JoystickWidget
-from .options import ControlsWidget
+from .controls import ControlsWidget
 from .util import label, message
 from .video import VideoWidget, YUVGLWidget
 

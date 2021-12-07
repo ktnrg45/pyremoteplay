@@ -13,7 +13,8 @@ from pyremoteplay.ddp import async_create_ddp_endpoint, wakeup
 from pyremoteplay.util import format_regist_key
 
 from .device_grid import DeviceGridWidget
-from .options import ControlsWidget, OptionsWidget
+from .options import OptionsWidget
+from .controls import ControlsWidget
 from .stream_window import RPWorker, StreamWindow
 from .toolbar import ToolbarWidget
 from .util import message

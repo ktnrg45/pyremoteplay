@@ -83,6 +83,7 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         surface_format = QSurfaceFormat.defaultFormat()
         surface_format.setProfile(QSurfaceFormat.CoreProfile)
         surface_format.setVersion(3, 3)
+        surface_format.setSwapInterval(0)
         QSurfaceFormat.setDefaultFormat(surface_format)
         return surface_format
 
