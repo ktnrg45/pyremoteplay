@@ -12,6 +12,15 @@ from .widgets import AnimatedToggle
 class ControlsTable(QtWidgets.QTableWidget):
     """Table for controls."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setRowCount(len(ControlsWidget.KEYS))
+        self.setColumnCount(2)
+        self.setHorizontalHeaderLabels(["Control", "Remote Play Control"])
+        header = self.horizontalHeader()
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+
     def mousePressEvent(self, event):
         """Mouse Press Event."""
         super().mousePressEvent(event)
@@ -92,19 +101,10 @@ class ControlsWidget(QtWidgets.QWidget):
         self.selected_map = ""
         self.layout = QtWidgets.QGridLayout(self, alignment=Qt.AlignTop)
         self.layout.setColumnMinimumWidth(0, 30)
-        self.layout.setColumnStretch(0, 1)
-        self.layout.setColumnStretch(1, 1)
-        self.layout.setColumnStretch(2, 1)
-        self.layout.setColumnStretch(3, 1)
-        self.layout.setRowStretch(1, 1)
+        self.layout.setRowStretch(4, 1)
         self.table = ControlsTable(self)
-        self.table.setRowCount(len(ControlsWidget.KEYS))
-        self.table.setColumnCount(2)
-        self.table.setHorizontalHeaderLabels(["Control", "Remote Play Control"])
         self.input = None
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+
         self.left_joystick = AnimatedToggle("Show Left Joystick", self)
         self.right_joystick = AnimatedToggle("Show Right Joystick", self)
         self.reset = QtWidgets.QPushButton("Reset to Default")
@@ -117,8 +117,8 @@ class ControlsWidget(QtWidgets.QWidget):
         self.layout.addWidget(self.reset, 2, 0)
         self.layout.addWidget(self.clear, 2, 1)
         self.layout.addWidget(self.cancel, 2, 2)
-        self.layout.addWidget(self.table, 3, 0, 1, 3)
-        self.layout.addWidget(self.label, 3, 3)
+        self.layout.addWidget(self.table, 3, 0, 2, 3)
+        self.layout.addWidget(self.label, 3, 3, 2, 1)
         self.cancel.hide()
         self.clear.hide()
         self.left_joystick.clicked.connect(lambda: self._click_joystick("left"))
