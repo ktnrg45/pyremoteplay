@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import socket
+import time
 
 from .const import (
     UDP_PORT,
@@ -10,6 +11,7 @@ from .const import (
     DEFAULT_UDP_PORT,
     BROADCAST_IP,
     DEFAULT_POLL_COUNT,
+    DEFAULT_STANDBY_DELAY,
 )
 from .device import RPDevice
 from .ddp import get_ddp_search_message, parse_ddp_response, get_socket
@@ -94,7 +96,25 @@ class DDPProtocol(asyncio.DatagramProtocol):
         if address in self._devices:
             device = self._devices.get(address)
         else:
-            device = self.add_device(address, direct=False)
+            device = self.add_device(address, discovered=True)
+
+        # Device won't respond to polls right after standby
+        if device.polls_disabled:
+            elapsed = time.time() - device._standby_start
+            seconds = DEFAULT_STANDBY_DELAY - elapsed
+            _LOGGER.debug("Polls disabled for %s seconds", round(seconds, 2))
+            return
+
+        # Track polls that were never returned.
+        device._poll_count += 1
+
+        # Assume Device is not available.
+        if not data:
+            if device._poll_count > self.max_polls:
+                device._status = {}
+                if device.callback:
+                    device.callback()  # pylint: disable=not-callable
+            return
         device.set_status(data)
 
     def connection_lost(self, exc):
@@ -113,11 +133,11 @@ class DDPProtocol(asyncio.DatagramProtocol):
         self._transport = None
         _LOGGER.debug("Closing DDP Transport: Port=%s", self._local_port)
 
-    def add_device(self, host, callback=None, direct=True):
+    def add_device(self, host, callback=None, discovered=False):
         """Add device to track."""
         if host in self._devices:
             return None
-        self._devices[host] = RPDevice(host, self, direct)
+        self._devices[host] = RPDevice(host, discovered)
         if callback is None and self._default_callback is not None:
             callback = self._default_callback
         self.add_callback(host, callback)
@@ -148,7 +168,8 @@ class DDPProtocol(asyncio.DatagramProtocol):
                 for device in self._devices.values():
                     if device.polls_disabled:
                         continue
-                    if device.direct:
+                    if not device.discovered:
+                        # Explicitly poll device in case it cannot be reached by broadcast.
                         self.send_msg(device)
             await asyncio.sleep(interval)
 

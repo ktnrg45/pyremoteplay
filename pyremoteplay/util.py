@@ -120,6 +120,20 @@ def add_profile(profiles: dict, user_data: dict) -> dict:
     return profiles
 
 
+def get_users(device_id, profiles=None, path=None):
+    """Return users for device."""
+    users = []
+    if not profiles:
+        profiles = get_profiles(path)
+    for user, data in profiles.items():
+        hosts = data.get("hosts")
+        if not hosts:
+            continue
+        if hosts.get(device_id):
+            users.append(user)
+    return users
+
+
 def add_regist_data(profile: dict, host: dict, data: dict) -> dict:
     """Add regist data to profile and return profile."""
     mac_address = host["host-id"]

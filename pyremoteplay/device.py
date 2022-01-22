@@ -9,37 +9,42 @@ import aiohttp
 from aiohttp.client_exceptions import ContentTypeError
 from pyps4_2ndscreen.media_art import async_search_ps_store, ResultItem
 
-from .const import TYPE_PS4, TYPE_PS5, DDP_PORT_PS4, DDP_PORT_PS5, DEFAULT_POLL_COUNT
+from .const import DEFAULT_POLL_COUNT, DDP_PORTS, DEFAULT_STANDBY_DELAY
+from .ddp import get_status
+from .session import SessionAsync
+from .util import get_users, get_profiles
 
 _LOGGER = logging.getLogger(__name__)
 
-DEFAULT_STANDBY_DELAY = 50
-
 STATUS_OK = 200
 STATUS_STANDBY = 620
-
-DDP_PORTS = {
-    TYPE_PS4: DDP_PORT_PS4,
-    TYPE_PS5: DDP_PORT_PS5,
-}
 
 
 class RPDevice:
     """Represents a Remote Play device."""
 
-    def __init__(self, host, protocol, direct=False, max_polls=DEFAULT_POLL_COUNT):
+    def __init__(self, host, discovered=False, max_polls=DEFAULT_POLL_COUNT):
         self._host = host
-        self._direct = direct
+        self._discovered = discovered
+        self._max_polls = max_polls
         self._host_type = None
+        self._mac_address = None
         self._callback = None
-        self._protocol = protocol
         self._standby_start = 0
         self._poll_count = 0
-        self._max_polls = max_polls
         self._unreachable = False
         self._status = {}
         self._media_info = None
         self._image = None
+        self.session = None
+
+    def get_users(self, profiles=None, profile_path=None):
+        """Return Registered Users."""
+        if not self.mac_address:
+            _LOGGER.error("Device ID is unknown. Status needs to be updated.")
+            return []
+        users = get_users(self.mac_address, profiles, profile_path)
+        return users
 
     def set_unreachable(self, state: bool):
         """Set unreachable attribute."""
@@ -49,28 +54,18 @@ class RPDevice:
         """Set callback for status changes."""
         self._callback = callback
 
+    def get_status(self):
+        """Return status."""
+        status = get_status(self.host)
+        self.set_status(status)
+        return status
+
     def set_status(self, data):
         """Set status."""
-        # Device won't respond to polls right after standby
-        if self.polls_disabled:
-            elapsed = time.time() - self._standby_start
-            seconds = DEFAULT_STANDBY_DELAY - elapsed
-            _LOGGER.debug("Polls disabled for %s seconds", round(seconds, 2))
-            return
-
-        # Track polls that were never returned.
-        self._poll_count += 1
-
-        # Assume Device is not available.
-        if not data:
-            if self._poll_count > self.max_polls:
-                self._status = {}
-                if self.callback:
-                    self.callback()  # pylint: disable=not-callable
-            return
-
         if self.host_type is None:
             self._host_type = data.get("host-type")
+        if self.mac_address is None:
+            self._mac_address = data.get("host-id")
         self._poll_count = 0
         self._unreachable = False
         old_status = self.status
@@ -117,6 +112,26 @@ class RPDevice:
         except (asyncio.TimeoutError, ContentTypeError, SSLError):
             pass
 
+    async def connect(self, user, profiles=None, profile_path=None, **kwargs):
+        """Start session."""
+        if self.session and self.session.is_running:
+            _LOGGER.error("Device session already exists")
+            return
+        if not profiles:
+            profiles = get_profiles(profile_path)
+        users = self.get_users(profiles)
+        if user not in users:
+            _LOGGER.error("User: %s not valid", user)
+            return
+        profile = profiles[user]
+        self.session = SessionAsync(
+            self.host,
+            profile,
+            **kwargs,
+        )
+        success = await self.session.start()
+        return success
+
     @property
     def host(self) -> str:
         """Return host address."""
@@ -126,6 +141,11 @@ class RPDevice:
     def host_type(self) -> str:
         """Return Host Type."""
         return self._host_type
+
+    @property
+    def mac_address(self) -> str:
+        """Return Mac Address"""
+        return self._mac_address
 
     @property
     def remote_port(self) -> int:
@@ -162,9 +182,9 @@ class RPDevice:
         return self._status
 
     @property
-    def direct(self) -> bool:
-        """Return True if explicitly polling."""
-        return self._direct
+    def discovered(self) -> bool:
+        """Return True if discovered."""
+        return self._discovered
 
     @property
     def media_info(self) -> ResultItem:

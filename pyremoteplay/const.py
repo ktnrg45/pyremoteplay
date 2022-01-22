@@ -25,6 +25,8 @@ DDP_PORTS = {
     TYPE_PS5: DDP_PORT_PS5,
 }
 
+DEFAULT_STANDBY_DELAY = 50
+
 
 class Quality(IntEnum):
     """Enums for quality."""
