@@ -141,6 +141,18 @@ def format_regist_key(regist_key: str) -> bytes:
     return regist_key
 
 
+def get_devices(path=None) -> dict:
+    """Return dict of devices from profiles."""
+    devices = {}
+    profiles = get_profiles(path)
+    for _, data in profiles.items():
+        _device_data = data.get("hosts")
+        if not _device_data:
+            continue
+        devices.update(_device_data)
+    return devices
+
+
 def log_bytes(name: str, data: bytes):
     """Log bytes."""
     mod = inspect.getmodulename(inspect.stack()[1].filename)

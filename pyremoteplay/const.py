@@ -5,14 +5,25 @@ PROFILE_DIR = ".pyremoteplay"
 PROFILE_FILE = ".profile.json"
 OPTIONS_FILE = ".options.json"
 CONTROLS_FILE = ".controls.json"
-RP_PORT = 9295
+
 USER_AGENT = "remoteplay Windows"
 RP_VERSION = "10.0"
-DDP_PORT = 987
 OS_TYPE = "Win10.0.0"
 TYPE_PS4 = "PS4"
 TYPE_PS5 = "PS5"
 RP_CRYPT_SIZE = 16
+DEFAULT_POLL_COUNT = 5
+
+RP_PORT = 9295
+DDP_PORT_PS4 = 987
+DDP_PORT_PS5 = 9032
+UDP_PORT = 0
+DEFAULT_UDP_PORT = 9103
+BROADCAST_IP = "255.255.255.255"
+DDP_PORTS = {
+    TYPE_PS4: DDP_PORT_PS4,
+    TYPE_PS5: DDP_PORT_PS5,
+}
 
 
 class Quality(IntEnum):
