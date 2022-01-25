@@ -11,7 +11,7 @@ from collections import OrderedDict
 from .ddp import get_status
 from .oauth import prompt as oauth_prompt
 from .register import register
-from .session import Session, SessionAsync
+from .session import Session
 from .util import add_profile, add_regist_data, get_profiles, write_profiles
 
 NEW_PROFILE = "New Profile"
@@ -142,7 +142,7 @@ def cli(host: str, resolution: str, fps: str):
     if profiles:
         name = select_profile(profiles, True, False)
         profile = profiles[name]
-        session = SessionAsync(host, profile, resolution=resolution, fps=fps)
+        session = Session(host, profile, resolution=resolution, fps=fps)
         async_start(session, cb_curses)
     else:
         _LOGGER.info("No Profiles")

@@ -7,7 +7,7 @@ from PySide6 import QtCore, QtMultimedia, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 
 from pyremoteplay.av import AVReceiver
-from pyremoteplay.session import SessionAsync
+from pyremoteplay.session import Session
 from pyremoteplay.util import event_emitter
 
 from .joystick import JoystickWidget
@@ -106,7 +106,7 @@ class RPWorker(QtCore.QObject):
     ):
         """Setup session."""
         self.window = window
-        self.session = SessionAsync(
+        self.session = Session(
             host,
             profile,
             resolution=resolution,

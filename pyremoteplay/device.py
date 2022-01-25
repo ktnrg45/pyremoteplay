@@ -11,7 +11,7 @@ from pyps4_2ndscreen.media_art import async_search_ps_store, ResultItem
 
 from .const import DEFAULT_POLL_COUNT, DDP_PORTS, DEFAULT_STANDBY_DELAY
 from .ddp import async_get_status
-from .session import SessionAsync
+from .session import Session
 from .util import get_users, get_profiles
 
 _LOGGER = logging.getLogger(__name__)
@@ -124,7 +124,7 @@ class RPDevice:
             _LOGGER.error("User: %s not valid", user)
             return
         profile = profiles[user]
-        self.session = SessionAsync(
+        self.session = Session(
             self.host,
             profile,
             **kwargs,

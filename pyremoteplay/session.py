@@ -2,7 +2,6 @@
 import asyncio
 import logging
 import socket
-import threading
 import time
 from base64 import b64decode, b64encode
 from concurrent.futures import ThreadPoolExecutor
@@ -31,7 +30,7 @@ from .errors import RemotePlayError, RPErrorHandler
 from .feedback import Controller
 from .keys import SESSION_KEY_0, SESSION_KEY_1
 from .stream import RPStream
-from .util import format_regist_key, listener, log_bytes
+from .util import format_regist_key, log_bytes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -112,7 +111,7 @@ def _gen_did() -> bytes:
 
 
 class Session:
-    """Synchronous RP Session. Used as base. Deprecated. Use AsyncSession."""
+    """RP Session Async."""
 
     STATE_INIT = "init"
     STATE_READY = "ready"
@@ -135,6 +134,26 @@ class Session:
         KEYBOARD_TEXT_CHANGE_REQ = 0x23
         KEYBOARD_TEXT_CHANGE_RES = 0x24
         KEYBOARD_CLOSE_REQ = 0x25
+
+    class Protocol(asyncio.Protocol):
+        """Protocol for session."""
+
+        def __init__(self, session):
+            self.transport = None
+            self.session = session
+
+        def connection_made(self, transport):
+            """Callback for connection made."""
+            _LOGGER.debug("Connected")
+            self.transport = transport
+
+        def data_received(self, data):
+            """Callback for data received."""
+            self.session.handle(data)
+
+        def close(self):
+            """Close Transport."""
+            self.transport.close()
 
     def __repr__(self):
         return (
@@ -398,7 +417,7 @@ class Session:
 
     def send(self, data: bytes):
         """Send Data."""
-        self._sock.send(data)
+        self._protocol.transport.write(data)
         log_bytes("Session Send", data)
 
     def wakeup(self):
@@ -406,36 +425,36 @@ class Session:
         regist_key = format_regist_key(self._regist_key)
         ddp_wakeup(self.host, regist_key, host_type=self.type)
 
-    def start(self, wakeup=True, autostart=True) -> bool:
+    async def start(self, wakeup=True, autostart=True) -> bool:
         """Start Session/RP Session."""
-        self._ready_event = threading.Event()
-        self._stop_event = threading.Event()
-        self.receiver_started = threading.Event()
-        self.stream_ready = threading.Event()
-        status = self._check_host()
+        _LOGGER.info("Session Started")
+        self._ready_event = asyncio.Event()
+        self._stop_event = asyncio.Event()
+        self.receiver_started = asyncio.Event()
+        self.stream_ready = asyncio.Event()
+
+        _LOGGER.debug("Running Async")
+        status = await self.run_io(self._check_host)
         if not status[0]:
             self.error = f"Host @ {self._host} is not reachable."
             return False
         if not self._init_profile(status[2]):
             self.error = "Profile is not registered with host"
-            if not self._init_profile_kwargs(status[2]):
-                return False
+            return False
         if not status[1]:
             if wakeup:
-                self.wakeup()
+                await self.run_io(self.wakeup)
                 self.error = "Host is in Standby. Attempting to wakeup."
             return False
-        if not self.connect():
+        if not await self.run_io(self.connect):
             _LOGGER.error("Session Auth Failed")
             return False
         _LOGGER.info("Session Auth Success")
         self._state = Session.STATE_READY
-        self._worker = threading.Thread(
-            target=listener,
-            args=("Session", self._sock, self.handle, self._stop_event),
+        _, self._protocol = await self.loop.connect_accepted_socket(
+            lambda: Session.Protocol(self), self._sock
         )
-        self._worker.start()
-        self._ready_event.wait()
+        await self._ready_event.wait()
         if autostart:
             self.start_stream()
         return True
@@ -464,16 +483,34 @@ class Session:
         if not self.session_id:
             _LOGGER.error("Session ID not received")
             return
-        stop_event = self._stop_event if not test else threading.Event()
+        stop_event = self._stop_event if not test else asyncio.Event()
         cb_stop = self._cb_stop_test if test else None
         if not test and self.av_receiver:
             self.av_handler.add_receiver(self.av_receiver)
             _LOGGER.info("Waiting for Receiver...")
-            self.receiver_started.wait()
+            self.loop.create_task(self.receiver_started.wait())
         self._stream = RPStream(
             self, stop_event, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt
         )
-        self._stream.connect()
+        self.loop.create_task(self._stream.async_connect())
+        if test:
+            self.loop.create_task(self.wait_for_test(stop_event))
+        else:
+            self._tasks.append(
+                self.loop.create_task(self.run_io(self.controller.worker))
+            )
+
+    async def wait_for_test(self, stop_event):
+        """Wait for network test to complete. Uses defaults if timed out."""
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=3.0)
+        except asyncio.exceptions.TimeoutError:
+            _LOGGER.warning("Network Test timed out. Using Default MTU and RTT")
+            self._stream.stop()
+
+    def init_av_handler(self):
+        """Run AV Handler."""
+        self._tasks.append(self.loop.create_task(self.run_io(self.av_handler.worker)))
 
     def stop(self):
         """Stop Stream."""
@@ -481,8 +518,25 @@ class Session:
             _LOGGER.debug("Session already stopping")
             return
         _LOGGER.info("Session Received Stop Signal")
-        if self._stop_event:
-            self._stop_event.set()
+        if self._stream:
+            self._stream.stop()
+        self._stop_event.set()
+        if self._tasks:
+            for task in self._tasks:
+                task.cancel()
+        self._thread_executor.shutdown()
+        if self._protocol:
+            self._protocol.close()
+
+    async def run_io(self, func, *args, **kwargs):
+        """Run blocking function in executor."""
+        return await self.loop.run_in_executor(
+            self._thread_executor, partial(func, *args, **kwargs)
+        )
+
+    def sync_run_io(self, func, *args, **kwargs):
+        """Run blocking function in executor. Called from sync method."""
+        asyncio.ensure_future(self.run_io(func, *args, **kwargs))
 
     @property
     def host(self) -> str:
@@ -546,147 +600,3 @@ class Session:
             TYPE_PS5: "h265",
         }
         return formats.get(self.type)
-
-
-class SessionAsync(Session):
-    """Async Session."""
-
-    class Protocol(asyncio.Protocol):
-        """Protocol for session."""
-
-        def __init__(self, session):
-            self.transport = None
-            self.session = session
-
-        def connection_made(self, transport):
-            """Callback for connection made."""
-            _LOGGER.debug("Connected")
-            self.transport = transport
-
-        def data_received(self, data):
-            """Callback for data received."""
-            self.session.handle(data)
-
-        def close(self):
-            """Close Transport."""
-            self.transport.close()
-
-    def __init__(
-        self,
-        host: str,
-        profile: dict,
-        resolution="720p",
-        fps="high",
-        av_receiver=None,
-        use_hw=False,
-        quality="default",
-        loop=None,
-        **kwargs,
-    ):
-        super().__init__(
-            host, profile, resolution, fps, av_receiver, use_hw, quality, **kwargs
-        )
-        self.loop = asyncio.get_event_loop() if loop is None else loop
-        self._protocol = None
-        self._transport = None
-        self._tasks = []
-        self._thread_executor = ThreadPoolExecutor()
-
-    async def run_io(self, func, *args, **kwargs):
-        """Run blocking function in executor."""
-        return await self.loop.run_in_executor(
-            self._thread_executor, partial(func, *args, **kwargs)
-        )
-
-    def sync_run_io(self, func, *args, **kwargs):
-        """Run blocking function in executor. Called from sync method."""
-        asyncio.ensure_future(self.run_io(func, *args, **kwargs))
-
-    async def start(self, wakeup=True, autostart=True) -> bool:
-        """Start Session/RP Session."""
-        _LOGGER.info("Session Started")
-        self._ready_event = asyncio.Event()
-        self._stop_event = asyncio.Event()
-        self.receiver_started = asyncio.Event()
-        self.stream_ready = asyncio.Event()
-
-        _LOGGER.debug("Running Async")
-        status = await self.run_io(self._check_host)
-        if not status[0]:
-            self.error = f"Host @ {self._host} is not reachable."
-            return False
-        if not self._init_profile(status[2]):
-            self.error = "Profile is not registered with host"
-            return False
-        if not status[1]:
-            if wakeup:
-                await self.run_io(self.wakeup)
-                self.error = "Host is in Standby. Attempting to wakeup."
-            return False
-        if not await self.run_io(self.connect):
-            _LOGGER.error("Session Auth Failed")
-            return False
-        _LOGGER.info("Session Auth Success")
-        self._state = Session.STATE_READY
-        _, self._protocol = await self.loop.connect_accepted_socket(
-            lambda: SessionAsync.Protocol(self), self._sock
-        )
-        await self._ready_event.wait()
-        if autostart:
-            self.start_stream()
-        return True
-
-    def send(self, data: bytes):
-        """Send Data."""
-        self._protocol.transport.write(data)
-        log_bytes("Session Send", data)
-
-    def start_stream(self, test=True, mtu=None, rtt=None):
-        """Start Stream."""
-        if not self.session_id:
-            _LOGGER.error("Session ID not received")
-            return
-        stop_event = self._stop_event if not test else asyncio.Event()
-        cb_stop = self._cb_stop_test if test else None
-        if not test and self.av_receiver:
-            self.av_handler.add_receiver(self.av_receiver)
-            _LOGGER.info("Waiting for Receiver...")
-            self.loop.create_task(self.receiver_started.wait())
-        self._stream = RPStream(
-            self, stop_event, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt
-        )
-        self.loop.create_task(self._stream.async_connect())
-        if test:
-            self.loop.create_task(self.wait_for_test(stop_event))
-        else:
-            self._tasks.append(
-                self.loop.create_task(self.run_io(self.controller.worker))
-            )
-
-    async def wait_for_test(self, stop_event):
-        """Wait for network test to complete. Uses defaults if timed out."""
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=3.0)
-        except asyncio.exceptions.TimeoutError:
-            _LOGGER.warning("Network Test timed out. Using Default MTU and RTT")
-            self._stream.stop()
-
-    def init_av_handler(self):
-        """Run AV Handler."""
-        self._tasks.append(self.loop.create_task(self.run_io(self.av_handler.worker)))
-
-    def stop(self):
-        """Stop Stream."""
-        if self.state == Session.STATE_STOP:
-            _LOGGER.debug("Session already stopping")
-            return
-        _LOGGER.info("Session Received Stop Signal")
-        if self._stream:
-            self._stream.stop()
-        self._stop_event.set()
-        if self._tasks:
-            for task in self._tasks:
-                task.cancel()
-        self._thread_executor.shutdown()
-        if self._protocol:
-            self._protocol.close()
