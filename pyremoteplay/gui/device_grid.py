@@ -2,7 +2,7 @@
 """Device Grid Widget."""
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
-from pyremoteplay.ddp import DEFAULT_STANDBY_DELAY
+from pyremoteplay.const import DEFAULT_STANDBY_DELAY
 
 
 class DeviceButton(QtWidgets.QPushButton):

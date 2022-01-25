@@ -152,6 +152,7 @@ class Session:
         av_receiver=None,
         use_hw=False,
         quality="default",
+        loop=None,
         **kwargs,
     ):
         self._host = host
@@ -181,6 +182,12 @@ class Session:
         self.av_receiver = av_receiver(self) if av_receiver is not None else None
         self.av_handler = AVHandler(self)
         self.controller = Controller(self)
+
+        self.loop = asyncio.get_event_loop() if loop is None else loop
+        self._protocol = None
+        self._transport = None
+        self._tasks = []
+        self._thread_executor = ThreadPoolExecutor()
 
         self._ready_event = None
         self._stop_event = None
@@ -644,15 +651,17 @@ class SessionAsync(Session):
         if not test and self.av_receiver:
             self.av_handler.add_receiver(self.av_receiver)
             _LOGGER.info("Waiting for Receiver...")
-            asyncio.create_task(self.receiver_started.wait())
+            self.loop.create_task(self.receiver_started.wait())
         self._stream = RPStream(
             self, stop_event, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt
         )
-        asyncio.create_task(self._stream.async_connect())
+        self.loop.create_task(self._stream.async_connect())
         if test:
-            asyncio.create_task(self.wait_for_test(stop_event))
+            self.loop.create_task(self.wait_for_test(stop_event))
         else:
-            self._tasks.append(asyncio.create_task(self.run_io(self.controller.worker)))
+            self._tasks.append(
+                self.loop.create_task(self.run_io(self.controller.worker))
+            )
 
     async def wait_for_test(self, stop_event):
         """Wait for network test to complete. Uses defaults if timed out."""
@@ -664,7 +673,7 @@ class SessionAsync(Session):
 
     def init_av_handler(self):
         """Run AV Handler."""
-        self._tasks.append(asyncio.create_task(self.run_io(self.av_handler.worker)))
+        self._tasks.append(self.loop.create_task(self.run_io(self.av_handler.worker)))
 
     def stop(self):
         """Stop Stream."""

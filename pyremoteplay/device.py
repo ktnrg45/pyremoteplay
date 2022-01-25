@@ -10,7 +10,7 @@ from aiohttp.client_exceptions import ContentTypeError
 from pyps4_2ndscreen.media_art import async_search_ps_store, ResultItem
 
 from .const import DEFAULT_POLL_COUNT, DDP_PORTS, DEFAULT_STANDBY_DELAY
-from .ddp import get_status
+from .ddp import async_get_status
 from .session import SessionAsync
 from .util import get_users, get_profiles
 
@@ -54,9 +54,9 @@ class RPDevice:
         """Set callback for status changes."""
         self._callback = callback
 
-    def get_status(self):
+    async def get_status(self):
         """Return status."""
-        status = get_status(self.host)
+        status = async_get_status(self.host)
         self.set_status(status)
         return status
 

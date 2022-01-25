@@ -1,4 +1,5 @@
 """Device Discovery Protocol for RP Hosts."""
+import asyncio
 import logging
 import re
 import select
@@ -6,8 +7,16 @@ import socket
 import time
 from typing import Optional
 
+import asyncudp
 
-from .const import TYPE_PS4, UDP_PORT, DDP_PORTS, DEFAULT_UDP_PORT, BROADCAST_IP
+
+from .const import (
+    TYPE_PS4,
+    UDP_PORT,
+    DDP_PORTS,
+    DEFAULT_UDP_PORT,
+    BROADCAST_IP,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,8 +27,6 @@ DDP_TYPE_SEARCH = "SRCH"
 DDP_TYPE_LAUNCH = "LAUNCH"
 DDP_TYPE_WAKEUP = "WAKEUP"
 DDP_MSG_TYPES = (DDP_TYPE_SEARCH, DDP_TYPE_LAUNCH, DDP_TYPE_WAKEUP)
-
-DEFAULT_STANDBY_DELAY = 50
 
 STATUS_OK = 200
 STATUS_STANDBY = 620
@@ -244,3 +251,90 @@ def launch(host, credential, host_type=TYPE_PS4, sock=None):
     """Launch."""
     msg = get_ddp_launch_message(credential)
     _send_msg(host, msg, host_type=host_type, sock=sock)
+
+
+async def _async_get_socket(host=BROADCAST_IP, port=DEFAULT_UDP_PORT):
+    try:
+        sock = await asyncudp.create_socket(local_addr=(UDP_IP, port))
+    except OSError:
+        _LOGGER.warning("Port %s in use. Using random port", port)
+        sock = await asyncudp.create_socket(local_addr=(UDP_IP, UDP_PORT))
+    if host == BROADCAST_IP:
+        # pylint: disable=protected-access
+        sock._transport.get_extra_info("socket").setsockopt(
+            socket.SOL_SOCKET, socket.SO_BROADCAST, 1
+        )
+    return sock
+
+
+async def _async_send_msg(sock, host, msg, host_type=None):
+    """Send a ddp message."""
+    host_types = [host_type] if host_type else DDP_PORTS.keys()
+    for host_type in host_types:
+        port = DDP_PORTS.get(host_type)
+        sock.sendto(msg.encode(), (host, port))
+
+
+async def async_search(
+    host=BROADCAST_IP, port=DEFAULT_UDP_PORT, host_type=None, sock=None, timeout=3
+) -> list:
+    """Return list of discovered devices."""
+    device_list = []
+    msg = get_ddp_search_message()
+    start = time.time()
+
+    if sock is None:
+        sock = await _async_get_socket(host, port)
+    _LOGGER.debug("Sending search message")
+    await _async_send_msg(sock, host, msg, host_type)
+    while time.time() - start < timeout:
+        data = addr = response = None
+        remaining = timeout - (time.time() - start)
+        try:
+            response = await asyncio.wait_for(sock.recvfrom(), remaining)
+        except ConnectionResetError:
+            continue
+        except asyncio.TimeoutError:
+            pass
+        if response is not None:
+            data, addr = response
+        if data is not None and addr is not None:
+            data = parse_ddp_response(data.decode("utf-8"))
+            if data not in device_list and data:
+                data["host-ip"] = addr[0]
+                device_list.append(data)
+            if host != BROADCAST_IP:
+                break
+        await asyncio.sleep(0)
+    sock.close()
+    return device_list
+
+
+async def async_get_status(host, port=DEFAULT_UDP_PORT, host_type=None, sock=None):
+    """Return status dict."""
+    device_list = await search(host=host, port=port, host_type=host_type, sock=sock)
+    if not device_list:
+        return None
+    return device_list[0]
+
+
+async def async_wakeup(
+    host, credential, port=DEFAULT_UDP_PORT, host_type=None, sock=None
+):
+    """Wakeup Host."""
+    msg = get_ddp_wake_message(credential)
+    if sock is None:
+        sock = await _async_get_socket(host, port)
+    await _async_send_msg(sock, host, msg, host_type)
+    sock.close()
+
+
+async def async_launch(
+    host, credential, port=DEFAULT_UDP_PORT, host_type=None, sock=None
+):
+    """Launch."""
+    msg = get_ddp_launch_message(credential)
+    if sock is None:
+        sock = await _async_get_socket(host, port)
+    await _async_send_msg(sock, host, msg, host_type)
+    sock.close()
