@@ -312,7 +312,9 @@ async def async_search(
 
 async def async_get_status(host, port=DEFAULT_UDP_PORT, host_type=None, sock=None):
     """Return status dict."""
-    device_list = await search(host=host, port=port, host_type=host_type, sock=sock)
+    device_list = await async_search(
+        host=host, port=port, host_type=host_type, sock=sock
+    )
     if not device_list:
         return None
     return device_list[0]

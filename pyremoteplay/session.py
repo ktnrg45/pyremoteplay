@@ -25,7 +25,7 @@ from .const import (
     Resolution,
 )
 from .crypt import SessionCipher
-from .ddp import get_status, wakeup as ddp_wakeup
+from .ddp import async_get_status, async_wakeup
 from .errors import RemotePlayError, RPErrorHandler
 from .feedback import Controller
 from .keys import SESSION_KEY_0, SESSION_KEY_1
@@ -243,13 +243,9 @@ class Session:
         self._rp_key = bytes.fromhex(self._regist_data["RP-Key"])
         return True
 
-    def _get_status(self) -> dict:
-        """Return dict of device status."""
-        return get_status(self._host, host_type=self.type)
-
-    def _check_host(self) -> tuple:
+    async def _check_host(self) -> tuple:
         """Return True, True if host is available."""
-        device = self._get_status()
+        device = await async_get_status(self._host, host_type=self.type)
         if not device:
             _LOGGER.error("Could not detect host at: %s", self._host)
             return (False, False, None)
@@ -420,10 +416,10 @@ class Session:
         self._protocol.transport.write(data)
         log_bytes("Session Send", data)
 
-    def wakeup(self):
+    async def wakeup(self):
         """Wakeup Host."""
         regist_key = format_regist_key(self._regist_key)
-        ddp_wakeup(self.host, regist_key, host_type=self.type)
+        await async_wakeup(self.host, regist_key, host_type=self.type)
 
     async def start(self, wakeup=True, autostart=True) -> bool:
         """Start Session/RP Session."""
@@ -434,7 +430,7 @@ class Session:
         self.stream_ready = asyncio.Event()
 
         _LOGGER.debug("Running Async")
-        status = await self.run_io(self._check_host)
+        status = await self._check_host()
         if not status[0]:
             self.error = f"Host @ {self._host} is not reachable."
             return False
@@ -443,7 +439,7 @@ class Session:
             return False
         if not status[1]:
             if wakeup:
-                await self.run_io(self.wakeup)
+                await self.wakeup()
                 self.error = "Host is in Standby. Attempting to wakeup."
             return False
         if not await self.run_io(self.connect):
