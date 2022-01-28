@@ -20,7 +20,7 @@ class DeviceButton(QtWidgets.QPushButton):
         self.status = device.status
         self.info_show = False
         self.menu = QtWidgets.QMenu(self)
-        self.clicked.connect(lambda: self.main_window.connect_host(self.status))
+        self.clicked.connect(lambda: self.main_window.connect_host(self.device))
         self.clicked.connect(lambda: self.setEnabled(False))
         self.text_color = self.COLOR_DARK
         self.bg_color = self.COLOR_BG
@@ -41,7 +41,7 @@ class DeviceButton(QtWidgets.QPushButton):
         self.action_power.triggered.connect(self._toggle_power)
 
     def _set_style(self):
-        if self.status["status_code"] == 200:
+        if self.status["status-code"] == 200:
             self.border_color = ("#6EA8FE", "#0D6EFD")
         else:
             self.border_color = ("#FEB272", "#FFC107")
@@ -116,7 +116,7 @@ class DeviceButton(QtWidgets.QPushButton):
             device_type = "PlayStation 5"
         app = self.status.get("running-app-name")
         if not app:
-            app = "Idle" if self.status["status_code"] == 200 else "Standby"
+            app = "Idle" if self.status["status-code"] == 200 else "Standby"
         self.main_text = f"{self.status['host-name']}\n" f"{device_type}\n\n" f"{app}"
         if not self.info_show:
             self.setText(self.main_text)
@@ -138,10 +138,10 @@ class DeviceButton(QtWidgets.QPushButton):
         self.info_show = not self.info_show
 
     def _toggle_power(self):
-        if self.status["status_code"] == 200:
-            self.main_window.standby_host(self.status)
+        if self.status["status-code"] == 200:
+            self.main_window.standby_host(self.device)
         else:
-            self.main_window.wakeup_host(self.status)
+            self.main_window.wakeup_host(self.device)
 
     def _enable_toggle_power(self):
         self.action_power.setDisabled(False)
@@ -150,8 +150,8 @@ class DeviceButton(QtWidgets.QPushButton):
         """Callback for when state is updated."""
         cur_id = self.status.get("running-app-titleid")
         new_id = state.get("running-app-titleid")
-        cur_status = self.status.get("status_code")
-        new_status = state.get("status_code")
+        cur_status = self.status.get("status-code")
+        new_status = state.get("status-code")
         self.status = state
         self._get_info()
         self._get_text()
@@ -169,7 +169,7 @@ class DeviceButton(QtWidgets.QPushButton):
         """Context Menu Event."""
         text = "View Info" if not self.info_show else "Hide Info"
         self.action_info.setText(text)
-        if self.status["status_code"] == 200:
+        if self.status["status-code"] == 200:
             self.action_power.setText("Standby")
         else:
             self.action_power.setText("Wakeup")

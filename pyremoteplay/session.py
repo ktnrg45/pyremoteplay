@@ -166,12 +166,12 @@ class Session:
         self,
         host: str,
         profile: dict,
+        av_receiver=None,
+        loop=None,
         resolution="720p",
         fps="high",
-        av_receiver=None,
         use_hw=False,
         quality="default",
-        loop=None,
         **kwargs,
     ):
         self._host = host
@@ -249,7 +249,7 @@ class Session:
         if not device:
             _LOGGER.error("Could not detect host at: %s", self._host)
             return (False, False, None)
-        if device.get("status_code") != 200:
+        if device.get("status-code") != 200:
             _LOGGER.info("Host: %s is not on", self._host)
             return (True, False, device)
         return (True, True, device)
@@ -268,6 +268,7 @@ class Session:
         """Return response. Send Auth Request."""
         response = None
         url = self._get_rp_url(request_type)
+        # Using requests as it is easier to get the socket later.
         response = requests.get(url, headers=headers, stream=stream, timeout=3)
         if response is None:
             _LOGGER.error("Timeout: Auth")
@@ -509,7 +510,7 @@ class Session:
         self._tasks.append(self.loop.create_task(self.run_io(self.av_handler.worker)))
 
     def stop(self):
-        """Stop Stream."""
+        """Stop Session."""
         if self.state == Session.STATE_STOP:
             _LOGGER.debug("Session already stopping")
             return
@@ -566,7 +567,7 @@ class Session:
     @property
     def is_running(self) -> bool:
         """Return True if running."""
-        return self.state != Session.STATE_STOP
+        return self.state == Session.STATE_READY
 
     @property
     def is_stopped(self) -> bool:

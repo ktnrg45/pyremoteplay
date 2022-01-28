@@ -10,9 +10,9 @@ from aiohttp.client_exceptions import ContentTypeError
 from pyps4_2ndscreen.media_art import async_search_ps_store, ResultItem
 
 from .const import DEFAULT_POLL_COUNT, DDP_PORTS, DEFAULT_STANDBY_DELAY
-from .ddp import async_get_status
+from .ddp import async_get_status, wakeup
 from .session import Session
-from .util import get_users, get_profiles
+from .util import get_users, get_profiles, format_regist_key
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class RPDevice:
         self._status = {}
         self._media_info = None
         self._image = None
-        self.session = None
+        self._session = None
 
     def get_users(self, profiles=None, profile_path=None):
         """Return Registered Users."""
@@ -45,6 +45,16 @@ class RPDevice:
             return []
         users = get_users(self.mac_address, profiles, profile_path)
         return users
+
+    def get_profile(self, user: str, profiles=None, profile_path=None):
+        """Return valid profile for user."""
+        if not profiles:
+            profiles = get_profiles(profile_path)
+        users = self.get_users(profiles)
+        if user not in users:
+            _LOGGER.error("User: %s not valid", user)
+            return None
+        return profiles.get(user)
 
     def set_unreachable(self, state: bool):
         """Set unreachable attribute."""
@@ -83,8 +93,8 @@ class RPDevice:
             # Status changed from OK to Standby/Turned Off
             if (
                 old_status is not None
-                and old_status.get("status_code") == STATUS_OK
-                and self.status.get("status_code") == STATUS_STANDBY
+                and old_status.get("status-code") == STATUS_OK
+                and self.status.get("status-code") == STATUS_STANDBY
             ):
                 self._standby_start = time.time()
                 _LOGGER.debug(
@@ -112,25 +122,71 @@ class RPDevice:
         except (asyncio.TimeoutError, ContentTypeError, SSLError):
             pass
 
-    async def connect(self, user, profiles=None, profile_path=None, **kwargs):
-        """Start session."""
-        if self.session and self.session.is_running:
-            _LOGGER.error("Device session already exists")
-            return
-        if not profiles:
-            profiles = get_profiles(profile_path)
-        users = self.get_users(profiles)
-        if user not in users:
-            _LOGGER.error("User: %s not valid", user)
-            return
-        profile = profiles[user]
-        self.session = Session(
+    def create_session(
+        self, user, profiles=None, profile_path=None, **kwargs
+    ) -> Session:
+        """Return initialized session."""
+        if self.session:
+            if not self.session.is_stopped:
+                _LOGGER.error("Device session already exists. Disconnect first.")
+                return
+            self.disconnect()
+        profile = self.get_profile(user, profiles, profile_path)
+        if not profile:
+            _LOGGER.error("Could not find valid user profile")
+            return None
+        self._session = Session(
             self.host,
             profile,
             **kwargs,
         )
+        return self._session
+
+    async def connect(self):
+        """Connect and start session."""
+        if self.connected:
+            _LOGGER.error("Device session already running")
+            return
         success = await self.session.start()
         return success
+
+    def disconnect(self):
+        """Disconnect and stop session."""
+        if self.session:
+            if self.connected:
+                self.session.stop()
+            del self._session
+        self._session = None
+
+    async def standby(self, user="", profiles=None, profile_path=None) -> bool:
+        """Place Device in standby. Return True if successful."""
+        if not self.is_on:
+            _LOGGER.error("Device is not on.")
+            return False
+
+        if self.session is None:
+            if not user:
+                _LOGGER.error("User needed")
+                return False
+            await self.create_session(user, profiles, profile_path)
+        if not self.connected:
+            if not await self.connect():
+                _LOGGER.error("Error connecting")
+                return False
+            try:
+                await asyncio.wait_for(self.session.stream_ready.wait(), 5)
+            except asyncio.TimeoutError:
+                _LOGGER.error("Timed out waiting for stream to start")
+                return False
+        self.session.standby()
+        return True
+
+    def wakeup(self, user: str, profiles=None, profile_path=None):
+        """Send Wakeup."""
+        profile = self.get_profile(user, profiles, profile_path)
+        regist_key = profile["hosts"][self.mac_address]["data"]["RegistKey"]
+        regist_key = format_regist_key(regist_key)
+        wakeup(self.host, regist_key, host_type=self.host_type)
 
     @property
     def host(self) -> str:
@@ -182,6 +238,13 @@ class RPDevice:
         return self._status
 
     @property
+    def is_on(self) -> bool:
+        """Return True if device is on."""
+        if self.status.get("status-code") == 200:
+            return True
+        return False
+
+    @property
     def discovered(self) -> bool:
         """Return True if discovered."""
         return self._discovered
@@ -195,3 +258,15 @@ class RPDevice:
     def image(self) -> bytes:
         """Return raw media image."""
         return self._image
+
+    @property
+    def session(self) -> Session:
+        """Return Session."""
+        return self._session
+
+    @property
+    def connected(self) -> bool:
+        """Return True if session connected."""
+        if self.session is not None and self.session.is_running:
+            return True
+        return False

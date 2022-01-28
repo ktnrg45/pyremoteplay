@@ -138,7 +138,7 @@ class MainWindow(QtWidgets.QWidget):
         devices = self.async_handler.protocol.devices
         self.device_grid.create_grid(devices)
 
-    def check_profile(self, name, host):
+    def check_profile(self, name, device):
         """Return profile if profile is registered."""
         profile = self.options.profiles.get(name)
         if not profile:
@@ -148,7 +148,7 @@ class MainWindow(QtWidgets.QWidget):
                 "Click 'Options' -> 'Add Account' to add PSN Account.",
             )
             return None
-        if host["host-id"] not in profile["hosts"]:
+        if device.mac_address not in profile["hosts"]:
             text = (
                 f"PSN account: {name} has not been registered with this device. "
                 "Click 'Ok' to register."
@@ -158,20 +158,20 @@ class MainWindow(QtWidgets.QWidget):
                 "Needs Registration",
                 text,
                 "info",
-                callback=lambda: self.options.register(host, name),
+                callback=lambda: self.options.register(device.status, name),
                 escape=True,
             )
             return None
         return profile
 
-    def standby_host(self, host):
+    def standby_host(self, device):
         """Place host in standby mode."""
-        name = self.options.options.get("profile")
-        profile = self.check_profile(name, host)
+        user = self.options.options.get("profile")
+        options = self.options.options
+        profile = self.check_profile(user, device)
         if not profile:
             return
-        ip_address = host["host-ip"]
-        self.rp_worker.setup(None, ip_address, profile)
+        self.rp_worker.setup(None, device, user, options)
         self.rp_worker.run(standby=True)
 
     def standby_callback(self, host):
@@ -181,56 +181,37 @@ class MainWindow(QtWidgets.QWidget):
         else:
             message(self, "Standby Success", f"Set device at {host} to Standby", "info")
 
-    def wakeup_host(self, host):
+    def wakeup_host(self, device):
         """Wakeup Host."""
-        name = self.options.options.get("profile")
-        profile = self.check_profile(name, host)
+        user = self.options.options.get("profile")
+        profile = self.check_profile(user, device)
         if not profile:
             return
-        ip_address = host["host-ip"]
-        mac_address = host["host-id"]
-        regist_key = profile["hosts"][mac_address]["data"]["RegistKey"]
-        regist_key = format_regist_key(regist_key)
-        wakeup(ip_address, regist_key, host_type=host["host-type"])
+        device.wakeup(user)
         message(
             self,
             "Wakeup Sent",
-            f"Sent Wakeup command to device at {ip_address}",
+            f"Sent Wakeup command to device at {device.host}",
             "info",
         )
 
-    def connect_host(self, host):
+    def connect_host(self, device):
         """Connect to Host."""
-        self.device_grid.stop_update()
         options = self.options.options
-        name = options.get("profile")
-        profile = self.check_profile(name, host)
+        user = options.get("profile")
+        profile = self.check_profile(user, device)
         if not profile:
             return
-        ip_address = host["host-ip"]
-        resolution = options["resolution"]
-        fps = options["fps"]
-        show_fps = options["show_fps"]
-        fullscreen = options["fullscreen"]
-        use_hw = options["use_hw"]
-        quality = options["quality"]
-        use_opengl = options["use_opengl"]
+        self.device_grid.stop_update()
         audio_device = self.options.get_audio_device()
         self._stream_window = StreamWindow(self)
         self._stream_window.start(
-            ip_address,
-            name,
-            profile,
-            fps=fps,
-            resolution=resolution,
-            show_fps=show_fps,
-            fullscreen=fullscreen,
+            device,
+            user,
+            options,
+            audio_device=audio_device,
             input_map=self.controls.get_map(),
             input_options=self.controls.get_options(),
-            use_hw=use_hw,
-            quality=quality,
-            audio_device=audio_device,
-            use_opengl=use_opengl,
         )
         self._app.setActiveWindow(self._stream_window)
 

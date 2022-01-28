@@ -66,7 +66,7 @@ def parse_ddp_response(rsp):
         if not line:
             continue
         if re_status.match(line):
-            data["status_code"] = int(re_status.match(line).group("code"))
+            data["status-code"] = int(re_status.match(line).group("code"))
             data["status"] = re_status.match(line).group("status")
         else:
             values = line.split(":")

@@ -95,7 +95,7 @@ def register_profile(host: str):
     if not status:
         print("Host is not reachable")
         return
-    if status.get("status_code") != 200:
+    if status.get("status-code") != 200:
         return
 
     profiles = get_profiles()

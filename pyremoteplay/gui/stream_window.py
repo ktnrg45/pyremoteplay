@@ -5,9 +5,10 @@ from collections import deque
 
 from PySide6 import QtCore, QtMultimedia, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
-
+from PySide6.QtMultimedia import QAudioDevice
 from pyremoteplay.av import AVReceiver
 from pyremoteplay.session import Session
+from pyremoteplay.device import RPDevice
 from pyremoteplay.util import event_emitter
 
 from .joystick import JoystickWidget
@@ -19,7 +20,7 @@ from .video import VideoWidget, YUVGLWidget
 class QtReceiver(AVReceiver):
     """AV Receiver for QT."""
 
-    def __init__(self, session):
+    def __init__(self, session: Session):
         super().__init__(session)
         self.video_signal = None
         self.audio_signal = None
@@ -63,8 +64,8 @@ class RPWorker(QtCore.QObject):
         super().__init__()
         self.main_window = main_window
         self.window = None
+        self.device = None
         self.session = None
-        self.thread = None
         self.error = ""
         self.standby_done.connect(self.standby_finished)
         event_emitter.on("stop", self.stop)
@@ -91,59 +92,58 @@ class RPWorker(QtCore.QObject):
         if standby:
             self.standby_done.emit()
         self.session = None
+        self.device = None
         self.window = None
         self.finished.emit()
 
     def setup(
         self,
         window,
-        host,
-        profile,
-        resolution="720p",
-        fps=60,
-        use_hw=False,
-        quality="default",
+        device: RPDevice,
+        user: str,
+        options: dict,
     ):
         """Setup session."""
         self.window = window
-        self.session = Session(
-            host,
-            profile,
-            resolution=resolution,
-            fps=fps,
+        self.device = device
+        self.session = self.device.create_session(
+            user,
+            resolution=options.get("resolution"),
+            fps=options.get("fps"),
             av_receiver=QtReceiver,
-            use_hw=use_hw,
-            quality=quality,
+            use_hw=options.get("use_hw"),
+            quality=options.get("quality"),
         )
 
     async def start(self, standby=False):
         """Start Session."""
         print("Session Start")
-        self.session.av_receiver.rgb = False if self.window.use_opengl else True
-        status = await self.session.start()
-        if not status:
+        if self.window:
+            self.session.av_receiver.rgb = False if self.window.use_opengl else True
+
+        started = await self.device.connect()
+
+        if not started:
             print("Session Failed to Start")
-            # message(None, "Error", self.session.error)
             self.stop()
             return
-        else:
-            self.session.av_receiver.set_signals(
-                self.window.video_frame, self.window.audio_frame
-            )
-            self.window.audio_frame.connect(self.window.next_audio_frame)
-            self.window.video_frame.connect(self.window.video_output.next_video_frame)
-            self.started.emit()
+
         if standby:
-            await self.session.stream_ready.wait()
-            self.send_standby()
-        elif self.session.stop_event:
+            result = await self.device.standby()
+            print("Standby Success", result)
+            self.stop(standby=True)
+            return
+
+        self.session.av_receiver.set_signals(
+            self.window.video_frame, self.window.audio_frame
+        )
+        self.window.audio_frame.connect(self.window.next_audio_frame)
+        self.window.video_frame.connect(self.window.video_output.next_video_frame)
+        self.started.emit()
+
+        if self.session.stop_event:
             await self.session.stop_event.wait()
             print("Session Finished")
-
-    def send_standby(self):
-        """Send standby."""
-        self.session.standby()
-        self.stop(standby=True)
 
     def standby_finished(self):
         """Callback when standby command sent."""
@@ -226,33 +226,27 @@ class StreamWindow(QtWidgets.QWidget):
 
     def start(
         self,
-        host,
-        name,
-        profile,
-        resolution="720p",
-        fps=60,
-        show_fps=False,
-        fullscreen=False,
-        input_map=None,
-        input_options=None,
-        use_hw=False,
-        quality="default",
-        audio_device=None,
-        use_opengl=False,
+        device: RPDevice,
+        user: str,
+        options: dict,
+        audio_device: QAudioDevice = None,
+        input_map: dict = None,
+        input_options: dict = None,
     ):
         """Start Session."""
+        print(audio_device)
         self.center_text.show()
         self.input_options = input_options
         self.mapping = (
             ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
         )
-        self.fps = fps
-        self.fullscreen = fullscreen
-        self.use_opengl = use_opengl
-        self.show_fps = show_fps
+        self.fps = options.get("fps")
+        self.fullscreen = options.get("fullscreen")
+        self.use_opengl = options.get("use_opengl")
+        self.show_fps = options.get("show_fps")
         self.audio_device = audio_device
-        self.setWindowTitle(f"Session {name} @ {host}")
-        self.rp_worker.setup(self, host, profile, resolution, fps, use_hw, quality)
+        self.setWindowTitle(f"Session {user} @ {device.host}")
+        self.rp_worker.setup(self, device, user, options)
         self.resize(
             self.rp_worker.session.resolution["width"],
             self.rp_worker.session.resolution["height"],
