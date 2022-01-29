@@ -3,6 +3,7 @@
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from pyremoteplay.const import DEFAULT_STANDBY_DELAY
+from pyremoteplay.device import STATUS_OK
 
 
 class DeviceButton(QtWidgets.QPushButton):
@@ -41,7 +42,7 @@ class DeviceButton(QtWidgets.QPushButton):
         self.action_power.triggered.connect(self._toggle_power)
 
     def _set_style(self):
-        if self.status["status-code"] == 200:
+        if self.device.is_on:
             self.border_color = ("#6EA8FE", "#0D6EFD")
         else:
             self.border_color = ("#FEB272", "#FFC107")
@@ -63,7 +64,7 @@ class DeviceButton(QtWidgets.QPushButton):
 
     def _set_image(self):
         self.bg_color = self.COLOR_BG
-        title_id = self.status.get("running-app-titleid")
+        title_id = self.device.app_id
         if title_id:
             image = self.device.image
             if image is not None:
@@ -109,36 +110,34 @@ class DeviceButton(QtWidgets.QPushButton):
         return luminance
 
     def _get_text(self):
-        device_type = self.status["host-type"]
-        if self.status["host-type"] == "PS4":
+        if self.device.host_type == "PS4":
             device_type = "PlayStation 4"
-        elif self.status["host-type"] == "PS5":
+        elif self.device.host_type == "PS5":
             device_type = "PlayStation 5"
-        app = self.status.get("running-app-name")
+        app = self.device.app_name
         if not app:
-            app = "Idle" if self.status["status-code"] == 200 else "Standby"
-        self.main_text = f"{self.status['host-name']}\n" f"{device_type}\n\n" f"{app}"
+            app = "Idle" if self.device.is_on else "Standby"
+        self.main_text = f"{self.device.host_name}\n" f"{device_type}\n\n" f"{app}"
         if not self.info_show:
             self.setText(self.main_text)
 
     def _get_info(self):
         self.info = (
-            f"Type: {self.status['host-type']}\n"
-            f"Name: {self.status['host-name']}\n"
-            f"IP Address: {self.status['host-ip']}\n"
-            f"Mac Address: {self.status['host-id']}\n\n"
-            f"Status: {self.status['status']}\n"
-            f"Playing: {self.status.get('running-app-name')}"
+            f"Type: {self.device.host_type}\n"
+            f"Name: {self.device.host_name}\n"
+            f"IP Address: {self.device.host}\n"
+            f"Mac Address: {self.device.mac_address}\n\n"
+            f"Status: {self.device.status_name}\n"
+            f"Playing: {self.device.app_name}"
         )
 
     def _toggle_info(self):
-
         text = self.info if not self.info_show else self.main_text
         self.setText(text)
         self.info_show = not self.info_show
 
     def _toggle_power(self):
-        if self.status["status-code"] == 200:
+        if self.device.is_on:
             self.main_window.standby_host(self.device)
         else:
             self.main_window.wakeup_host(self.device)
@@ -157,7 +156,7 @@ class DeviceButton(QtWidgets.QPushButton):
         self._get_text()
         if cur_id != new_id:
             self._set_image()
-        if cur_status == 200 and new_status != cur_status:
+        if cur_status == STATUS_OK and new_status != cur_status:
             # Disable Wakeup since device won't do anything right away.
             self.action_power.setDisabled(True)
             QtCore.QTimer.singleShot(
@@ -169,7 +168,7 @@ class DeviceButton(QtWidgets.QPushButton):
         """Context Menu Event."""
         text = "View Info" if not self.info_show else "Hide Info"
         self.action_info.setText(text)
-        if self.status["status-code"] == 200:
+        if self.device.is_on:
             self.action_power.setText("Standby")
         else:
             self.action_power.setText("Wakeup")

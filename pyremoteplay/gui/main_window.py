@@ -10,8 +10,6 @@ from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 
 from pyremoteplay.__version__ import VERSION
 from pyremoteplay.protocol import async_create_ddp_endpoint
-from pyremoteplay.ddp import wakeup
-from pyremoteplay.util import format_regist_key
 
 from .device_grid import DeviceGridWidget
 from .options import OptionsWidget

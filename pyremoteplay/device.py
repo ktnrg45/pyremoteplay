@@ -28,6 +28,7 @@ class RPDevice:
         self._discovered = discovered
         self._max_polls = max_polls
         self._host_type = None
+        self._host_name = None
         self._mac_address = None
         self._callback = None
         self._standby_start = 0
@@ -76,6 +77,8 @@ class RPDevice:
             self._host_type = data.get("host-type")
         if self.mac_address is None:
             self._mac_address = data.get("host-id")
+        if self.host_name is None:
+            self._host_name = data.get("host-name")
         self._poll_count = 0
         self._unreachable = False
         old_status = self.status
@@ -83,7 +86,7 @@ class RPDevice:
         if old_status != data:
             _LOGGER.debug("Status: %s", self.status)
             title_id = self.status.get("running-app-titleid")
-            if title_id:
+            if title_id and asyncio.get_event_loop().is_running:
                 asyncio.ensure_future(self.get_media_info(title_id))
             else:
                 self._media_info = None
@@ -142,13 +145,15 @@ class RPDevice:
         )
         return self._session
 
-    async def connect(self):
-        """Connect and start session."""
+    async def connect(self) -> bool:
+        """Connect and start session. Return True if successful."""
         if self.connected:
             _LOGGER.error("Device session already running")
-            return
-        success = await self.session.start()
-        return success
+            return False
+        if not self.session:
+            _LOGGER.error("Session must be initialized first")
+            return False
+        return await self.session.start()
 
     def disconnect(self):
         """Disconnect and stop session."""
@@ -199,6 +204,11 @@ class RPDevice:
         return self._host_type
 
     @property
+    def host_name(self) -> str:
+        """Return Host Name."""
+        return self._host_name
+
+    @property
     def mac_address(self) -> str:
         """Return Mac Address"""
         return self._mac_address
@@ -238,11 +248,31 @@ class RPDevice:
         return self._status
 
     @property
+    def status_code(self) -> int:
+        """Return status code."""
+        return self.status.get("status-code")
+
+    @property
+    def status_name(self) -> str:
+        """Return status name."""
+        return self.status.get("status")
+
+    @property
     def is_on(self) -> bool:
         """Return True if device is on."""
-        if self.status.get("status-code") == 200:
+        if self.status.get("status-code") == STATUS_OK:
             return True
         return False
+
+    @property
+    def app_name(self) -> str:
+        """Return App name."""
+        return self.status.get("running-app-name")
+
+    @property
+    def app_id(self) -> str:
+        """Return App ID."""
+        return self.status.get("running-app-titleid")
 
     @property
     def discovered(self) -> bool:
