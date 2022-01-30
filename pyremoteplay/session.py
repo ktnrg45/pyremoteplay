@@ -11,6 +11,7 @@ from struct import pack_into
 
 import requests
 from Cryptodome.Random import get_random_bytes
+from pyee import ExecutorEventEmitter
 
 from .av import AVHandler
 from .const import (
@@ -201,6 +202,7 @@ class Session:
         self.av_receiver = av_receiver(self) if av_receiver is not None else None
         self.av_handler = AVHandler(self)
         self.controller = Controller(self)
+        self.events = ExecutorEventEmitter()
 
         self.loop = asyncio.get_event_loop() if loop is None else loop
         self._protocol = None
@@ -518,12 +520,14 @@ class Session:
         if self._stream:
             self._stream.stop()
         self._stop_event.set()
+        self.events.emit("stop")
         if self._tasks:
             for task in self._tasks:
                 task.cancel()
         self._thread_executor.shutdown()
         if self._protocol:
             self._protocol.close()
+        self.events.remove_all_listeners()
 
     async def run_io(self, func, *args, **kwargs):
         """Run blocking function in executor."""

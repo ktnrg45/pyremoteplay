@@ -8,7 +8,6 @@ from struct import unpack_from
 
 from .codecs.opus import OpusDecoder
 from .stream_packets import AVPacket, Packet
-from .util import event_emitter
 
 try:
     import av
@@ -63,7 +62,6 @@ class AVHandler:
                 "Decoder could not keep up. Try lowering framerate / resolution"
             )
             self._session.stop()
-            event_emitter.emit("stop")
             return
         if self._waiting and packet.unit_index == 0:
             self._waiting = False
@@ -324,7 +322,7 @@ class AVReceiver(abc.ABC):
             self.audio_decoder = OpusDecoder(
                 self.audio_config["rate"], self.audio_config["channels"]
             )
-            event_emitter.emit("audio_config")
+            self._session.events.emit("audio_config")
 
     def get_video_codec(self):
         """Get Codec Context."""
@@ -421,7 +419,7 @@ class QueueReceiver(AVReceiver):
             _LOGGER.warning("AV Receiver max video queue size exceeded")
             self.v_queue.clear()
         self.v_queue.append(frame)
-        event_emitter.emit("video_frame")
+        self._session.events.emit("video_frame")
 
     def handle_audio(self, buf):
         """Handle Audio Frame. Add to queue."""
@@ -432,4 +430,4 @@ class QueueReceiver(AVReceiver):
             _LOGGER.warning("AV Receiver max audio queue size exceeded")
             self.a_queue.clear()
         self.a_queue.append(frame)
-        event_emitter.emit("audio_frame")
+        self._session.events.emit("audio_frame")

@@ -2,6 +2,7 @@
 """Stream Window for GUI."""
 import time
 from collections import deque
+import logging
 
 from PySide6 import QtCore, QtMultimedia, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
@@ -9,12 +10,13 @@ from PySide6.QtMultimedia import QAudioDevice
 from pyremoteplay.av import AVReceiver
 from pyremoteplay.session import Session
 from pyremoteplay.device import RPDevice
-from pyremoteplay.util import event_emitter
 
 from .joystick import JoystickWidget
 from .controls import ControlsWidget
 from .util import label, message
 from .video import VideoWidget, YUVGLWidget
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class QtReceiver(AVReceiver):
@@ -68,27 +70,28 @@ class RPWorker(QtCore.QObject):
         self.session = None
         self.error = ""
         self.standby_done.connect(self.standby_finished)
-        event_emitter.on("stop", self.stop)
 
     def run(self, standby=False):
         """Run Session."""
         if not self.session:
-            print("No Session")
+            _LOGGER.warning("No Session")
             self.stop()
             return
         if not self.window and not standby:
-            print("No Stream Window")
+            _LOGGER.warning("No Stream Window")
             self.stop()
             return
+        self.session.events.on("stop", self.stop)
+        self.session.events.on("audio_config", self.window._init_audio)
         self.session.loop = self.main_window.async_handler.loop
         self.session.loop.create_task(self.start(standby))
 
     def stop(self, standby=False):
         """Stop session."""
         if self.session:
-            print(f"Stopping Session @ {self.session.host}")
-            self.session.stop()
             self.error = self.session.error
+            _LOGGER.info(f"Stopping Session @ {self.session.host}")
+            self.session.stop()
         if standby:
             self.standby_done.emit()
         self.session = None
@@ -117,20 +120,20 @@ class RPWorker(QtCore.QObject):
 
     async def start(self, standby=False):
         """Start Session."""
-        print("Session Start")
+        _LOGGER.info("Session Start")
         if self.window:
             self.session.av_receiver.rgb = False if self.window.use_opengl else True
 
         started = await self.device.connect()
 
         if not started:
-            print("Session Failed to Start")
+            _LOGGER.warning("Session Failed to Start")
             self.stop()
             return
 
         if standby:
             result = await self.device.standby()
-            print("Standby Success", result)
+            _LOGGER.info("Standby Success: %s", result)
             self.stop(standby=True)
             return
 
@@ -143,7 +146,7 @@ class RPWorker(QtCore.QObject):
 
         if self.session.stop_event:
             await self.session.stop_event.wait()
-            print("Session Finished")
+            _LOGGER.info("Session Finished")
 
     def standby_finished(self):
         """Callback when standby command sent."""
@@ -191,7 +194,8 @@ class StreamWindow(QtWidgets.QWidget):
         super().__init__()
         self.main_window = main_window
         self.hide()
-        print(
+        _LOGGER.debug(
+            "Screen Size: %s x %s",
             self.main_window.screen.virtualSize().width(),
             self.main_window.screen.virtualSize().height(),
         )
@@ -222,7 +226,6 @@ class StreamWindow(QtWidgets.QWidget):
         self.rp_worker = self.main_window.rp_worker
         self.rp_worker.started.connect(self._show_video)
         self.rp_worker.finished.connect(self.close)
-        event_emitter.on("audio_config", self._init_audio)
 
     def start(
         self,
@@ -234,7 +237,7 @@ class StreamWindow(QtWidgets.QWidget):
         input_options: dict = None,
     ):
         """Start Session."""
-        print(audio_device)
+        _LOGGER.debug(audio_device)
         self.center_text.show()
         self.input_options = input_options
         self.mapping = (
@@ -390,7 +393,7 @@ class StreamWindow(QtWidgets.QWidget):
     def _handle_release(self, key):
         button = self.mapping.get(key)
         if button is None:
-            print(f"Button Invalid: {key}")
+            _LOGGER.debug(f"Button Invalid: {key}")
             return
         if button in ["QUIT", "STANDBY"]:
             return
@@ -416,8 +419,7 @@ class StreamWindow(QtWidgets.QWidget):
 
     def cleanup(self):
         """Cleanup session."""
-        print("Cleaning up window")
-        event_emitter.remove_all_listeners()
+        _LOGGER.debug("Cleaning up window")
         if self.video_output:
             self.video_output.deleteLater()
             self.video_output = None

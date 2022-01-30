@@ -31,14 +31,15 @@ class AsyncHandler(QtCore.QObject):
         self.loop = None
         self.protocol = None
         self.main_window = main_window
+        self.__task = None
 
     def start(self):
         """Start and run polling."""
         if sys.platform == "win32":
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         self.loop = asyncio.new_event_loop()
-        task = self.loop.create_task(self.run())
-        self.loop.run_until_complete(task)
+        self.__task = self.loop.create_task(self.run())
+        self.loop.run_until_complete(self.__task)
         self.loop.run_forever()
 
     def poll(self):
@@ -48,6 +49,18 @@ class AsyncHandler(QtCore.QObject):
     def stop_poll(self):
         """Stop Polling."""
         self.protocol.stop()
+
+    def shutdown(self):
+        """Shutdown handler."""
+        self.stop_poll()
+        if self.__task is not None:
+            self.__task.cancel()
+        _LOGGER.info("Shutting down async event loop")
+        self.loop.stop()
+        start = time.time()
+        while self.loop.is_running():
+            if time.time() - start > 5:
+                break
 
     async def run(self):
         """Start poll service."""
@@ -250,12 +263,7 @@ class MainWindow(QtWidgets.QWidget):
         self.device_grid.stop_update()
         if self._stream_window:
             self._stream_window.close()
-        self.async_handler.stop_poll()
-        self.async_handler.loop.stop()
-        self.async_thread.quit()
         self.hide()
-        start = time.time()
-        while self.async_handler.loop.is_running():
-            if time.time() - start > 5:
-                break
+        self.async_handler.shutdown()
+        self.async_thread.quit()
         event.accept()
