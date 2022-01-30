@@ -82,6 +82,7 @@ class RPWorker(QtCore.QObject):
             self.stop()
             return
         self.session.events.on("stop", self.stop)
+        # pylint: disable=protected-access
         self.session.events.on("audio_config", self.window._init_audio)
         self.session.loop = self.main_window.async_handler.loop
         self.session.loop.create_task(self.start(standby))
@@ -90,7 +91,7 @@ class RPWorker(QtCore.QObject):
         """Stop session."""
         if self.session:
             self.error = self.session.error
-            _LOGGER.info(f"Stopping Session @ {self.session.host}")
+            _LOGGER.info("Stopping Session @ %s", self.session.host)
             self.session.stop()
         if standby:
             self.standby_done.emit()
@@ -393,7 +394,7 @@ class StreamWindow(QtWidgets.QWidget):
     def _handle_release(self, key):
         button = self.mapping.get(key)
         if button is None:
-            _LOGGER.debug(f"Button Invalid: {key}")
+            _LOGGER.debug("Button Invalid: %s", key)
             return
         if button in ["QUIT", "STANDBY"]:
             return
