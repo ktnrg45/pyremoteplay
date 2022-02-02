@@ -42,11 +42,13 @@ class Controller:
         while not self._session.is_stopped:
             try:
                 self._should_send.wait(timeout=1.0)
-            except RuntimeError:
+            except Exception as error:
+                _LOGGER.error(error)
                 continue
             self.send_state()
             self.send_event()
             self._should_send.clear()
+        _LOGGER.info("Controller stopped")
 
     def send_state(self):
         """Send controller stick state."""

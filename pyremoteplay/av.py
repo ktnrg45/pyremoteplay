@@ -256,36 +256,37 @@ class AVReceiver(abc.ABC):
     @staticmethod
     def find_video_decoder(video_format="h264", use_hw=False):
         """Return CPU decoder or first found HW decoder. Return CPU decoder if no HW decoders."""
-        decoders = {
-            "h264": [
-                "h264_amf",
-                "h264_nvenc",
-                "h264_qsv",
-                "h264_videotoolbox",
-                "h264_omx",
-                "h264_vaapi",
-                "h264",
-            ]
-        }
+        decoders = (
+            ("amf", "AMD"),
+            ("cuvid", "Nvidia"),
+            ("qsv", "Intel"),
+            ("videotoolbox", "Apple"),
+            (video_format, "CPU"),
+        )
+
         decoder = None
         _LOGGER.debug("Using HW: %s", use_hw)
         if not use_hw:
             _LOGGER.debug("%s - %s - %s", video_format, use_hw, decoders)
-            return decoders.get(video_format)[-1]
-        for decoder in decoders.get(video_format):
+            return (video_format, "CPU")
+        for decoder in decoders:
+            if decoder[0] == video_format:
+                name = video_format
+            else:
+                name = f"{video_format}_{decoder[0]}"
             try:
-                av.codec.Codec(decoder, "r")
+                av.codec.Codec(name, "r")
             except (av.codec.codec.UnknownCodecError, av.error.PermissionError):
-                _LOGGER.debug("Could not find Decoder: %s", decoder)
+                _LOGGER.debug("Could not find Decoder: %s", name)
                 continue
             break
-        _LOGGER.info("Found Decoder: %s", decoder)
-        return decoder
+        _LOGGER.info("Found Decoder: %s", name)
+        return name, decoder[1]
 
     @staticmethod
     def video_codec(video_format="h264", use_hw=False):
         """Return Codec Context."""
-        decoder = AVReceiver.find_video_decoder(
+        decoder, _ = AVReceiver.find_video_decoder(
             video_format=video_format, use_hw=use_hw
         )
         codec = av.codec.Codec(decoder, "r").create()

@@ -139,11 +139,11 @@ class OptionsWidget(QtWidgets.QWidget):
 
     def get_decoder(self) -> str:
         """Return HW decoder or CPU if not found."""
-        decoder = AVReceiver.find_video_decoder(video_format="h264", use_hw=True)
+        decoder, alias = AVReceiver.find_video_decoder(video_format="h264", use_hw=True)
         decoder = decoder.replace("h264", "").replace("_", "")
         if not decoder:
             decoder = "CPU"
-        return decoder
+        return f"{decoder} ({alias})"
 
     def get_audio_devices(self):
         """Return Audio devices."""
