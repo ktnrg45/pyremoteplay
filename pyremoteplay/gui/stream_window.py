@@ -179,7 +179,6 @@ class StreamWindow(QtWidgets.QWidget):
     """Window for stream."""
 
     started = QtCore.Signal()
-    fps_update = QtCore.Signal()
     video_frame = QtCore.Signal(object)
     audio_frame = QtCore.Signal()
 
@@ -222,7 +221,6 @@ class StreamWindow(QtWidgets.QWidget):
         self.joystick.hide()
         self.input_options = None
         self.fps_label = label(self, "FPS: ")
-        self.fps_update.connect(self._set_fps)
 
         self.rp_worker = self.main_window.rp_worker
         self.rp_worker.started.connect(self._show_video)
@@ -266,6 +264,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.fps_label.setParent(self.video_output)
 
         if self.show_fps:
+            self.video_output.frame_updated.connect(self._set_fps)
             self._init_fps()
             self.fps_label.show()
         else:

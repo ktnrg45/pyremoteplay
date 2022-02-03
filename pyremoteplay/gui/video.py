@@ -4,6 +4,7 @@ from textwrap import dedent
 
 from OpenGL import GL
 from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6.QtCore import Signal
 from PySide6.QtGui import QOpenGLFunctions, QSurfaceFormat
 from PySide6.QtOpenGL import (
     QOpenGLShader,
@@ -77,6 +78,8 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
 
     TEXTURE_NAMES = ("plane1", "plane2", "plane3")
 
+    frame_updated = Signal()
+
     @staticmethod
     def surface_format():
         """Return default surface format."""
@@ -142,8 +145,6 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
             self.update_texture(index, plane.to_bytes())
 
         self.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
-        if self.parent():
-            self.parent().fps_update.emit()
 
     def _create_textures(self):
         """Create Textures."""
@@ -191,10 +192,13 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         """Update widget with next video frame."""
         self.frame = frame
         self.update()
+        self.frame_updated.emit()
 
 
 class VideoWidget(QtWidgets.QLabel):
     """Video output widget using Pixmap."""
+
+    frame_updated = Signal()
 
     def __init__(self, width, height, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -218,4 +222,4 @@ class VideoWidget(QtWidgets.QLabel):
                 mode=QtCore.Qt.SmoothTransformation,
             )
         self.setPixmap(pixmap)
-        self.parent().fps_update.emit()
+        self.frame_updated.emit()

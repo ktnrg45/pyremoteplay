@@ -26,7 +26,6 @@ class Controller:
         self._sequence_event = 0
         self._sequence_state = 0
         self._event_buf = deque([], Controller.MAX_EVENTS)
-        self._event_queue = []
         self._buttons = {}
         self._params = kwargs
         self._started = False
@@ -46,7 +45,6 @@ class Controller:
                 _LOGGER.error(error)
                 continue
             self.send_state()
-            self.send_event()
             self._should_send.clear()
         _LOGGER.info("Controller stopped")
 
@@ -59,23 +57,17 @@ class Controller:
 
     def send_event(self):
         """Send controller button event."""
-        while self._event_queue:
-            self.add_event_buffer(self._event_queue.pop(0))
-            data = b"".join(self._event_buf)
-            self._session.stream.send_feedback(
-                FeedbackHeader.Type.EVENT, self.sequence_event, data=data
-            )
-            self._sequence_event += 1
+        data = b"".join(self._event_buf)
+        self._session.stream.send_feedback(
+            FeedbackHeader.Type.EVENT, self.sequence_event, data=data
+        )
+        self._sequence_event += 1
 
     def add_event_buffer(self, event: FeedbackEvent):
-        """Append event to end of byte buf."""
+        """Append event to beginning of byte buf."""
         buf = bytearray(FeedbackEvent.LENGTH)
         event.pack(buf)
         self._event_buf.appendleft(buf)
-
-    def add_event_queue(self, event: FeedbackEvent):
-        """Append event to queue."""
-        self._event_queue.append(event)
 
     def button(self, name: str, action="tap"):
         """Emulate pressing or releasing button."""
@@ -87,13 +79,13 @@ class Controller:
             _LOGGER.error("Invalid button: %s", name)
         else:
             if action == self.ACTION_PRESS:
-                self.add_event_queue(FeedbackEvent(button, is_active=True))
+                self.add_event_buffer(FeedbackEvent(button, is_active=True))
             elif action == self.ACTION_RELEASE:
-                self.add_event_queue(FeedbackEvent(button, is_active=False))
+                self.add_event_buffer(FeedbackEvent(button, is_active=False))
             elif action == self.ACTION_TAP:
-                self.add_event_queue(FeedbackEvent(button, is_active=True))
-                self.add_event_queue(FeedbackEvent(button, is_active=False))
-            self._should_send.set()
+                self.add_event_buffer(FeedbackEvent(button, is_active=True))
+                self.add_event_buffer(FeedbackEvent(button, is_active=False))
+            self.send_event()
 
     def stick(self, stick: str, axis: str = None, value: float = None, point=None):
         """Set Stick Value."""
