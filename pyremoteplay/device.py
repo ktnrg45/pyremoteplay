@@ -23,16 +23,14 @@ STATUS_STANDBY = 620
 class RPDevice:
     """Represents a Remote Play device."""
 
-    def __init__(self, host, discovered=False, max_polls=DEFAULT_POLL_COUNT):
+    def __init__(self, host, max_polls=DEFAULT_POLL_COUNT):
         self._host = host
-        self._discovered = discovered
         self._max_polls = max_polls
         self._host_type = None
         self._host_name = None
         self._mac_address = None
         self._callback = None
         self._standby_start = 0
-        self._poll_count = 0
         self._unreachable = False
         self._status = {}
         self._media_info = None
@@ -79,8 +77,6 @@ class RPDevice:
             self._mac_address = data.get("host-id")
         if self.host_name is None:
             self._host_name = data.get("host-name")
-        self._poll_count = 0
-        self._unreachable = False
         old_status = self.status
         self._status = data
         if old_status != data:
@@ -92,6 +88,7 @@ class RPDevice:
                 self._media_info = None
                 self._image = None
             if not title_id and self.callback:
+                # Call immediately since we don't have to get media.
                 self.callback()  # pylint: disable=not-callable
             # Status changed from OK to Standby/Turned Off
             if (
@@ -219,15 +216,6 @@ class RPDevice:
         return DDP_PORTS.get(self.host_type)
 
     @property
-    def polls_disabled(self) -> bool:
-        """Return true if polls disabled."""
-        elapsed = time.time() - self._standby_start
-        if elapsed < DEFAULT_STANDBY_DELAY:
-            return True
-        self._standby_start = 0
-        return False
-
-    @property
     def max_polls(self) -> int:
         """Return max polls."""
         return self._max_polls
@@ -273,11 +261,6 @@ class RPDevice:
     def app_id(self) -> str:
         """Return App ID."""
         return self.status.get("running-app-titleid")
-
-    @property
-    def discovered(self) -> bool:
-        """Return True if discovered."""
-        return self._discovered
 
     @property
     def media_info(self) -> ResultItem:
