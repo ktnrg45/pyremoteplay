@@ -53,6 +53,7 @@ class AsyncHandler(QtCore.QObject):
     def shutdown(self):
         """Shutdown handler."""
         self.stop_poll()
+        self.protocol.shutdown()
         if self.__task is not None:
             self.__task.cancel()
         _LOGGER.info("Shutting down async event loop")

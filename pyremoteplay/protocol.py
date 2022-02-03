@@ -33,7 +33,7 @@ class DDPProtocol(asyncio.DatagramProtocol):
         self._message = get_ddp_search_message()
         self._standby_start = 0
         self._event_stop = asyncio.Event()
-        self._event_stop.clear()
+        self._event_shutdown = asyncio.Event()
         self._remote_port = None
 
     def __repr__(self):
@@ -149,36 +149,42 @@ class DDPProtocol(asyncio.DatagramProtocol):
             return
         self._devices_data[host]["device"].set_callback(None)
 
+    def _poll(self):
+        self.send_msg()
+        for device_data in self._devices_data.values():
+            # Device won't respond to polls right after standby
+            if device_data["polls_disabled"]:
+                elapsed = time.time() - device_data["device"]._standby_start
+                seconds = DEFAULT_STANDBY_DELAY - elapsed
+                if seconds > 0:
+                    _LOGGER.debug("Polls disabled for %s seconds", round(seconds, 2))
+                    continue
+                device_data["polls_disabled"] = False
+
+            # Track polls that were never returned.
+            device_data["poll_count"] += 1
+            device = device_data["device"]
+            # Assume Device is not available.
+            if device_data["poll_count"] > self.max_polls:
+                device.set_status({})
+                if device.callback:
+                    device.callback()  # pylint: disable=not-callable
+            if not device_data["discovered"]:
+                # Explicitly poll device in case it cannot be reached by broadcast.
+                if not device_data["polls_disabled"]:
+                    self.send_msg(device)
+
     async def run(self, interval=1):
         """Run polling."""
-        while True:
+        while not self._event_shutdown.is_set():
             if not self._event_stop.is_set():
-                self.send_msg()
-                for device_data in self._devices_data.values():
-                    # Device won't respond to polls right after standby
-                    if device_data["polls_disabled"]:
-                        elapsed = time.time() - device_data["device"]._standby_start
-                        seconds = DEFAULT_STANDBY_DELAY - elapsed
-                        if seconds > 0:
-                            _LOGGER.debug(
-                                "Polls disabled for %s seconds", round(seconds, 2)
-                            )
-                            continue
-                        device_data["polls_disabled"] = False
-
-                    # Track polls that were never returned.
-                    device_data["poll_count"] += 1
-                    device = device_data["device"]
-                    # Assume Device is not available.
-                    if device_data["poll_count"] > self.max_polls:
-                        device.set_status({})
-                        if device.callback:
-                            device.callback()  # pylint: disable=not-callable
-                    if not device_data["discovered"]:
-                        # Explicitly poll device in case it cannot be reached by broadcast.
-                        if not device_data["polls_disabled"]:
-                            self.send_msg(device)
+                self._poll()
             await asyncio.sleep(interval)
+        self._transport.close()
+
+    def shutdown(self):
+        """Shutdown protocol."""
+        self._event_shutdown.set()
 
     def stop(self):
         """Stop Polling."""
