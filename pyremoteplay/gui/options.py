@@ -63,10 +63,7 @@ class OptionsWidget(QtWidgets.QWidget):
         add_account.clicked.connect(self.new_profile)
         del_account.clicked.connect(self.delete_profile)
         res_label = label(self, "**1080p is for PS4 Pro, PS5 only**", wrap=False)
-        hw_label = QtWidgets.QLineEdit(self)
-        hw_label.setText(self.get_decoder())
-        hw_label.setAlignment(Qt.AlignCenter)
-        hw_label.setReadOnly(True)
+
         devices_label = label(
             self,
             "If your device is not showing up automatically, "
@@ -98,13 +95,16 @@ class OptionsWidget(QtWidgets.QWidget):
         self.devices.itemSelectionChanged.connect(lambda: del_device.setDisabled(False))
         self.audio_output = QtWidgets.QComboBox(self)
         self.audio_output.addItems(list(self.audio_devices.keys()))
+        self.decoder = QtWidgets.QComboBox(self)
+        self.decoder.addItems(self.get_decoder())
+        self.decoder.currentTextChanged.connect(self._change_decoder)
 
         widgets = (
             ("Quality", self.quality, self.use_opengl),
             ("FPS", self.fps, self.fps_show),
             ("Resolution", self.resolution, self.fullscreen),
             (res_label,),
-            ("Video Decoder", hw_label, self.use_hw),
+            ("Video Decoder", self.decoder, self.use_hw),
             ("Audio Output", self.audio_output),
         )
 
@@ -137,13 +137,18 @@ class OptionsWidget(QtWidgets.QWidget):
         self.layout.addWidget(self.devices, row, 5, 2, 2)
         self.layout.setRowStretch(row + 1, 1)
 
-    def get_decoder(self) -> str:
+    def get_decoder(self) -> list:
         """Return HW decoder or CPU if not found."""
-        decoder, alias = AVReceiver.find_video_decoder(video_format="h264", use_hw=True)
-        decoder = decoder.replace("h264", "").replace("_", "")
-        if not decoder:
-            decoder = "CPU"
-        return f"{decoder} ({alias})"
+        decoders = []
+        found = AVReceiver.find_video_decoder(video_format="h264", use_hw=True)
+        for decoder, alias in found:
+            decoder = decoder.replace("h264", "").replace("_", "")
+            if alias == "CPU":
+                decoders.append("CPU")
+                continue
+            name = f"{decoder} ({alias})"
+            decoders.append(name)
+        return decoders
 
     def get_audio_devices(self):
         """Return Audio devices."""
@@ -175,6 +180,18 @@ class OptionsWidget(QtWidgets.QWidget):
             self.resolution.setCurrentText(self.options["resolution"])
             self.fullscreen.setChecked(self.options["fullscreen"])
             self.profile = self.options["profile"]
+
+            decoder = self.options["decoder"]
+            found = False
+            for index in range(0, self.decoder.count()):
+                item = self.decoder.itemText(index)
+                if item.startswith(decoder):
+                    found = True
+                    self.decoder.setCurrentText(item)
+                    break
+            if not found:
+                self.decoder.setCurrentText("CPU")
+
         except KeyError:
             self.options = self.default_options()
             return False
@@ -190,6 +207,7 @@ class OptionsWidget(QtWidgets.QWidget):
             "resolution": "720p",
             "use_hw": False,
             "fullscreen": False,
+            "decoder": "CPU",
             "profile": "",
             "devices": [],
         }
@@ -260,6 +278,12 @@ class OptionsWidget(QtWidgets.QWidget):
     def _change_resolution(self, text):
         self.options["resolution"] = text
         write_options(self.options)
+
+    def _change_decoder(self, text):
+        if text != "CPU":
+            text = text.split(" (")[0]
+            self.options["decoder"] = text
+            write_options(self.options)
 
     def _change_use_hw(self):
         self.options["use_hw"] = self.use_hw.isChecked()

@@ -8,7 +8,6 @@ from PySide6 import QtCore, QtMultimedia, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from PySide6.QtMultimedia import QAudioDevice
 from pyremoteplay.av import AVReceiver
-from pyremoteplay.session import Session
 from pyremoteplay.device import RPDevice
 
 from .joystick import JoystickWidget
@@ -22,8 +21,8 @@ _LOGGER = logging.getLogger(__name__)
 class QtReceiver(AVReceiver):
     """AV Receiver for QT."""
 
-    def __init__(self, session: Session):
-        super().__init__(session)
+    def __init__(self, codec_name=""):
+        super().__init__(codec_name)
         self.video_signal = None
         self.audio_signal = None
         self.rgb = True
@@ -114,7 +113,7 @@ class RPWorker(QtCore.QObject):
             user,
             resolution=options.get("resolution"),
             fps=options.get("fps"),
-            av_receiver=QtReceiver,
+            av_receiver=QtReceiver(options.get("decoder")),
             use_hw=options.get("use_hw"),
             quality=options.get("quality"),
         )

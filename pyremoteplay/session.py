@@ -199,7 +199,7 @@ class Session:
         self.fps = FPS.preset(fps)
         self.resolution = Resolution.preset(resolution)
         self.error = ""
-        self.av_receiver = av_receiver(self) if av_receiver is not None else None
+        self.av_receiver = av_receiver
         self.av_handler = AVHandler(self)
         self.controller = Controller(self)
         self.events = ExecutorEventEmitter()
@@ -598,6 +598,6 @@ class Session:
         """Return video format"""
         formats = {
             TYPE_PS4: "h264",
-            TYPE_PS5: "h265",
+            TYPE_PS5: "hevc",
         }
-        return formats.get(self.type)
+        return formats.get(self.type.upper())
