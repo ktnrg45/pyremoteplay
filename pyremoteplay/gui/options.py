@@ -105,9 +105,9 @@ class OptionsWidget(QtWidgets.QWidget):
         self.devices.itemSelectionChanged.connect(lambda: del_device.setDisabled(False))
         self._media_devices.audioOutputsChanged.connect(self.get_audio_devices)
 
-        self._set_options()
-        self.set_profiles()
+        self.set_options()
         self.set_devices()
+        self.set_profiles()
 
         self.quality.currentTextChanged.connect(self._change_options)
         self.use_opengl.stateChanged.connect(self._change_options)
@@ -189,7 +189,7 @@ class OptionsWidget(QtWidgets.QWidget):
         """Return Selected Audio Device."""
         return self.audio_devices.get(self.audio_output.currentText())
 
-    def _set_options(self) -> bool:
+    def set_options(self) -> bool:
         """Set Options."""
         options = get_options()
         try:
@@ -200,6 +200,7 @@ class OptionsWidget(QtWidgets.QWidget):
             self.use_hw.setChecked(options["use_hw"])
             self.resolution.setCurrentText(options["resolution"])
             self.fullscreen.setChecked(options["fullscreen"])
+            self._devices = options["devices"]
 
             decoder = options["decoder"]
             found = False
