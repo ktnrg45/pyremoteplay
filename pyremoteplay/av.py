@@ -289,7 +289,7 @@ class AVReceiver(abc.ABC):
     @staticmethod
     def video_codec(video_format="h264", codec_name=""):
         """Return Codec Context."""
-        if not codec_name or codec_name.lower() == "cpu":
+        if not codec_name or codec_name == video_format or codec_name.lower() == "cpu":
             decoder = video_format
         else:
             if not codec_name.startswith("h264") or not codec_name.startswith("hevc"):

@@ -1,6 +1,7 @@
 # pylint: disable=c-extension-no-member,invalid-name
 """Options Widget."""
 import socket
+from dataclasses import dataclass, asdict, field
 
 from PySide6 import QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
@@ -23,31 +24,55 @@ from .util import label, message, spacer
 from .widgets import AnimatedToggle
 
 
+@dataclass
+class Options:
+    """Class for Options."""
+
+    quality: str = "Default"
+    use_opengl: bool = False
+    fps: int = 30
+    show_fps: bool = False
+    use_hw: bool = False
+    decoder: str = ""
+    resolution: str = "720p"
+    fullscreen: bool = False
+    profile: str = ""
+    devices: list = field(default_factory=list)
+
+    def save(self):
+        """Save Options."""
+        write_options(asdict(self))
+
+
 class OptionsWidget(QtWidgets.QWidget):
     """Widget for Options."""
 
     def __init__(self, main_window):
-        super().__init__(main_window)
-        self.main_window = main_window
-        self.options = {}
         self.profiles = {}
-        self.layout = QtWidgets.QGridLayout(self, alignment=Qt.AlignTop)
-
+        self._devices = []
         self.audio_output = None
         self.audio_devices = {}
+
+        super().__init__(main_window)
+        self.main_window = main_window
+        self.layout = QtWidgets.QGridLayout(self, alignment=Qt.AlignTop)
+
         self.get_audio_devices()
         self._media_devices = QMediaDevices()
-        self._media_devices.audioOutputsChanged.connect(self.get_audio_devices)
+        self.quality = QtWidgets.QComboBox(self)
+        self.use_opengl = AnimatedToggle("Use OpenGL", self)
+        self.fps = QtWidgets.QComboBox(self)
+        self.fps_show = AnimatedToggle("Show FPS", self)
+        self.fullscreen = AnimatedToggle("Show Fullscreen", self)
+        self.use_hw = AnimatedToggle("Use Hardware Decoding", self)
+        self.resolution = QtWidgets.QComboBox(self)
+        self.accounts = QtWidgets.QTreeWidget()
+        self.audio_output = QtWidgets.QComboBox(self)
+        self.decoder = QtWidgets.QComboBox(self)
+        self.devices = QtWidgets.QTreeWidget()
 
         self._init_options()
-        self.load_options()
-        success = self.set_options()
-        if not success:
-            if not self.set_options():
-                raise RuntimeError("Failed to set options")
-        self.set_profiles()
-        self.set_devices()
-        self.main_window.add_devices(self.options["devices"])
+        self.main_window.add_devices(self._devices)
 
     def _init_options(self):
         set_account = QtWidgets.QPushButton("Select Account")
@@ -59,7 +84,7 @@ class OptionsWidget(QtWidgets.QWidget):
         add_device.clicked.connect(self.new_device)
         del_device.clicked.connect(self.delete_device)
         del_device.clicked.connect(lambda: del_device.setDisabled(True))
-        set_account.clicked.connect(self._change_profile)
+        set_account.clicked.connect(self.set_profiles)
         add_account.clicked.connect(self.new_profile)
         del_account.clicked.connect(self.delete_profile)
         res_label = label(self, "**1080p is for PS4 Pro, PS5 only**", wrap=False)
@@ -71,33 +96,28 @@ class OptionsWidget(QtWidgets.QWidget):
             wrap=True,
         )
 
-        self.quality = QtWidgets.QComboBox(self)
         self.quality.addItems([item.name for item in Quality])
-        self.quality.currentTextChanged.connect(self._change_quality)
-        self.use_opengl = AnimatedToggle("Use OpenGL", self)
-        self.use_opengl.stateChanged.connect(self._change_opengl)
         self.use_opengl.setToolTip("Recommended if using Hardware Decoding")
-        self.fps = QtWidgets.QComboBox(self)
         self.fps.addItems(["30", "60"])
-        self.fps.currentTextChanged.connect(self._change_fps)
-        self.fps_show = AnimatedToggle("Show FPS", self)
-        self.fps_show.stateChanged.connect(self._change_fps_show)
-        self.fullscreen = AnimatedToggle("Show Fullscreen", self)
-        self.fullscreen.stateChanged.connect(self._change_fullscreen)
-        self.use_hw = AnimatedToggle("Use Hardware Decoding", self)
-        self.use_hw.stateChanged.connect(self._change_use_hw)
-        self.resolution = QtWidgets.QComboBox(self)
         self.resolution.addItems(list(RESOLUTION_PRESETS.keys()))
-        self.resolution.currentTextChanged.connect(self._change_resolution)
-        self.accounts = QtWidgets.QTreeWidget()
-        self.accounts.itemDoubleClicked.connect(self._change_profile)
-        self.devices = QtWidgets.QTreeWidget()
-        self.devices.itemSelectionChanged.connect(lambda: del_device.setDisabled(False))
-        self.audio_output = QtWidgets.QComboBox(self)
         self.audio_output.addItems(list(self.audio_devices.keys()))
-        self.decoder = QtWidgets.QComboBox(self)
         self.decoder.addItems(self.get_decoder())
-        self.decoder.currentTextChanged.connect(self._change_decoder)
+        self.devices.itemSelectionChanged.connect(lambda: del_device.setDisabled(False))
+        self._media_devices.audioOutputsChanged.connect(self.get_audio_devices)
+
+        self._set_options()
+        self.set_profiles()
+        self.set_devices()
+
+        self.quality.currentTextChanged.connect(self._change_options)
+        self.use_opengl.stateChanged.connect(self._change_options)
+        self.fps.currentTextChanged.connect(self._change_options)
+        self.fps_show.stateChanged.connect(self._change_options)
+        self.fullscreen.stateChanged.connect(self._change_options)
+        self.use_hw.stateChanged.connect(self._change_options)
+        self.resolution.currentTextChanged.connect(self._change_options)
+        self.decoder.currentTextChanged.connect(self._change_options)
+        self.accounts.itemDoubleClicked.connect(self.set_profiles)
 
         widgets = (
             ("Quality", self.quality, self.use_opengl),
@@ -169,19 +189,19 @@ class OptionsWidget(QtWidgets.QWidget):
         """Return Selected Audio Device."""
         return self.audio_devices.get(self.audio_output.currentText())
 
-    def set_options(self) -> bool:
+    def _set_options(self) -> bool:
         """Set Options."""
+        options = get_options()
         try:
-            self.quality.setCurrentText(str(self.options["quality"]))
-            self.use_opengl.setChecked(self.options["use_opengl"])
-            self.fps.setCurrentText(str(self.options["fps"]))
-            self.fps_show.setChecked(self.options["show_fps"])
-            self.use_hw.setChecked(self.options["use_hw"])
-            self.resolution.setCurrentText(self.options["resolution"])
-            self.fullscreen.setChecked(self.options["fullscreen"])
-            self.profile = self.options["profile"]
+            self.quality.setCurrentText(str(options["quality"]))
+            self.use_opengl.setChecked(options["use_opengl"])
+            self.fps.setCurrentText(str(options["fps"]))
+            self.fps_show.setChecked(options["show_fps"])
+            self.use_hw.setChecked(options["use_hw"])
+            self.resolution.setCurrentText(options["resolution"])
+            self.fullscreen.setChecked(options["fullscreen"])
 
-            decoder = self.options["decoder"]
+            decoder = options["decoder"]
             found = False
             for index in range(0, self.decoder.count()):
                 item = self.decoder.itemText(index)
@@ -191,52 +211,27 @@ class OptionsWidget(QtWidgets.QWidget):
                     break
             if not found:
                 self.decoder.setCurrentText("CPU")
-
         except KeyError:
-            self.options = self.default_options()
+            self.options_data.save()
             return False
         return True
-
-    def default_options(self) -> dict:
-        """Return Default Options."""
-        options = {
-            "quality": "Default",
-            "use_opengl": False,
-            "fps": 30,
-            "show_fps": False,
-            "resolution": "720p",
-            "use_hw": False,
-            "fullscreen": False,
-            "decoder": "CPU",
-            "profile": "",
-            "devices": [],
-        }
-        write_options(options)
-        return options
-
-    def load_options(self):
-        """Load Options."""
-        options = get_options()
-        if not options:
-            options = self.default_options()
-        self.options = options
 
     def set_devices(self):
         """Set devices."""
         self.devices.clear()
         self.devices.setHeaderLabels(["Devices"])
-        for host in self.options["devices"]:
+        for host in self._devices:
             item = QtWidgets.QTreeWidgetItem(self.devices)
             item.setText(0, host)
 
     def set_profiles(self):
         """Set Profiles."""
+        profile_name = self.selected_profile
         self.profiles = get_profiles()
         self.accounts.clear()
         self.accounts.setHeaderLabels(["PSN ID", "Active", "Is Registered", "Devices"])
         if not self.profiles:
             return
-        accounts = list(self.profiles.keys())
         for profile, data in self.profiles.items():
             item = QtWidgets.QTreeWidgetItem(self.accounts)
             hosts = data.get("hosts")
@@ -249,57 +244,24 @@ class OptionsWidget(QtWidgets.QWidget):
             item.setText(1, "No")
             item.setText(2, is_registered)
             item.setText(3, ", ".join(mac_addresses))
-        if not self.options["profile"]:
-            self.options["profile"] = accounts[0]
-            write_options(self.options)
-        selected = self.accounts.findItems(
-            self.options["profile"], Qt.MatchFixedString, column=0
-        )
-        if selected and len(selected) == 1:
-            selected[0].setSelected(True)
-            selected[0].setText(1, "Yes")
 
-    def _change_quality(self, text):
-        self.options["quality"] = text
-        write_options(self.options)
+        if not profile_name:
+            profile_name = get_options().get("profile")
+        self._select_profile(profile_name)
+        self._change_options()
 
-    def _change_opengl(self):
-        self.options["use_opengl"] = self.use_opengl.isChecked()
-        write_options(self.options)
+    def _select_profile(self, profile_name):
+        if profile_name:
+            selected = self.accounts.findItems(
+                profile_name, Qt.MatchFixedString, column=0
+            )
+            if selected and len(selected) == 1:
+                selected[0].setSelected(True)
+                selected[0].setText(1, "Yes")
 
-    def _change_fps(self, text):
-        self.options["fps"] = int(text)
-        write_options(self.options)
-
-    def _change_fps_show(self):
-        self.options["show_fps"] = self.fps_show.isChecked()
-        write_options(self.options)
-
-    def _change_resolution(self, text):
-        self.options["resolution"] = text
-        write_options(self.options)
-
-    def _change_decoder(self, text):
-        if text != "CPU":
-            text = text.split(" (")[0]
-            self.options["decoder"] = text
-            write_options(self.options)
-
-    def _change_use_hw(self):
-        self.options["use_hw"] = self.use_hw.isChecked()
-        write_options(self.options)
-
-    def _change_fullscreen(self):
-        self.options["fullscreen"] = self.fullscreen.isChecked()
-        write_options(self.options)
-
-    def _change_profile(self):
-        item = self.accounts.selectedItems()[0]
-        if not item:
-            return
-        self.options["profile"] = item.text(0)
-        write_options(self.options)
-        self.set_profiles()
+    # pylint: disable=unused-argument
+    def _change_options(self, *args):
+        self.options_data.save()
 
     def new_device(self):
         """Run New Device flow."""
@@ -320,7 +282,7 @@ class OptionsWidget(QtWidgets.QWidget):
                 self, "Invalid IP Address", f"Could not find device at: {host}"
             )
             return
-        if host in self.options["devices"]:
+        if host in self._devices:
             text = "Device is already added."
             message(self.main_window, "Device Already Added", text, "warning")
             return
@@ -329,10 +291,10 @@ class OptionsWidget(QtWidgets.QWidget):
         #     text = f"Could not find device at: {host}."
         #     message(self.main_window, "Device not found", text, "warning")
         #     return
-        self.options["devices"].append(host)
-        write_options(self.options)
+        self._devices.append(host)
         self.set_devices()
-        self.main_window.add_devices(self.options["devices"])
+        self._change_options()
+        self.main_window.add_devices(self._devices)
 
     def delete_device(self):
         """Delete Device."""
@@ -341,9 +303,9 @@ class OptionsWidget(QtWidgets.QWidget):
             return
         item = items[0]
         host = item.text(0)
-        self.options["devices"].remove(host)
-        write_options(self.options)
+        self._devices.remove(host)
         self.set_devices()
+        self._change_options()
         self.main_window.remove_device(host)
 
     def delete_profile(self):
@@ -366,9 +328,10 @@ class OptionsWidget(QtWidgets.QWidget):
         """Remove profile from config."""
         self.profiles.pop(name)
         write_profiles(self.profiles)
-        self.options["profile"] = list(self.profiles.keys())[0] if self.profiles else ""
-        write_options(self.options)
-        self.set_options()
+        profile_name = list(self.profiles.keys())[0] if self.profiles else ""
+        self.set_profiles()
+        self._select_profile(profile_name)
+        # Select a profile if it exists
         self.set_profiles()
 
     def new_profile(self):
@@ -426,9 +389,6 @@ class OptionsWidget(QtWidgets.QWidget):
             user_id = account.get("online_id")
             assert user_id in profiles
             write_profiles(profiles)
-            self.options["profile"] = user_id
-            write_options(self.options)
-            self.set_options()
             self.set_profiles()
             text = f"Successfully added PSN account: {user_id}"
             level = "info"
@@ -479,3 +439,37 @@ class OptionsWidget(QtWidgets.QWidget):
 
         message(self, title, text, level)
         self.main_window.session_stop()
+
+    @property
+    def selected_profile(self):
+        """Return Selected Profile."""
+        profile = ""
+        account = self.accounts.selectedItems()
+        if account:
+            profile = account[0].text(0)
+        return profile
+
+    @property
+    def options_data(self):
+        """Return Options."""
+        profile = self.selected_profile
+        decoder = self.decoder.currentText()
+        decoder = decoder.split(" (")[0]
+        options = Options(
+            quality=self.quality.currentText(),
+            use_opengl=self.use_opengl.isChecked(),
+            fps=int(self.fps.currentText()),
+            show_fps=self.fps_show.isChecked(),
+            use_hw=self.use_hw.isChecked(),
+            decoder=decoder,
+            resolution=self.resolution.currentText(),
+            fullscreen=self.fullscreen.isChecked(),
+            profile=profile,
+            devices=self._devices,
+        )
+        return options
+
+    @property
+    def options(self) -> dict:
+        """Return Options as dict."""
+        return asdict(self.options_data)

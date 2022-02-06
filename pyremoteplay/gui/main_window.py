@@ -179,7 +179,7 @@ class MainWindow(QtWidgets.QWidget):
     def standby_host(self, device):
         """Place host in standby mode."""
         user = self.options.options.get("profile")
-        options = self.options.options
+        options = self.options.options_data
         profile = self.check_profile(user, device)
         if not profile:
             return
