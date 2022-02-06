@@ -56,7 +56,7 @@ class AsyncHandler(QtCore.QObject):
         self.protocol.shutdown()
         if self.__task is not None:
             self.__task.cancel()
-        _LOGGER.info("Shutting down async event loop")
+        _LOGGER.debug("Shutting down async event loop")
         self.loop.stop()
         start = time.time()
         while self.loop.is_running():

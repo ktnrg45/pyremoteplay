@@ -380,7 +380,7 @@ class Session:
             self._ready_event.set()
 
         if time.time() - self._hb_last > 5:
-            _LOGGER.info("Session HB Timeout. Sending HB")
+            _LOGGER.debug("Session HB Timeout. Sending HB")
             self._send_hb_request()
 
     def _build_msg(self, msg_type: int, payload=b"") -> bytes:
@@ -516,7 +516,7 @@ class Session:
         if self.state == Session.STATE_STOP:
             _LOGGER.debug("Session already stopping")
             return
-        _LOGGER.info("Session Received Stop Signal")
+        _LOGGER.debug("Session Received Stop Signal")
         if self._stream:
             self._stream.stop()
         self._stop_event.set()

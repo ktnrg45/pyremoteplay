@@ -85,10 +85,10 @@ class AVHandler:
         """Worker for AV Handler. Run in thread."""
         while not self._session.is_stopped:
             self.process_packet()
-        _LOGGER.info("Closing AV Receiver")
+        _LOGGER.debug("Closing AV Receiver")
         self._receiver.close()
         self._queue.clear()
-        _LOGGER.info("AV Receiver Closed")
+        _LOGGER.debug("AV Receiver Closed")
 
     def _send_congestion(self):
         now = time.time()
@@ -283,7 +283,7 @@ class AVReceiver(abc.ABC):
                 _LOGGER.debug("Could not find Decoder: %s", name)
                 continue
             found.append((name, decoder[1]))
-            _LOGGER.info("Found Decoder: %s", name)
+            _LOGGER.debug("Found Decoder: %s", name)
         return found
 
     @staticmethod

@@ -120,7 +120,7 @@ class RPWorker(QtCore.QObject):
 
     async def start(self, standby=False):
         """Start Session."""
-        _LOGGER.info("Session Start")
+        _LOGGER.debug("Session Start")
         if self.window:
             self.session.av_receiver.rgb = False if self.window.use_opengl else True
 

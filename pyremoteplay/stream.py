@@ -131,7 +131,7 @@ class RPStream:
 
     def ready(self):
         """Notify Session that stream is ready."""
-        _LOGGER.info("Stream Ready")
+        _LOGGER.debug("Stream Ready")
         self._state = RPStream.STATE_READY
         self._session.stream_ready.set()
 
@@ -338,7 +338,7 @@ class RPStream:
 
     def _disconnect(self):
         """Disconnect Stream."""
-        _LOGGER.info("Stream Disconnecting")
+        _LOGGER.debug("Stream Disconnecting")
         chunk_flag = channel = 1
         data = ProtoHandler.disconnect_payload()
         self.advance_sequence()
@@ -346,7 +346,7 @@ class RPStream:
 
     def stop(self):
         """Stop Stream."""
-        _LOGGER.info("Stopping Stream")
+        _LOGGER.debug("Stopping Stream")
         self._stop_event.set()
         if self._protocol:
             self._disconnect()
@@ -456,7 +456,7 @@ class StreamTest:
         """Stop Tests."""
         self._stream.rtt = self._results["rtt"]
         self._stream.mtu = self._results["mtu"]
-        _LOGGER.info(
+        _LOGGER.debug(
             "Tested network and got MTU: %s; RTT: %sms",
             self._results["mtu"],
             self._results["rtt"] * 1000,
@@ -495,13 +495,13 @@ class StreamTest:
             rtt_results.append(ping[1] - ping[0])
         average = sum(rtt_results) / self._max_pings
         longest = max(rtt_results)
-        _LOGGER.info("Average RTT: %s ms; Longest RTT: %s ms", average, longest)
+        _LOGGER.info("Average RTT: %s ms; Longest RTT: %s s", average, longest)
         self._results["rtt"] = average
         self.run_mtu_in()
 
     def run_mtu_in(self):
         """Run MTU In Test."""
-        _LOGGER.info("Running MTU Test")
+        _LOGGER.debug("Running MTU Test")
         self._index = 0
         self._cur_mtu = DEFAULT_MTU
         self._send_mtu_in()
