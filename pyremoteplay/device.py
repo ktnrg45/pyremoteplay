@@ -13,6 +13,7 @@ from .const import DEFAULT_POLL_COUNT, DDP_PORTS, DEFAULT_STANDBY_DELAY
 from .ddp import async_get_status, wakeup
 from .session import Session
 from .util import get_users, get_profiles, format_regist_key
+from .register import register
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -189,6 +190,10 @@ class RPDevice:
         regist_key = profile["hosts"][self.mac_address]["data"]["RegistKey"]
         regist_key = format_regist_key(regist_key)
         wakeup(self.host, regist_key, host_type=self.host_type)
+
+    def register(self, psn_id: str, pin: str, timeout: float = 2.0) -> dict:
+        """Register psn_id with device. Return register info."""
+        return register(self.host, psn_id, pin, timeout)
 
     @property
     def host(self) -> str:

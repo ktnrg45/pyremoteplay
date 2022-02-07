@@ -116,7 +116,6 @@ class Joystick(QtWidgets.QLabel):
         self._moving_offset = QtCore.QPointF(0, 0)
 
         self.setStyleSheet("background-color: rgba(0, 0, 0, 0.0)")
-        self.setMouseTracking(True)
         self._set_cursor()
 
     def _set_cursor(self, shape=Qt.SizeAllCursor):
