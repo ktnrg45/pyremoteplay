@@ -140,8 +140,12 @@ class RPWorker(QtCore.QObject):
         self.session.av_receiver.set_signals(
             self.window.video_frame, self.window.audio_frame
         )
-        self.window.audio_frame.connect(self.window.next_audio_frame)
-        self.window.video_frame.connect(self.window.video_output.next_video_frame)
+        self.window.audio_frame.connect(
+            self.window.next_audio_frame, Qt.QueuedConnection
+        )
+        self.window.video_frame.connect(
+            self.window.video_output.next_video_frame, Qt.QueuedConnection
+        )
         self.started.emit()
 
         if self.session.stop_event:
