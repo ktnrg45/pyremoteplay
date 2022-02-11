@@ -126,9 +126,9 @@ class Controller:
             raise ValueError("Invalid axis: Expected 'x', 'y'")
         check_value(value)
         value = scale_value(value)
-        current = self._stick_state[stick][axis]
-        if current != value:
-            self._stick_state[stick][axis] = value
+        self._stick_state[stick][axis] = value
+        # Try to avoid deadlock
+        if not self._should_send.is_set():
             self._should_send.set()
 
     @property
