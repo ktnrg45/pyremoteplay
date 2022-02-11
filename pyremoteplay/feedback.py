@@ -116,7 +116,9 @@ class Controller:
             val_y = scale_value(val_y)
             self._stick_state[stick]["x"] = val_x
             self._stick_state[stick]["y"] = val_y
-            self._should_send.set()
+            # Try to avoid deadlock
+            if not self._should_send.is_set():
+                self._should_send.set()
             return
 
         if axis is None or value is None:
