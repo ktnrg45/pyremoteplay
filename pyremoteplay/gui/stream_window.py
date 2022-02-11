@@ -1,7 +1,6 @@
 # pylint: disable=c-extension-no-member,invalid-name
 """Stream Window for GUI."""
 import time
-from collections import deque
 import logging
 
 from PySide6 import QtCore, QtMultimedia, QtWidgets
@@ -26,7 +25,6 @@ class QtReceiver(AVReceiver):
         self.video_signal = None
         self.audio_signal = None
         self.rgb = True
-        self.audio_queue = deque()
 
     def decode_video_frame(self, buf: bytes) -> bytes:
         """Decode Video Frame."""
@@ -45,13 +43,53 @@ class QtReceiver(AVReceiver):
         frame = self.decode_audio_frame(buf)
         if frame is None:
             return
-        self.audio_queue.append(QtCore.QByteArray(frame))
-        self.audio_signal.emit()
+        self.audio_signal.emit(QtCore.QByteArray(frame))
 
     def set_signals(self, video_signal, audio_signal):
         """Set signals."""
         self.video_signal = video_signal
         self.audio_signal = audio_signal
+
+
+class AudioThread(QtCore.QThread):
+    """Thread for audio."""
+
+    def __init__(self):
+        super().__init__()
+        self.audio_output = None
+        self.audio_buffer = None
+
+    def start(self, device, config):
+        """Start thread."""
+        super().start()
+        self._init_audio(device, config)
+
+    def _init_audio(self, device, config):
+        if not config:
+            return
+        if self.audio_buffer or self.audio_output:
+            return
+        audio_format = QtMultimedia.QAudioFormat()
+        audio_format.setChannelCount(config["channels"])
+        audio_format.setSampleRate(config["rate"])
+        audio_format.setSampleFormat(QtMultimedia.QAudioFormat.Int16)
+
+        self.audio_output = QtMultimedia.QAudioSink(device, format=audio_format)
+        self.audio_output.setBufferSize(config["packet_size"] * 4)
+        self.audio_buffer = self.audio_output.start()
+        _LOGGER.debug("Audio Thread init")
+
+    def next_audio_frame(self, data):
+        """Handle next audio frame."""
+        if self.audio_buffer:
+            self.audio_buffer.write(data)
+
+    def quit(self):
+        """Quit Thread."""
+        self.audio_buffer = None
+        if self.audio_output:
+            self.audio_output.stop()
+        super().quit()
 
 
 class RPWorker(QtCore.QObject):
@@ -141,7 +179,7 @@ class RPWorker(QtCore.QObject):
             self.window.video_frame, self.window.audio_frame
         )
         self.window.audio_frame.connect(
-            self.window.next_audio_frame, Qt.QueuedConnection
+            self.window.audio_thread.next_audio_frame, Qt.QueuedConnection
         )
         self.window.video_frame.connect(
             self.window.video_output.next_video_frame, Qt.QueuedConnection
@@ -183,7 +221,7 @@ class StreamWindow(QtWidgets.QWidget):
 
     started = QtCore.Signal()
     video_frame = QtCore.Signal(object)
-    audio_frame = QtCore.Signal()
+    audio_frame = QtCore.Signal(object)
 
     def __init__(self, main_window):
         self.mapping = None
@@ -206,11 +244,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.setMaximumHeight(self.main_window.screen.virtualSize().height())
         self.setStyleSheet("background-color: black")
         self.video_output = None
-        self.audio_output = None
-        self.audio_device = None
-        self.audio_buffer = None
-        self.audio_queue = None
-        self.audio_thread = QtCore.QThread()
+        self.audio_thread = AudioThread()
         self.opengl = False
         self.center_text = QtWidgets.QLabel(
             "Starting Stream...", alignment=Qt.AlignCenter
@@ -291,35 +325,9 @@ class StreamWindow(QtWidgets.QWidget):
         self.setFixedSize(self.width(), self.height())
 
     def _init_audio(self):
-        if not self.rp_worker.session:
-            return
-        config = self.rp_worker.session.av_receiver.audio_config
-        if not config:
-            return
-        if self.audio_buffer or self.audio_output:
-            return
-        self.audio_queue = self.rp_worker.session.av_receiver.audio_queue
-        audio_format = QtMultimedia.QAudioFormat()
-        audio_format.setChannelCount(config["channels"])
-        audio_format.setSampleRate(config["rate"])
-        audio_format.setSampleFormat(QtMultimedia.QAudioFormat.Int16)
-
-        self.audio_output = QtMultimedia.QAudioSink(
-            self.audio_device, format=audio_format
+        self.audio_thread.start(
+            self.audio_device, self.rp_worker.session.av_receiver.audio_config
         )
-        self.audio_output.setBufferSize(config["packet_size"] * 4)
-        self.audio_buffer = self.audio_output.start()
-        self.audio_buffer.moveToThread(self.audio_thread)
-
-    def next_audio_frame(self):
-        """Handle next audio frame."""
-        if self.audio_output is None:
-            self._init_audio()
-        if len(self.audio_queue) < 4:
-            return
-        data = self.audio_queue.popleft()
-        if self.audio_buffer:
-            self.audio_buffer.write(data)
 
     def _init_fps(self):
         self.fps_label.move(20, 20)
@@ -426,8 +434,6 @@ class StreamWindow(QtWidgets.QWidget):
         if self.video_output:
             self.video_output.deleteLater()
             self.video_output = None
-        if self.audio_output:
-            self.audio_output.stop()
-            self.audio_output = None
-            self.audio_buffer = None
+        if self.audio_thread:
+            self.audio_thread.quit()
         self.main_window.session_stop()
