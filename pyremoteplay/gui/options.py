@@ -3,6 +3,8 @@
 import socket
 from dataclasses import dataclass, asdict, field
 
+import sounddevice
+
 from PySide6 import QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from PySide6.QtMultimedia import QMediaDevices  # pylint: disable=no-name-in-module
@@ -38,6 +40,7 @@ class Options:
     fullscreen: bool = False
     profile: str = ""
     devices: list = field(default_factory=list)
+    use_qt_audio: bool = False
 
     def save(self):
         """Save Options."""
@@ -57,7 +60,6 @@ class OptionsWidget(QtWidgets.QWidget):
         self.main_window = main_window
         self.layout = QtWidgets.QGridLayout(self, alignment=Qt.AlignTop)
 
-        self.get_audio_devices()
         self._media_devices = QMediaDevices()
         self.quality = QtWidgets.QComboBox(self)
         self.use_opengl = AnimatedToggle("Use OpenGL", self)
@@ -70,8 +72,10 @@ class OptionsWidget(QtWidgets.QWidget):
         self.audio_output = QtWidgets.QComboBox(self)
         self.decoder = QtWidgets.QComboBox(self)
         self.devices = QtWidgets.QTreeWidget()
+        self.use_qt_audio = AnimatedToggle("Use QT Audio", self)
 
         self._init_options()
+        self.get_audio_devices()
         self.main_window.add_devices(self._devices)
 
     def _init_options(self):
@@ -102,8 +106,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.resolution.addItems(list(RESOLUTION_PRESETS.keys()))
         self.audio_output.addItems(list(self.audio_devices.keys()))
         self.decoder.addItems(self.get_decoder())
-        self.devices.itemSelectionChanged.connect(lambda: del_device.setDisabled(False))
-        self._media_devices.audioOutputsChanged.connect(self.get_audio_devices)
+        self.use_qt_audio.setToolTip("Uses Sound Device backend if disabled")
 
         self.set_options()
         self.set_devices()
@@ -118,6 +121,10 @@ class OptionsWidget(QtWidgets.QWidget):
         self.resolution.currentTextChanged.connect(self._change_options)
         self.decoder.currentTextChanged.connect(self._change_options)
         self.accounts.itemDoubleClicked.connect(self.set_profiles)
+        self.devices.itemSelectionChanged.connect(lambda: del_device.setDisabled(False))
+        self.use_qt_audio.stateChanged.connect(self._qt_audio_changed)
+
+        self._media_devices.audioOutputsChanged.connect(self.get_audio_devices)
 
         widgets = (
             ("Quality", self.quality, self.use_opengl),
@@ -125,7 +132,7 @@ class OptionsWidget(QtWidgets.QWidget):
             ("Resolution", self.resolution, self.fullscreen),
             (res_label,),
             ("Video Decoder", self.decoder, self.use_hw),
-            ("Audio Output", self.audio_output),
+            ("Audio Output", self.audio_output, self.use_qt_audio),
         )
 
         for row_index, _row in enumerate(widgets):
@@ -172,6 +179,19 @@ class OptionsWidget(QtWidgets.QWidget):
 
     def get_audio_devices(self):
         """Return Audio devices."""
+        audio_devices = {}
+        if self.use_qt_audio.isChecked():
+            audio_devices = self.get_qt_audio_devices()
+        else:
+            audio_devices = self.get_sd_audio_devices()
+        self.audio_devices = audio_devices
+        if self.audio_output:
+            self.audio_output.clear()
+            self.audio_output.addItems(self.audio_devices)
+        return audio_devices
+
+    def get_qt_audio_devices(self) -> dict:
+        """Return Qt Audio Devices."""
         devices = QMediaDevices.audioOutputs()
         default = QMediaDevices.defaultAudioOutput()
         audio_devices = {f"{default.description()} (Default)": default}
@@ -179,10 +199,26 @@ class OptionsWidget(QtWidgets.QWidget):
             if device == default:
                 continue
             audio_devices[device.description()] = device
-        self.audio_devices = audio_devices
-        if self.audio_output:
-            self.audio_output.clear()
-            self.audio_output.addItems(self.audio_devices)
+        return audio_devices
+
+    def get_sd_audio_devices(self) -> dict:
+        """Return SoundDevice audio devices."""
+        devices = sounddevice.query_devices()
+        default_index = sounddevice.default.device[1]
+        default_name = ""
+        if default_index is not None:
+            default_name = f"{devices[default_index].get('name')} (Default)"
+            audio_devices = {default_name: devices[default_index]}
+        else:
+            audio_devices = {}
+        for index, device in enumerate(devices):
+            if default_index == index:
+                name = default_name
+            else:
+                name = device.get("name")
+            if device.get("max_output_channels"):
+                device["index"] = index
+                audio_devices[name] = device
         return audio_devices
 
     def get_audio_device(self):
@@ -200,6 +236,7 @@ class OptionsWidget(QtWidgets.QWidget):
             self.use_hw.setChecked(options["use_hw"])
             self.resolution.setCurrentText(options["resolution"])
             self.fullscreen.setChecked(options["fullscreen"])
+            self.use_qt_audio.setChecked(options["use_qt_audio"])
             self._devices = options["devices"]
 
             decoder = options["decoder"]
@@ -263,6 +300,11 @@ class OptionsWidget(QtWidgets.QWidget):
     # pylint: disable=unused-argument
     def _change_options(self, *args):
         self.options_data.save()
+
+    # pylint: disable=unused-argument
+    def _qt_audio_changed(self, *args):
+        self.get_audio_devices()
+        self._change_options()
 
     def new_device(self):
         """Run New Device flow."""
@@ -467,6 +509,7 @@ class OptionsWidget(QtWidgets.QWidget):
             fullscreen=self.fullscreen.isChecked(),
             profile=profile,
             devices=self._devices,
+            use_qt_audio=self.use_qt_audio.isChecked(),
         )
         return options
 
