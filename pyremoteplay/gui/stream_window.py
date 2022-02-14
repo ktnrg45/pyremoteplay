@@ -112,6 +112,7 @@ class AudioThread(QtCore.QThread):
         self.queue = deque(maxlen=5)
         self.device = None
         self.config = {}
+        self.__blank_frame = b""
         self.started.connect(self._init_audio)
 
     def start(self, device, config):
@@ -130,9 +131,11 @@ class AudioThread(QtCore.QThread):
             channels=config["channels"],
             dtype=f"int{config['bits']}",
             latency="low",
+            dither_off=True,
             callback=self.callback,
             device=self.device,
         )
+        self.__blank_frame = bytes(config["packet_size"])
         self.audio_output.start()
         _LOGGER.debug("Audio Thread init")
 
@@ -140,12 +143,12 @@ class AudioThread(QtCore.QThread):
         """Handle next audio frame."""
         self.queue.append(data)
 
-    def callback(self, buf, frames, time, status):
+    def callback(self, buf, frames, _time, status):
         """Callback to write new frames."""
         try:
             data = self.queue.popleft()
         except IndexError:
-            return
+            data = self.__blank_frame
         buf[:] = data
 
     def quit(self):

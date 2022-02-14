@@ -69,7 +69,7 @@ class AsyncHandler(QtCore.QObject):
         await self.protocol.run()
 
 
-class MainWindow(QtWidgets.QWidget):
+class MainWindow(QtWidgets.QMainWindow):
     """Main Window."""
 
     session_finished = QtCore.Signal()
@@ -104,17 +104,16 @@ class MainWindow(QtWidgets.QWidget):
         self.toolbar = ToolbarWidget(self)
         self.options = OptionsWidget(self)
         self.controls = ControlsWidget(self)
-        self.options.hide()
-        self.controls.hide()
+        self.addToolBar(self.toolbar)
+        self.setStatusBar(QtWidgets.QStatusBar())
+        self.statusBar().showMessage(f"v{VERSION}")
         self.main_frame.layout.addWidget(self.center_text)
         self.main_frame.layout.addWidget(self.device_grid)
-        self.layout = QtWidgets.QVBoxLayout(self)
-        self.layout.addWidget(self.toolbar)
-        self.layout.addWidget(self.options)
-        self.layout.addWidget(self.controls)
-        self.layout.setAlignment(self.toolbar, Qt.AlignTop)
-        self.layout.addWidget(self.main_frame)
-        self.layout.addWidget(QtWidgets.QLabel(f"v{VERSION}", alignment=Qt.AlignBottom))
+        widget = QtWidgets.QStackedWidget()
+        widget.addWidget(self.main_frame)
+        widget.addWidget(self.options)
+        widget.addWidget(self.controls)
+        self.setCentralWidget(widget)
         self._set_style()
         self.toolbar.refresh.setChecked(True)
         self.device_grid.start_update()
