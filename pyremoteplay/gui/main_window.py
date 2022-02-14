@@ -136,7 +136,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _set_style(self):
         style = (
-            "QPushButton {border: 1px solid #0a58ca;border-radius: 10px;padding: 10px;}"
+            "QPushButton {border: 1px solid #0a58ca;border-radius: 10px;padding: 10px;margin: 5px;}"
             "QPushButton:hover {background-color:#6ea8fe;color:black;}"
             "QPushButton:pressed {background-color:#0a58ca;color:white;}"
             "QPushButton:checked {background-color:#0D6EFD;color:white;}"
