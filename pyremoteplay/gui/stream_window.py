@@ -109,7 +109,7 @@ class AudioThread(QtCore.QThread):
     def __init__(self):
         super().__init__()
         self.audio_output = None
-        self.queue = deque(maxlen=1000)
+        self.queue = deque(maxlen=5)
         self.device = None
         self.config = {}
         self.started.connect(self._init_audio)
