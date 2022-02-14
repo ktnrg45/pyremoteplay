@@ -21,8 +21,7 @@ class DeviceButton(QtWidgets.QPushButton):
         self.status = device.status
         self.info_show = False
         self.menu = QtWidgets.QMenu(self)
-        self.clicked.connect(lambda: self.main_window.connect_host(self.device))
-        self.clicked.connect(lambda: self.setEnabled(False))
+        self.clicked.connect(self._on_click)
         self.text_color = self.COLOR_DARK
         self.bg_color = self.COLOR_BG
         self.border_color = ("#A3A3A3", "#A3A3A3")
@@ -32,6 +31,11 @@ class DeviceButton(QtWidgets.QPushButton):
         self._get_text()
         self._set_image()
         self._set_style()
+
+    def _on_click(self):
+        self.setEnabled(False)
+        self.setToolTip("Device unavailable.\nWaiting for session to close...")
+        self.main_window.connect_host(self.device)
 
     def _init_actions(self):
         self.action_info = QtGui.QAction(self)
@@ -234,12 +238,14 @@ class DeviceGridWidget(QtWidgets.QWidget):
         """Handle session stopped."""
         if self.main_window.toolbar.refresh.isChecked():
             self.start_update()
+        self.setDisabled(False)
         QtCore.QTimer.singleShot(10000, self.enable_buttons)
 
     def enable_buttons(self):
         """Enable all buttons."""
         for button in self.widgets.values():
             button.setDisabled(False)
+            button.setToolTip("")
 
     def start_update(self):
         """Start update service."""

@@ -152,13 +152,22 @@ class MainWindow(QtWidgets.QWidget):
 
     def check_profile(self, name, device):
         """Return profile if profile is registered."""
-        profile = self.options.profiles.get(name)
-        if not profile:
+        if not self.options.profiles:
             message(
                 self,
                 "Error: No PSN Accounts found",
                 "Click 'Options' -> 'Add Account' to add PSN Account.",
             )
+            self.device_grid.enable_buttons()
+            return None
+        profile = self.options.profiles.get(name)
+        if not profile:
+            message(
+                self,
+                "Error: No PSN Account Selected.",
+                "Click 'Options' -> and select a PSN Account.",
+            )
+            self.device_grid.enable_buttons()
             return None
         if device.mac_address not in profile["hosts"]:
             text = (
@@ -173,6 +182,7 @@ class MainWindow(QtWidgets.QWidget):
                 callback=lambda: self.options.register(device.status, name),
                 escape=True,
             )
+            self.device_grid.enable_buttons()
             return None
         return profile
 
@@ -214,6 +224,7 @@ class MainWindow(QtWidgets.QWidget):
         profile = self.check_profile(user, device)
         if not profile:
             return
+        self.device_grid.setEnabled(False)
         self.device_grid.stop_update()
         audio_device = self.options.get_audio_device()
         self._stream_window = StreamWindow(self)

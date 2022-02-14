@@ -60,13 +60,18 @@ class QtAudioThread(QtCore.QThread):
         super().__init__()
         self.audio_output = None
         self.audio_buffer = None
+        self.device = None
+        self.config = {}
+        self.started.connect(self._init_audio)
 
     def start(self, device, config):
         """Start thread."""
+        self.device = device
+        self.config = config
         super().start()
-        self._init_audio(device, config)
 
-    def _init_audio(self, device, config):
+    def _init_audio(self):
+        config = self.config
         if not config:
             return
         if self.audio_buffer or self.audio_output:
@@ -76,7 +81,11 @@ class QtAudioThread(QtCore.QThread):
         audio_format.setSampleRate(config["rate"])
         audio_format.setSampleFormat(QtMultimedia.QAudioFormat.Int16)
 
-        self.audio_output = QtMultimedia.QAudioSink(device, format=audio_format)
+        bytes_per_second = audio_format.bytesForDuration(1000 * 1000)
+        interval = int(1 / (bytes_per_second / config["packet_size"]) * 1000)
+        _LOGGER.debug(interval)
+
+        self.audio_output = QtMultimedia.QAudioSink(self.device, format=audio_format)
         self.audio_output.setBufferSize(config["packet_size"] * 4)
         self.audio_buffer = self.audio_output.start()
         _LOGGER.debug("Audio Thread init")

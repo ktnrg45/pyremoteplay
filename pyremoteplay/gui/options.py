@@ -106,7 +106,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.resolution.addItems(list(RESOLUTION_PRESETS.keys()))
         self.audio_output.addItems(list(self.audio_devices.keys()))
         self.decoder.addItems(self.get_decoder())
-        self.use_qt_audio.setToolTip("Uses Sound Device backend if disabled")
+        self.use_qt_audio.setToolTip("Uses PortAudio if disabled")
 
         self.set_options()
         self.set_devices()
@@ -229,6 +229,7 @@ class OptionsWidget(QtWidgets.QWidget):
         """Set Options."""
         options = get_options()
         try:
+            self._devices = options["devices"]
             self.quality.setCurrentText(str(options["quality"]))
             self.use_opengl.setChecked(options["use_opengl"])
             self.fps.setCurrentText(str(options["fps"]))
@@ -237,7 +238,6 @@ class OptionsWidget(QtWidgets.QWidget):
             self.resolution.setCurrentText(options["resolution"])
             self.fullscreen.setChecked(options["fullscreen"])
             self.use_qt_audio.setChecked(options["use_qt_audio"])
-            self._devices = options["devices"]
 
             decoder = options["decoder"]
             found = False
