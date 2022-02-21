@@ -184,11 +184,23 @@ class RPDevice:
         self.session.standby()
         return True
 
-    def wakeup(self, user: str, profiles=None, profile_path=None):
+    def wakeup(
+        self,
+        user: str = "",
+        profiles: dict = None,
+        profile_path: str = None,
+        key: str = "",
+    ):
         """Send Wakeup."""
-        profile = self.get_profile(user, profiles, profile_path)
-        regist_key = profile["hosts"][self.mac_address]["data"]["RegistKey"]
-        regist_key = format_regist_key(regist_key)
+        if not key:
+            if not user:
+                raise ValueError("User must be specified")
+            profile = self.get_profile(user, profiles, profile_path)
+            if not profile:
+                _LOGGER.error("Profile not found")
+                return
+            key = profile["hosts"][self.mac_address]["data"]["RegistKey"]
+        regist_key = format_regist_key(key)
         wakeup(self.host, regist_key, host_type=self.host_type)
 
     def register(self, psn_id: str, pin: str, timeout: float = 2.0) -> dict:

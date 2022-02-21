@@ -208,7 +208,7 @@ class MainWindow(QtWidgets.QMainWindow):
         profile = self.check_profile(user, device)
         if not profile:
             return
-        device.wakeup(user)
+        device.wakeup(user=user)
         message(
             self,
             "Wakeup Sent",

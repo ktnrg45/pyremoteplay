@@ -192,47 +192,47 @@ class DeviceGridWidget(QtWidgets.QWidget):
 
     def add(self, button, row, col):
         """Add button to grid."""
-        self.layout.setRowStretch(row, 6)
+        # self.layout.setRowStretch(row, 6)
         self.layout.addWidget(button, row, col, Qt.AlignCenter)
         self.widgets[button.device.host] = button
 
-    def create_grid(self, devices):
+    def create_grid(self, devices: dict):
         """Create Button Grid."""
-        all_devices = []
+        buttons = self._check_buttons(devices)
+
+        max_cols = 3
+        if buttons:
+            for index, button in enumerate(buttons):
+                col = index % max_cols
+                row = index // max_cols
+                self.add(button, row, col)
+            self.show()
+            self.main_window.center_text.hide()
+        else:
+            self.hide()
+            self.main_window.center_text.show()
+
+    def _check_buttons(self, devices: dict):
+        """Return Current Buttons which should be shown."""
+        buttons = []
         if self.widgets:
             for widget in self.widgets.values():
                 self.layout.removeWidget(widget)
         widget = None
         for ip_address in devices.keys():
             if ip_address not in self.widgets:
-                all_devices.append(devices[ip_address])
+                buttons.append(DeviceButton(self.main_window, devices[ip_address]))
             else:
                 widget = self.widgets.pop(ip_address)
                 if widget.device.status:
-                    all_devices.append(widget)
+                    buttons.append(widget)
                     widget.update_state(widget.device.status)
+
         for widget in self.widgets.values():
             widget.setParent(None)
             widget.deleteLater()
         self.widgets = {}
-
-        max_cols = 3
-        if all_devices:
-            for index, device in enumerate(all_devices):
-                col = index % max_cols
-                row = index // max_cols
-                if isinstance(device, DeviceButton):
-                    button = device
-                else:
-                    if device.status:
-                        button = DeviceButton(self.main_window, device)
-                self.add(button, row, col)
-            if (
-                not self.main_window.toolbar.options.isChecked()
-                and not self.main_window.toolbar.controls.isChecked()
-            ):
-                self.show()
-            self.main_window.center_text.hide()
+        return buttons
 
     def session_stop(self):
         """Handle session stopped."""
