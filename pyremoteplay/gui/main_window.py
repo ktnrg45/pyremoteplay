@@ -187,20 +187,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def standby_host(self, device):
         """Place host in standby mode."""
-        user = self.options.options.get("profile")
-        options = self.options.options_data
+        options = self.options.options
+        user = options.get("profile")
         profile = self.check_profile(user, device)
         if not profile:
             return
         self.rp_worker.setup(None, device, user, options)
         self.rp_worker.run(standby=True)
 
-    def standby_callback(self, host):
+    def standby_callback(self):
         """Callback after attempting standby."""
         if self.rp_worker.error:
             message(self, "Standby Error", self.rp_worker.error)
         else:
-            message(self, "Standby Success", f"Set device at {host} to Standby", "info")
+            message(self, "Standby Success", "Set device to Standby", "info")
 
     def wakeup_host(self, device):
         """Wakeup Host."""

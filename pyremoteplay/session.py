@@ -525,12 +525,17 @@ class Session:
             for task in self._tasks:
                 task.cancel()
         self._thread_executor.shutdown()
+        self._thread_executor = None
         if self._protocol:
             self._protocol.close()
         self.events.remove_all_listeners()
 
     async def run_io(self, func, *args, **kwargs):
         """Run blocking function in executor."""
+        if not self._thread_executor:
+            if not self.is_stopped:
+                _LOGGER.warning("No Executor and session is not stopped")
+            return None
         return await self.loop.run_in_executor(
             self._thread_executor, partial(func, *args, **kwargs)
         )

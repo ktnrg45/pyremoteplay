@@ -167,6 +167,7 @@ class DDPProtocol(asyncio.DatagramProtocol):
             # Assume Device is not available.
             if device_data["poll_count"] > self.max_polls:
                 device.set_status({})
+                device_data["poll_count"] = 0
                 if device.callback:
                     device.callback()  # pylint: disable=not-callable
             if not device_data["discovered"]:

@@ -172,7 +172,7 @@ class RPWorker(QtCore.QObject):
         self.device = None
         self.session = None
         self.error = ""
-        self.standby_done.connect(self.standby_finished)
+        self.standby_done.connect(self.main_window.standby_callback)
 
     def run(self, standby=False):
         """Run Session."""
@@ -186,7 +186,8 @@ class RPWorker(QtCore.QObject):
             return
         self.session.events.on("stop", self.stop)
         # pylint: disable=protected-access
-        self.session.events.on("audio_config", self.window._init_audio)
+        if self.window:
+            self.session.events.on("audio_config", self.window._init_audio)
         self.session.loop = self.main_window.async_handler.loop
         self.session.loop.create_task(self.start(standby))
 
@@ -255,11 +256,6 @@ class RPWorker(QtCore.QObject):
         if self.session.stop_event:
             await self.session.stop_event.wait()
             _LOGGER.info("Session Finished")
-
-    def standby_finished(self):
-        """Callback when standby command sent."""
-        host = self.session.host if self.session else "Unknown"
-        self.main_window.standby_callback(host)
 
     def stick_state(
         self, stick: str, direction: str = None, value: float = None, point=None
