@@ -29,7 +29,7 @@ class Controller:
         self._buttons = {}
         self._params = kwargs
         self._started = False
-        self._should_send = threading.Event()
+        self._should_send = threading.Semaphore()
 
         self._stick_state = {
             "left": {"x": 0, "y": 0},
@@ -39,13 +39,9 @@ class Controller:
     def worker(self):
         """Worker for sending feedback packets. Run in thread."""
         while not self._session.is_stopped:
-            try:
-                self._should_send.wait(timeout=1.0)
-            except Exception as error:
-                _LOGGER.error(error)
+            if not self._should_send.acquire(timeout=1):
                 continue
             self.send_state()
-            self._should_send.clear()
         _LOGGER.info("Controller stopped")
 
     def send_state(self):
@@ -116,9 +112,7 @@ class Controller:
             val_y = scale_value(val_y)
             self._stick_state[stick]["x"] = val_x
             self._stick_state[stick]["y"] = val_y
-            # Try to avoid deadlock
-            if not self._should_send.is_set():
-                self._should_send.set()
+            self._should_send.release()
             return
 
         if axis is None or value is None:
@@ -129,9 +123,7 @@ class Controller:
         check_value(value)
         value = scale_value(value)
         self._stick_state[stick][axis] = value
-        # Try to avoid deadlock
-        if not self._should_send.is_set():
-            self._should_send.set()
+        self._should_send.release()
 
     @property
     def sequence_event(self) -> int:
