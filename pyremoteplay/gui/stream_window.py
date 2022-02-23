@@ -15,6 +15,7 @@ from .joystick import JoystickWidget
 from .controls import ControlsWidget
 from .util import label, message
 from .video import VideoWidget, YUVGLWidget
+from .widgets import FadeOutLabel
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -305,17 +306,15 @@ class StreamWindow(QtWidgets.QWidget):
         )
         self.setMaximumWidth(self.main_window.screen.virtualSize().width())
         self.setMaximumHeight(self.main_window.screen.virtualSize().height())
-        self.setStyleSheet("background-color: black")
+        self.setObjectName("stream-window")
+        self.setStyleSheet("#stream-window{background-color: black}")
         self.video_output = None
         self.opengl = False
-        self.center_text = QtWidgets.QLabel(
-            "Starting Stream...", alignment=Qt.AlignCenter
+        self.center_text = FadeOutLabel(
+            "Starting Stream...", self, alignment=Qt.AlignCenter
         )
-        self.center_text.setWordWrap(True)
-        self.center_text.setStyleSheet("QLabel {color: white;font-size: 24px;}")
         self.layout = QtWidgets.QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.addWidget(self.center_text)
         self.joystick = JoystickWidget(self, left=True, right=True)
         self.joystick.hide()
         self.input_options = None
@@ -324,6 +323,10 @@ class StreamWindow(QtWidgets.QWidget):
         self.rp_worker = self.main_window.rp_worker
         self.rp_worker.started.connect(self._show_video)
         self.rp_worker.finished.connect(self.close)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.center_text.setFixedSize(self.size().width(), 100)
 
     def start(
         self,
@@ -340,7 +343,6 @@ class StreamWindow(QtWidgets.QWidget):
             self.audio_thread = QtAudioThread()
         else:
             self.audio_thread = AudioThread()
-        self.center_text.show()
         self.input_options = input_options
         self.mapping = (
             ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
@@ -378,10 +380,22 @@ class StreamWindow(QtWidgets.QWidget):
             self.showFullScreen()
         else:
             self.show()
+        self.center_text.move(0, self.contentsRect().center().y())
+
+    def _show_message(self):
+        key_name = ""
+        for key, button in self.mapping.items():
+            if button == "QUIT":
+                key_name = key.replace("Key_", "")
+                break
+        self.center_text.hide()
+        self.center_text.move(0, 0)
+        self.center_text.setText(f"Press {key_name} to quit.")
+        self.center_text.show_and_hide()
 
     def _show_video(self):
         """Show Video Output."""
-        self.center_text.hide()
+        self._show_message()
         self.video_output.show()
         joysticks = self.input_options.get("joysticks")
         if joysticks:

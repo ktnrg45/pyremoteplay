@@ -11,9 +11,89 @@ from PySide6.QtCore import (
     QRectF,
     QSize,
     Qt,
+    QTimer,
 )
 from PySide6.QtGui import QBrush, QColor, QPainter, QPaintEvent, QPen
-from PySide6.QtWidgets import QCheckBox
+from PySide6.QtWidgets import QCheckBox, QLabel
+
+
+class FadeOutLabel(QLabel):
+    """Fade Out Label."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._opacity = 1.0
+        self._duration = 3000
+        self.setAutoFillBackground(True)
+        self.setWordWrap(True)
+        self.setStyleSheet("font-size: 24px;")
+        self.anim = QPropertyAnimation(self, b"opacity", self)
+        self.apply_opacity()
+
+    def show(self, fade=False):
+        """Show Widget."""
+        self.raise_()
+        self.anim.stop()
+        if not fade:
+            self._opacity = 1.0
+            self.apply_opacity()
+            super().show()
+        else:
+            self._opacity = 0.0
+            self.apply_opacity()
+            self.anim.setEasingCurve(QEasingCurve.OutCubic)
+            self.anim.setDuration(self._duration)
+            self.anim.setStartValue(0.0)
+            self.anim.setEndValue(1.0)
+            super().show()
+            self.anim.start()
+
+    def hide(self, fade=False):
+        """Hide Widget."""
+        self.raise_()
+        self.anim.stop()
+        if not fade:
+            self._opacity = 0.0
+            self.apply_opacity()
+            super().hide()
+        else:
+            self._opacity = 1.0
+            self.apply_opacity()
+            self.anim.setEasingCurve(QEasingCurve.InOutCubic)
+            self.anim.setDuration(self._duration)
+            self.anim.setStartValue(1.0)
+            self.anim.setEndValue(0.0)
+            self.anim.start()
+
+    def show_and_hide(self):
+        """Fade in and out."""
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda: self.hide(fade=True))
+        self.show(fade=True)
+        timer.start(self._duration + 1000)
+
+    def apply_opacity(self):
+        """Apply Opacity."""
+        palette = self.palette()
+        bg_color = QColor("#000000")
+        fg_color = QColor("#FFFFFF")
+        bg_color.setAlphaF(self._opacity)
+        fg_color.setAlphaF(self._opacity)
+        palette.setColor(self.backgroundRole(), bg_color)
+        palette.setColor(self.foregroundRole(), fg_color)
+        self.setPalette(palette)
+
+    @Property(float)
+    def opacity(self):
+        """Return opacity."""
+        return self._opacity
+
+    @opacity.setter
+    def opacity(self, value):
+        """Set Opacity."""
+        self._opacity = value
+        self.apply_opacity()
 
 
 class AnimatedToggle(QCheckBox):
