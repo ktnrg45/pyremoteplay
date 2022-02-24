@@ -6,7 +6,7 @@ from dataclasses import dataclass, asdict, field
 import sounddevice
 
 from PySide6 import QtWidgets
-from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
+from PySide6.QtCore import Qt, QTimer  # pylint: disable=no-name-in-module
 from PySide6.QtMultimedia import QMediaDevices  # pylint: disable=no-name-in-module
 
 from pyremoteplay.av import AVReceiver
@@ -55,6 +55,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self._devices = []
         self.audio_output = None
         self.audio_devices = {}
+        self._device_search_timer = None
 
         super().__init__(main_window)
         self.main_window = main_window
@@ -125,6 +126,8 @@ class OptionsWidget(QtWidgets.QWidget):
         self.use_qt_audio.stateChanged.connect(self._qt_audio_changed)
 
         self._media_devices.audioOutputsChanged.connect(self.get_audio_devices)
+
+        self.main_window.async_handler.manual_search_done.connect(self.search_complete)
 
         widgets = (
             ("Quality", self.quality, self.use_opengl),
@@ -329,15 +332,32 @@ class OptionsWidget(QtWidgets.QWidget):
             text = "Device is already added."
             message(self.main_window, "Device Already Added", text, "warning")
             return
-        # status = get_status(host)
-        # if not status:
-        #     text = f"Could not find device at: {host}."
-        #     message(self.main_window, "Device not found", text, "warning")
-        #     return
-        self._devices.append(host)
-        self.set_devices()
-        self._change_options()
-        self.main_window.add_devices(self._devices)
+        self._device_search_timer = QTimer()
+        self._device_search_timer.setSingleShot(True)
+        self._device_search_timer.timeout.connect(lambda: self._search_failed(host))
+        self.main_window.async_handler.run_coro(
+            self.main_window.async_handler.manual_search, host
+        )
+        self._device_search_timer.start(5000)
+
+    def search_complete(self, host, status):
+        """Callback for search complete."""
+        if self._device_search_timer:
+            self._device_search_timer.stop()
+            self._device_search_timer = None
+        if status:
+            self._devices.append(host)
+            self.set_devices()
+            self._change_options()
+            self.main_window.add_devices(self._devices)
+            message(self.main_window, "Device found", f"Found Device at {host}", "info")
+        else:
+            self._search_failed(host)
+
+    def _search_failed(self, host):
+        self._device_search_timer = None
+        text = f"Could not find device at: {host}."
+        message(self.main_window, "Device not found", text, "warning")
 
     def delete_device(self):
         """Delete Device."""

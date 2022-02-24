@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 
 from pyremoteplay.__version__ import VERSION
 from pyremoteplay.protocol import async_create_ddp_endpoint
+from pyremoteplay.ddp import async_get_status
 
 from .device_grid import DeviceGridWidget
 from .options import OptionsWidget
@@ -25,6 +26,7 @@ class AsyncHandler(QtCore.QObject):
     """Handler for async methods."""
 
     status_updated = QtCore.Signal()
+    manual_search_done = QtCore.Signal(str, dict)
 
     def __init__(self, main_window):
         super().__init__()
@@ -67,6 +69,15 @@ class AsyncHandler(QtCore.QObject):
         """Start poll service."""
         self.protocol = await async_create_ddp_endpoint(self.status_updated.emit)
         await self.protocol.run()
+
+    async def manual_search(self, host: str):
+        """Search for device."""
+        status = await async_get_status(host)
+        self.manual_search_done.emit(host, status)
+
+    def run_coro(self, coro, *args, **kwargs):
+        """Run coroutine."""
+        asyncio.run_coroutine_threadsafe(coro(*args, **kwargs), self.loop)
 
 
 class MainWindow(QtWidgets.QMainWindow):
