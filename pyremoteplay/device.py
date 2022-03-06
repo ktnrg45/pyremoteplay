@@ -30,6 +30,7 @@ class RPDevice:
         self._host_type = None
         self._host_name = None
         self._mac_address = None
+        self._ip_address = None
         self._callback = None
         self._standby_start = 0
         self._unreachable = False
@@ -78,6 +79,8 @@ class RPDevice:
             self._mac_address = data.get("host-id")
         if self.host_name is None:
             self._host_name = data.get("host-name")
+        if self.ip_address is None:
+            self._ip_address = data.get("host-ip")
         old_status = self.status
         self._status = data
         if old_status != data:
@@ -228,6 +231,11 @@ class RPDevice:
         return self._mac_address
 
     @property
+    def ip_address(self) -> str:
+        """Return IP Address."""
+        return self._ip_address
+
+    @property
     def remote_port(self) -> int:
         """Return DDP port of device."""
         return DDP_PORTS.get(self.host_type)
@@ -300,3 +308,8 @@ class RPDevice:
         if self.session is not None and self.session.is_running:
             return True
         return False
+
+    @property
+    def standby_start(self) -> float:
+        """Return timestamp when device was seen changing to standby."""
+        return self._standby_start

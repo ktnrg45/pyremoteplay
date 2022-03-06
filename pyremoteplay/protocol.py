@@ -152,9 +152,10 @@ class DDPProtocol(asyncio.DatagramProtocol):
     def _poll(self):
         self.send_msg()
         for device_data in self._devices_data.values():
+            device = device_data["device"]
             # Device won't respond to polls right after standby
             if device_data["polls_disabled"]:
-                elapsed = time.time() - device_data["device"]._standby_start
+                elapsed = time.time() - device.standby_start
                 seconds = DEFAULT_STANDBY_DELAY - elapsed
                 if seconds > 0:
                     _LOGGER.debug("Polls disabled for %s seconds", round(seconds, 2))
@@ -163,7 +164,6 @@ class DDPProtocol(asyncio.DatagramProtocol):
 
             # Track polls that were never returned.
             device_data["poll_count"] += 1
-            device = device_data["device"]
             # Assume Device is not available.
             if device_data["poll_count"] > self.max_polls:
                 device.set_status({})

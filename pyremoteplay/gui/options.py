@@ -346,7 +346,8 @@ class OptionsWidget(QtWidgets.QWidget):
             self._device_search_timer.stop()
             self._device_search_timer = None
         if status:
-            self._devices.append(host)
+            ip_address = status["host-ip"]
+            self._devices.append(ip_address)
             self.set_devices()
             self._change_options()
             self.main_window.add_devices(self._devices)

@@ -325,6 +325,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.rp_worker.finished.connect(self.close)
 
     def resizeEvent(self, event):
+        """Resize Event."""
         super().resizeEvent(event)
         self.center_text.setFixedSize(self.size().width(), 100)
 

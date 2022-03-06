@@ -118,6 +118,8 @@ class DeviceButton(QtWidgets.QPushButton):
             device_type = "PlayStation 4"
         elif self.device.host_type == "PS5":
             device_type = "PlayStation 5"
+        else:
+            device_type = ""
         app = self.device.app_name
         if not app:
             app = "Idle" if self.device.is_on else "Standby"
