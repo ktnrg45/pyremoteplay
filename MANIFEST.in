@@ -1,4 +1,8 @@
 include requirements.txt
 include requirements-gui.txt
+include requirements-dev.txt
 include README.md
 include LICENSE
+include pyremoteplay/fec_utils/fec.pyx
+include pyremoteplay/fec_utils/fec.pxd
+include pyremoteplay/fec_utils/fec.c

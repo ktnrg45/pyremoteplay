@@ -30,11 +30,6 @@ then
 fi
 echo "Branch up to date."
 
-rm -rf dist
-rm -rf build
-
-python3 setup.py install
-
 git checkout master
 git reset HEAD
 
@@ -61,6 +56,13 @@ git push
 read -p "Enter release message: " msg
 
 gh release create $VERSION -t $VERSION -n "$msg" --target $MASTER_BRANCH
+
+rm -rf dist
+rm -rf build
+rm 'pyremoteplay/fec_utils/fec.c'
+
+python3 setup.py install --build
+echo "Built extensions."
 
 read -p "Upload to pypi?: y> " msg_pypi
 if [ "$msg_pypi" == "y" ];

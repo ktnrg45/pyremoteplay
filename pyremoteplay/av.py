@@ -5,9 +5,17 @@ import time
 from collections import deque
 from io import BytesIO
 from struct import unpack_from
+import warnings
 
-from .codecs.opus import OpusDecoder
+from pyremoteplay.codecs.opus import OpusDecoder
 from .stream_packets import AVPacket, Packet
+
+try:
+    from pyremoteplay.fec_utils import fec
+except ImportError:
+    warnings.warn(
+        "Fec module not imported. No forward error correction will be performed",
+    )
 
 try:
     import av
@@ -138,10 +146,80 @@ class AVStream:
         self._lost = 0
         self._received = 0
         self._last_index = -1
+        self._unit_size = 1400
         self._frame_bad_order = False
+        self._missing = []
 
         if self._type not in [AVStream.TYPE_VIDEO, AVStream.TYPE_AUDIO]:
             raise ValueError("Invalid Type")
+
+    def _set_new_frame(self, frame_index: int):
+        self._frame_bad_order = False
+        self._missing = []
+        self._frame = frame_index
+        self._last_unit = -1
+        self._buf.close()
+        self._buf = BytesIO()
+        _LOGGER.debug("Started New Frame: %s", self.frame)
+
+    def _handle_missing_packet(self, index: int, unit_index: int):
+        """Mark missing unit indexes as missing. Write null placeholder bytes for each."""
+        if not self._frame_bad_order:
+            _LOGGER.warning(
+                "Received unit out of order: %s, expected: %s",
+                unit_index,
+                self.last_unit + 1,
+            )
+            self._frame_bad_order = True
+        self._buf.write(bytes(self._unit_size) * (unit_index - (self.last_unit + 1)))
+        self._missing.extend(range(self.last_unit + 1, unit_index))
+        if self._lost > 65535:
+            self._lost = 0
+        self._lost += index - self._last_index - 1
+        if self._lost > 65535:
+            self._lost = 1
+        self._last_unit = unit_index - 1
+
+    def _handle_src_packet(self, packet: AVPacket):
+        if packet.is_last_src and not self._frame_bad_order:
+            _LOGGER.debug(
+                "Frame: %s finished with length: %s", self.frame, self._buf.tell()
+            )
+            self._callback(b"".join([self._header, self._buf.getvalue()]))
+
+    def _handle_fec_packet(self, packet: AVPacket):
+        if not self._frame_bad_order and not self._missing:
+            # Ignore FEC packets if all src packets received.
+            return
+        if packet.is_last:
+            if len(self._missing) <= packet.frame_length_fec:
+                restored = b""
+                try:
+                    _LOGGER.debug("Attempting FEC Decode")
+                    restored = fec.decode(
+                        packet.frame_length_src,
+                        packet.frame_length_fec,
+                        self._unit_size,
+                        self._buf.getvalue(),
+                        tuple(self._missing),
+                    )
+                except NameError:
+                    # FEC module is not available.
+                    return
+                except Exception as error:  # pylint: disable=broad-except
+                    _LOGGER.error(error)
+                if restored:
+                    _LOGGER.debug("FEC Successful")
+                    self._callback(
+                        b"".join(
+                            [
+                                self._header,
+                                restored[: packet.frame_length_src * self._unit_size],
+                            ]
+                        )
+                    )
+                else:
+                    _LOGGER.warning("FEC Failed")
 
     def handle(self, packet: AVPacket):
         """Handle Packet."""
@@ -151,48 +229,28 @@ class AVStream:
         if self._received > 65535:
             self._received = 1
 
+        # Audio frames are sent in one packet.
         if self._type == AVStream.TYPE_AUDIO:
             self._callback(packet)
             return
-        # New Video Frame
-        if packet.frame_index != self.frame:
-            self._frame_bad_order = False
-            # First packet of Frame
-            if packet.unit_index == 0:
-                self._frame = packet.frame_index
-                self._last_unit = -1
-                self._buf.close()
-                self._buf = BytesIO()
-                if packet.index == 0:
-                    self._buf.write(self._header)
-                _LOGGER.debug("Started New Frame: %s", self.frame)
 
-        # Current Frame not FEC
+        # New Video Frame.
+        if packet.frame_index != self.frame:
+            self._set_new_frame(packet.frame_index)
+
+        # Check if packet is in order
+        if packet.unit_index != self.last_unit + 1:
+            self._handle_missing_packet(packet.index, packet.unit_index)
+
+        self._last_unit += 1
+        # Don't include first two decrypted bytes
+        self._buf.write(packet.data[2:].ljust(self._unit_size, b"\x00"))
+
+        # Current Frame is src.
         if not packet.is_fec:
-            # Packet is in order
-            if packet.unit_index == self.last_unit + 1:
-                self._last_unit += 1
-                # Don't include first two decrypted bytes
-                self._buf.write(packet.data[2:])
-            else:
-                if not self._frame_bad_order:
-                    _LOGGER.warning(
-                        "Received unit out of order: %s, expected: %s",
-                        packet.unit_index,
-                        self.last_unit + 1,
-                    )
-                    self._frame_bad_order = True
-                if self._lost > 65535:
-                    self._lost = 0
-                self._lost += packet.index - self._last_index - 1
-                if self._lost > 65535:
-                    self._lost = 1
-                self._last_unit = packet.unit_index
-            if packet.is_last_src:
-                _LOGGER.debug(
-                    "Frame: %s finished with length: %s", self.frame, self._buf.tell()
-                )
-                self._callback(self._buf.getvalue())
+            self._handle_src_packet(packet)
+        else:
+            self._handle_fec_packet(packet)
 
     @property
     def frame(self) -> int:
