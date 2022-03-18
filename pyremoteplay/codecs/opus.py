@@ -2,8 +2,12 @@
 
 import array
 import ctypes
+import warnings
 
-from pyogg import opus
+try:
+    from pyogg import opus
+except ModuleNotFoundError:
+    warnings.warn("pyogg not installed")
 
 SAMPLE_RATE = 48000
 CHANNELS = 2
