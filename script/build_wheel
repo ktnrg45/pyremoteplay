@@ -1,0 +1,16 @@
+#!/bin/bash
+# Create manylinux wheel
+
+IMAGE='quay.io/pypa/manylinux_2_24_x86_64:latest'
+CONTAINER="manylinux"
+
+rm -rf ./wheels
+
+docker kill $CONTAINER && docker rm $CONTAINER
+docker pull $IMAGE
+docker run -itd --name $CONTAINER $IMAGE /bin/bash
+docker cp ./ $CONTAINER:src
+docker exec $CONTAINER /bin/bash -c "cd src && script/docker_build"
+docker cp $CONTAINER:wheelhouse ./wheels
+
+docker kill $CONTAINER && docker rm $CONTAINER
