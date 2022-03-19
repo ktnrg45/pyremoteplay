@@ -128,6 +128,7 @@ setup_kwargs = {
     "license": "GPLv3",
     "classifiers": CLASSIFIERS,
     "keywords": "playstation sony ps4 ps5 remote play remoteplay rp",
+    "setup_requires": ["wheel"],
     "install_requires": REQUIRES,
     "extras_require": {"GUI": REQUIRES_GUI, "DEV": REQUIRES_DEV},
     "python_requires": ">={}".format(MIN_PY_VERSION),
