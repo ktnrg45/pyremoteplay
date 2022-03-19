@@ -1,3 +1,4 @@
+# fmt: off
 """Tests for crypt.py."""
 from pyremoteplay import crypt
 
@@ -211,8 +212,9 @@ def test_encrypt_decrypt():
     ])
 
     key_pos = 1
-    local = crypt.LocalCipher(handshake_key, secret)
-    remote = crypt.RemoteCipher(handshake_key, secret)
+    stream = crypt.StreamCipher(handshake_key, secret)
+    local = stream._local_cipher
+    remote = stream._remote_cipher
     local._base_index = remote._base_index = 42
     local.keystreams = []
     local.keystream_index = 0
@@ -224,7 +226,6 @@ def test_encrypt_decrypt():
     assert remote.base_key == key
     assert local.base_iv == iv
     assert remote.base_iv == iv
-    stream = crypt.StreamCipher(local, remote)
     stream.advance_key_pos(key_pos)
     mock_enc = stream.encrypt(data)
     mock_data = stream.decrypt(enc_data, key_pos)
@@ -262,3 +263,5 @@ def test_encrypt():
     local_cipher.advance_key_pos(key_pos)
     mock_enc = local_cipher.encrypt(payload)
     assert mock_enc == payload_enc
+
+# fmt: on
