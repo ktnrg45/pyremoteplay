@@ -52,7 +52,7 @@ def get_include_path():
             timeout=1,
             capture_output=True,
         )
-    except subprocess.CalledProcessError:
+    except Exception:
         return default
     output = process.stderr
     if not output:
