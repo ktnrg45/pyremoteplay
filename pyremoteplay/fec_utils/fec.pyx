@@ -3,9 +3,7 @@
 
 import array
 from cpython cimport array
-from libc.stdint cimport uint8_t
-from libc.stdlib cimport malloc, calloc, free
-from libc.string cimport memcpy
+from libc.stdlib cimport calloc, free
 
 from pyremoteplay.fec_utils cimport fec
 

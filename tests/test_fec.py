@@ -1,6 +1,6 @@
 import base64
 from itertools import permutations
-from pyremoteplay.fec_utils import fec
+from pyremoteplay.fec_utils import fec, aligned_size
 
 
 TESTS = [
@@ -149,15 +149,17 @@ def test_fec_decode():
         erasures = test["erasures"]
         total = test["k"] + test["m"]
         packets = [
-            data[(i * size) + 2 : (i + 1) * size].ljust(size, b"\x00")
+            data[(i * size) + 2 : (i + 1) * size].ljust(aligned_size(size), b"\x00")
             for i in range(total)
         ]
         original = b"".join(packets)
         for e in erasures:
-            packets[e] = bytes(size)
+            packets[e] = bytes(aligned_size(size))
         erased = b"".join(packets)
         assert erased != original
-        result = fec.decode(test["k"], test["m"], size, erased, test["erasures"])
+        result = fec.decode(
+            test["k"], test["m"], aligned_size(size), erased, test["erasures"]
+        )
         assert result == original
 
 
@@ -169,14 +171,14 @@ def test_fec_decode_single_full():
     total = test["k"] + test["m"]
     for index in range(test["k"]):
         packets = [
-            data[(i * size) + 2 : (i + 1) * size].ljust(size, b"\x00")
+            data[(i * size) + 2 : (i + 1) * size].ljust(aligned_size(size), b"\x00")
             for i in range(total)
         ]
         original = b"".join(packets)
-        packets[index] = bytes(size)
+        packets[index] = bytes(aligned_size(size))
         erased = b"".join(packets)
         assert erased != original
-        result = fec.decode(test["k"], test["m"], size, erased, (index,))
+        result = fec.decode(test["k"], test["m"], aligned_size(size), erased, (index,))
         assert result == original
 
 
@@ -189,13 +191,13 @@ def test_fec_decode_multiple_full():
     cases = permutations(range(test["k"]), 2)
     for erasures in cases:
         packets = [
-            data[(i * size) + 2 : (i + 1) * size].ljust(size, b"\x00")
+            data[(i * size) + 2 : (i + 1) * size].ljust(aligned_size(size), b"\x00")
             for i in range(total)
         ]
         original = b"".join(packets)
         for e in erasures:
-            packets[e] = bytes(size)
+            packets[e] = bytes(aligned_size(size))
         erased = b"".join(packets)
         assert erased != original
-        result = fec.decode(test["k"], test["m"], size, erased, erasures)
+        result = fec.decode(test["k"], test["m"], aligned_size(size), erased, erasures)
         assert result == original

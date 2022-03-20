@@ -10,6 +10,8 @@ import warnings
 from pyremoteplay.codecs.opus import OpusDecoder
 from .stream_packets import AVPacket, Packet
 
+from pyremoteplay.fec_utils import aligned_size
+
 try:
     from pyremoteplay.fec_utils import fec
 except ImportError:
@@ -147,6 +149,7 @@ class AVStream:
         self._received = 0
         self._last_index = -1
         self._unit_size = 1400
+        self._aligned_size = aligned_size(self._unit_size)
         self._frame_bad_order = False
         self._missing = []
 
@@ -171,7 +174,7 @@ class AVStream:
                 self.last_unit + 1,
             )
             self._frame_bad_order = True
-        self._buf.write(bytes(self._unit_size) * (unit_index - (self.last_unit + 1)))
+        self._buf.write(bytes(self._aligned_size) * (unit_index - (self.last_unit + 1)))
         self._missing.extend(range(self.last_unit + 1, unit_index))
         if self._lost > 65535:
             self._lost = 0
@@ -199,7 +202,7 @@ class AVStream:
                     restored = fec.decode(
                         packet.frame_length_src,
                         packet.frame_length_fec,
-                        self._unit_size,
+                        self._aligned_size,
                         self._buf.getvalue(),
                         tuple(self._missing),
                     )
@@ -214,7 +217,9 @@ class AVStream:
                         b"".join(
                             [
                                 self._header,
-                                restored[: packet.frame_length_src * self._unit_size],
+                                restored[
+                                    : packet.frame_length_src * self._aligned_size
+                                ],
                             ]
                         )
                     )
@@ -244,7 +249,7 @@ class AVStream:
 
         self._last_unit += 1
         # Don't include first two decrypted bytes
-        self._buf.write(packet.data[2:].ljust(self._unit_size, b"\x00"))
+        self._buf.write(packet.data[2:].ljust(self._aligned_size, b"\x00"))
 
         # Current Frame is src.
         if not packet.is_fec:
