@@ -70,7 +70,10 @@ def get_include_path():
 def build_extensions():
     """Return list of built extensions."""
     modules = []
-    include_path = get_include_path()
+    if sys.platform == "win32":
+        include_path = "Include"
+    else:
+        include_path = get_include_path()
     if ARG_BUILD in sys.argv:
         sys.argv.remove(ARG_BUILD)
         try:
@@ -85,7 +88,7 @@ def build_extensions():
                         "pyremoteplay.fec_utils.fec",
                         ["pyremoteplay/fec_utils/fec.pyx"],
                         include_dirs=[include_path],
-                        libraries=["Jerasure"],
+                        libraries=["Jerasure", "gf_complete"],
                     )
                 ]
             )
@@ -123,17 +126,16 @@ setup_kwargs = {
     "long_description_content_type": "text/markdown",
     "author": "ktnrg45",
     "author_email": "ktnrg45dev@gmail.com",
-    "packages": find_packages(exclude=["tests"]),
+    "packages": ["pyremoteplay"],
     "url": "https://github.com/ktnrg45/pyremoteplay",
     "license": "GPLv3",
     "classifiers": CLASSIFIERS,
     "keywords": "playstation sony ps4 ps5 remote play remoteplay rp",
-    "setup_requires": ["wheel"],
     "install_requires": REQUIRES,
     "extras_require": {"GUI": REQUIRES_GUI, "DEV": REQUIRES_DEV},
     "python_requires": ">={}".format(MIN_PY_VERSION),
     "test_suite": "tests",
-    "include_package_data": True,
+    # "include_package_data": True,
     "entry_points": {
         "console_scripts": [
             "pyremoteplay = pyremoteplay.__main__:main",
@@ -144,4 +146,6 @@ setup_kwargs = {
     },
 }
 
+if sys.platform == "win32":
+    setup_kwargs["package_data"] = {"pyremoteplay": ["fec_utils/*.dll"]}
 setup_install(setup_kwargs)
