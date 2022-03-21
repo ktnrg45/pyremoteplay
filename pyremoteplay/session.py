@@ -169,10 +169,10 @@ class Session:
         profile: dict,
         av_receiver=None,
         loop=None,
-        resolution="720p",
-        fps="high",
+        resolution="360p",
+        fps="low",
         use_hw=False,
-        quality="default",
+        quality="very_low",
         **kwargs,
     ):
         self._host = host
