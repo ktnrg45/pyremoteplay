@@ -298,10 +298,16 @@ class CLIInstance:
         self._init_window()
         timeout = 50
         self.stdscr.timeout(timeout)
+        self.stdscr.clrtobot()
+        _last = ""
         while not self._session.state == Session.STATE_STOP:
-            self.stdscr.refresh()
+            self._init_window()
+            if _last:
+                self._write_str(_last, 5)
             try:
-                self._handle_key(self.stdscr.getkey())
+                key = self._handle_key(self.stdscr.getkey())
+                if key:
+                    _last = key
             except curses.error:
                 if self.last_key is not None:
                     self._session.controller.button(self.last_key, "release")
@@ -316,14 +322,18 @@ class CLIInstance:
     def _handle_key(self, key):
         key = self.map.get(key)
         if key and self.last_key is None:
-            self._write_str(key, 5)
             self.last_key = key
-            self._session.controller.button(key, "press")
             if key == "QUIT":
+                self._write_str(key, 3)
+                self.stdscr.refresh()
                 self._session.stop()
-                self._session.loop.stop()
+                self._session.loop.call_soon_threadsafe(self._session.loop.stop)
                 sys.exit()
             elif key == "STANDBY":
+                self._write_str(key, 3)
+                self.stdscr.refresh()
                 self._session.standby()
-                self._session.loop.stop()
+                self._session.loop.call_soon_threadsafe(self._session.loop.stop)
                 sys.exit()
+            self._session.controller.button(key, "press")
+        return key
