@@ -7,8 +7,9 @@ import logging
 import sys
 import threading
 from collections import OrderedDict
+import socket
 
-from .ddp import get_status
+from .ddp import get_status, search
 from .oauth import prompt as oauth_prompt
 from .register import register
 from .session import Session
@@ -24,23 +25,36 @@ _LOGGER = logging.getLogger(__name__)
 
 def main():
     """Main entrypoint."""
+    if "-l" in sys.argv or "--list" in sys.argv:
+        show_devices()
+        return
     parser = argparse.ArgumentParser(description="Start Remote Play.")
-    parser.add_argument("host", type=str, help="IP address of Remote Play host")
     parser.add_argument(
-        "-r",
-        "--resolution",
-        default="720p",
-        type=str,
-        choices=RESOLUTIONS,
-        help="Resolution to use",
+        "host", type=str, default="", help="IP address of Remote Play host"
     )
+    # parser.add_argument(
+    #     "-r",
+    #     "--resolution",
+    #     default="720p",
+    #     type=str,
+    #     choices=RESOLUTIONS,
+    #     help="Resolution to use",
+    # )
+    # parser.add_argument(
+    #     "-f",
+    #     "--fps",
+    #     default="high",
+    #     type=str,
+    #     choices=FPS_CHOICES,
+    #     help="Max FPS to use",
+    # )
+
+    # Just to show in help
     parser.add_argument(
-        "-f",
-        "--fps",
-        default="high",
-        type=str,
-        choices=FPS_CHOICES,
-        help="Max FPS to use",
+        "-l",
+        "--list",
+        action="store_true",
+        help="List Devices",
     )
     parser.add_argument(
         "--register", action="store_true", help="Register with Remote Play host."
@@ -48,17 +62,36 @@ def main():
 
     args = parser.parse_args()
     host = args.host
-
     should_register = args.register
-    resolution = args.resolution
-    fps = args.fps
-    if fps.isnumeric():
-        fps = int(fps)
+    resolution = "360p"
+    fps = 30
+    # resolution = args.resolution
+    # fps = args.fps
+    # if fps.isnumeric():
+    #     fps = int(fps)
 
+    try:
+        socket.gethostbyname(host)
+    except socket.gaierror:
+        print(f"\nError: Could not find host with address: {host}\n\n")
+        parser.print_help()
+        return
     if should_register:
         register_profile(host)
         return
     cli(host, resolution, fps)
+
+
+def show_devices():
+    """Print all devices."""
+    devices = search()
+    print(f"\nFound {len(devices)} devices:\n")
+    for device in devices:
+        print(
+            f"\tIP Address: {device.get('host-ip')}\n"
+            f"\tName: {device.get('host-name')}\n"
+            f"\tType: {device.get('host-type')}\n\n"
+        )
 
 
 def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
