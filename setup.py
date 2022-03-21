@@ -127,7 +127,12 @@ setup_kwargs = {
     "long_description_content_type": "text/markdown",
     "author": "ktnrg45",
     "author_email": "ktnrg45dev@gmail.com",
-    "packages": ["pyremoteplay"],
+    "packages": [
+        "pyremoteplay",
+        "pyremoteplay.gui",
+        "pyremoteplay.fec_utils",
+        "pyremoteplay.codecs",
+    ],
     "url": "https://github.com/ktnrg45/pyremoteplay",
     "license": "GPLv3",
     "classifiers": CLASSIFIERS,
