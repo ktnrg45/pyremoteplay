@@ -88,20 +88,21 @@ def build_extensions():
                         "pyremoteplay.fec_utils.fec",
                         ["pyremoteplay/fec_utils/fec.pyx"],
                         include_dirs=[include_path],
-                        libraries=["Jerasure", "gf_complete"],
+                        libraries=["Jerasure"],
                     )
                 ]
             )
         except ModuleNotFoundError:
             pass
-    modules = [
-        Extension(
-            "pyremoteplay.fec_utils.fec",
-            ["pyremoteplay/fec_utils/fec.c"],
-            include_dirs=[include_path],
-            libraries=["Jerasure"],
-        )
-    ]
+    if not modules:
+        modules = [
+            Extension(
+                "pyremoteplay.fec_utils.fec",
+                ["pyremoteplay/fec_utils/fec.c"],
+                include_dirs=[include_path],
+                libraries=["Jerasure"],
+            )
+        ]
     return modules
 
 
@@ -147,5 +148,5 @@ setup_kwargs = {
 }
 
 if sys.platform == "win32":
-    setup_kwargs["package_data"] = {"pyremoteplay": ["fec_utils/*.dll"]}
+    setup_kwargs["package_data"] = {"pyremoteplay": [".libs/*/*.dll"]}
 setup_install(setup_kwargs)

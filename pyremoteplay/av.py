@@ -8,9 +8,8 @@ from struct import unpack_from
 import warnings
 
 from pyremoteplay.codecs.opus import OpusDecoder
-from .stream_packets import AVPacket, Packet
-
 from pyremoteplay.fec_utils import aligned_size
+from .stream_packets import AVPacket, Packet
 
 try:
     from pyremoteplay.fec_utils import fec
@@ -21,8 +20,8 @@ except ImportError:
 
 try:
     import av
-except ModuleNotFoundError as err:
-    print(err)
+except ModuleNotFoundError:
+    warnings.warn("av not installed")
 
 _LOGGER = logging.getLogger(__name__)
 
