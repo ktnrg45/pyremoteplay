@@ -14,8 +14,9 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from .errors import CryptError
-from .keys import HMAC_KEY
+from .keys import HMAC_KEY_PS4, HMAC_KEY_PS5
 from .util import from_b, log_bytes, to_b
+from .const import TYPE_PS4, TYPE_PS5
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -332,15 +333,16 @@ def get_aes_cipher(key: bytes, init_vector: bytes, segment_size=128):
     return cipher
 
 
-def get_hmac(nonce: bytes) -> bytes:
+def get_hmac(host_type: str, nonce: bytes) -> bytes:
     """Return HMAC for the IV."""
-    hmac = HMAC.new(key=HMAC_KEY, msg=nonce, digestmod=SHA256)
+    key = HMAC_KEY_PS5 if host_type.upper() == TYPE_PS5 else HMAC_KEY_PS4
+    hmac = HMAC.new(key=key, msg=nonce, digestmod=SHA256)
     current_hmac = hmac.digest()
     # log_bytes('Current HMAC', current_hmac)
     return current_hmac
 
 
-def get_aes_iv(nonce: bytes, counter: int):
+def get_aes_iv(host_type: str, nonce: bytes, counter: int):
     """Get IV for AES Cipher as the truncated HMAC."""
     # _LOGGER.debug("IV Counter: %s", counter)
     shift = 56
@@ -349,22 +351,22 @@ def get_aes_iv(nonce: bytes, counter: int):
         suffix[index] = (counter >> shift) & 0xFF
         shift -= 8
     nonce = b"".join([nonce, bytes(suffix)])
-    current_hmac = get_hmac(bytes(nonce))
+    current_hmac = get_hmac(host_type, bytes(nonce))
     init_vector = current_hmac[:16]  # Truncate to IV length.
     return init_vector
 
 
-def get_ciphers(key: bytes, nonce: bytes, counter=0) -> tuple:
+def get_ciphers(host_type: str, key: bytes, nonce: bytes, counter=0) -> tuple:
     """Return tuple of AES CFB Ciphers."""
-    init_vector = get_aes_iv(nonce, counter=counter)
+    init_vector = get_aes_iv(host_type, nonce, counter=counter)
     enc_cipher = get_aes_cipher(key=key, init_vector=init_vector)
     dec_cipher = get_aes_cipher(key=key, init_vector=init_vector)
     return enc_cipher, dec_cipher
 
 
-def get_cipher(key: bytes, nonce: bytes, counter=0):
+def get_cipher(host_type: str, key: bytes, nonce: bytes, counter=0):
     """Return a AES CFB Cipher."""
-    init_vector = get_aes_iv(nonce, counter=counter)
+    init_vector = get_aes_iv(host_type, nonce, counter=counter)
     cipher = get_aes_cipher(key=key, init_vector=init_vector)
     return cipher
 
@@ -372,32 +374,37 @@ def get_cipher(key: bytes, nonce: bytes, counter=0):
 class SessionCipher:
     """AES CFB-128 Cipher pair."""
 
-    def __init__(self, key: bytes, nonce: bytes, counter=0):
+    def __init__(self, host_type: str, key: bytes, nonce: bytes, counter=0):
+        self._host_type = host_type
         self._enc_cipher = None
         self._dec_cipher = None
         self._key = key
         self._nonce = nonce
         self._enc_counter = self._dec_counter = counter
 
-        self._enc_cipher, self._dec_cipher = get_ciphers(key, nonce, counter)
+        self._enc_cipher, self._dec_cipher = get_ciphers(host_type, key, nonce, counter)
 
     def encrypt(self, msg: bytes, counter=None) -> bytes:
         """Return Encrypted Message."""
         if counter is not None:
-            _enc_cipher = get_cipher(self._key, self._nonce, counter)
+            _enc_cipher = get_cipher(self._host_type, self._key, self._nonce, counter)
             enc = _enc_cipher.encrypt(msg)
             return enc
 
         enc = self._enc_cipher.encrypt(msg)
         self._enc_counter += 1
-        self._enc_cipher = get_cipher(self._key, self._nonce, self.enc_counter)
+        self._enc_cipher = get_cipher(
+            self._host_type, self._key, self._nonce, self.enc_counter
+        )
         return enc
 
     def decrypt(self, msg: bytes) -> bytes:
         """Return decrypted Message."""
         dec = self._dec_cipher.decrypt(msg)
         self._dec_counter += 1
-        self._dec_cipher = get_cipher(self._key, self._nonce, self.dec_counter)
+        self._dec_cipher = get_cipher(
+            self._host_type, self._key, self._nonce, self.dec_counter
+        )
         return dec
 
     @property

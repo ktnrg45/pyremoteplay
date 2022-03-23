@@ -19,7 +19,7 @@ from .const import (
     OS_TYPE,
     RP_CRYPT_SIZE,
     RP_PORT,
-    RP_VERSION,
+    RP_VERSION_PS4,
     TYPE_PS4,
     TYPE_PS5,
     USER_AGENT,
@@ -29,7 +29,12 @@ from .crypt import SessionCipher
 from .ddp import async_get_status, async_wakeup
 from .errors import RemotePlayError, RPErrorHandler
 from .feedback import Controller
-from .keys import SESSION_KEY_0, SESSION_KEY_1
+from .keys import (
+    SESSION_KEY_0_PS4,
+    SESSION_KEY_1_PS4,
+    SESSION_KEY_0_PS5,
+    SESSION_KEY_1_PS5,
+)
 from .stream import RPStream
 from .util import format_regist_key, log_bytes
 
@@ -44,6 +49,11 @@ HEARTBEAT_RESPONSE = b"\x00\x00\x00\x00\x01\xfe\x00\x00"
 
 RP_ERROR = RPErrorHandler()
 
+SESSION_KEYS = {
+    TYPE_PS4: (SESSION_KEY_0_PS4, SESSION_KEY_1_PS4),
+    TYPE_PS5: (SESSION_KEY_0_PS5, SESSION_KEY_1_PS5),
+}
+
 
 def _get_headers(host: str, regist_key: str) -> dict:
     """Return headers."""
@@ -53,7 +63,7 @@ def _get_headers(host: str, regist_key: str) -> dict:
         "Connection": "close",
         "Content-Length": "0",
         "RP-Registkey": regist_key,
-        "Rp-Version": RP_VERSION,
+        "Rp-Version": RP_VERSION_PS4,
     }
     return headers
 
@@ -66,7 +76,7 @@ def _get_session_headers(host: str, auth: str, did: str, os_type: str, bitrate: 
         "Connection": "keep-alive",
         "Content-Length": "0",
         "RP-Auth": auth,
-        "RP-Version": RP_VERSION,
+        "RP-Version": RP_VERSION_PS4,
         "RP-Did": did,
         "RP-ControllerType": "3",
         "RP-ClientType": "11",
@@ -78,10 +88,11 @@ def _get_session_headers(host: str, auth: str, did: str, os_type: str, bitrate: 
     return headers
 
 
-def _get_rp_nonce(nonce: bytes) -> bytes:
+def _get_rp_nonce(host_type: str, nonce: bytes) -> bytes:
     """Return RP nonce."""
+    session_key = SESSION_KEYS[host_type.upper()][0]
     rp_nonce = bytearray(RP_CRYPT_SIZE)
-    key = SESSION_KEY_0[((nonce[0] >> 3) * 112) :]
+    key = session_key[((nonce[0] >> 3) * 112) :]
     for index in range(0, RP_CRYPT_SIZE):
         shift = nonce[index] + 54 + index
         shift ^= key[index]
@@ -91,10 +102,11 @@ def _get_rp_nonce(nonce: bytes) -> bytes:
     return rp_nonce
 
 
-def _get_aes_key(nonce: bytes, rp_key: bytes) -> bytes:
+def _get_aes_key(host_type: str, nonce: bytes, rp_key: bytes) -> bytes:
     """Return AES key."""
     aes_key = bytearray(16)
-    key = SESSION_KEY_1[((nonce[7] >> 3) * 112) :]
+    session_key = SESSION_KEYS[host_type.upper()][1]
+    key = session_key[((nonce[7] >> 3) * 112) :]
     for index in range(0, RP_CRYPT_SIZE):
         shift = (key[index] ^ rp_key[index]) + 33 + index
         shift ^= nonce[index]
@@ -297,9 +309,9 @@ class Session:
 
     def _get_session_headers(self, nonce: bytes) -> dict:
         """Return Session headers."""
-        rp_nonce = _get_rp_nonce(nonce)
-        aes_key = _get_aes_key(nonce, self._rp_key)
-        self._cipher = SessionCipher(aes_key, rp_nonce, counter=0)
+        rp_nonce = _get_rp_nonce(self.type, nonce)
+        aes_key = _get_aes_key(self.type, nonce, self._rp_key)
+        self._cipher = SessionCipher(self.type, aes_key, rp_nonce, counter=0)
 
         regist_key = b"".join([bytes.fromhex(self._regist_key), bytes(8)])
         auth = b64encode(self._cipher.encrypt(regist_key)).decode()

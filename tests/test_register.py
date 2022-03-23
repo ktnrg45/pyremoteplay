@@ -3,7 +3,9 @@ import json
 from unittest.mock import MagicMock
 
 from pyremoteplay import register
+from pyremoteplay.const import TYPE_PS4, TYPE_PS5
 
+# fmt: off
 KEY_0 = bytes([
     0xce, 0xbc, 0xb6, 0x40, 0x08, 0x07, 0x76, 0x04,
     0x7b, 0x85, 0xe8, 0x5b, 0xf3, 0x50, 0xf5, 0x2d,
@@ -201,23 +203,25 @@ RESPONSE_HEADER = bytes([
     0x20, 0x20, 0x20, 0x32, 0x33, 0x39, 0x0d, 0x0a,
     0x0d, 0x0a,
 ])
+# fmt: on
 
-
-RAW_RESPONSE = b''.join([
-    RESPONSE_HEADER,
-    RESPONSE,
-])
+RAW_RESPONSE = b"".join(
+    [
+        RESPONSE_HEADER,
+        RESPONSE,
+    ]
+)
 
 
 def test_key_0():
     """Test Key 0."""
     mock_pin = 12345678
-    assert register.gen_key_0(mock_pin) == KEY_0
+    assert register.gen_key_0(TYPE_PS4, mock_pin) == KEY_0
 
 
 def test_key_1():
     """Test Key 1."""
-    assert register.gen_key_1(NONCE)
+    assert register.gen_key_1(TYPE_PS4, NONCE)
 
 
 def test_regist_payload():
@@ -228,7 +232,7 @@ def test_regist_payload():
 def test_encrypt_payload():
     """Test Encrypt payload."""
     mock_id = "x3HEK6t1aw8="
-    cipher = register.SessionCipher(KEY_0, NONCE, counter=0)
+    cipher = register.SessionCipher(TYPE_PS4, KEY_0, NONCE, counter=0)
     mock_payload = register.encrypt_payload(cipher, mock_id)
     assert mock_payload == ENC_PAYLOAD
 
@@ -236,7 +240,7 @@ def test_encrypt_payload():
 def test_get_regist_headers():
     """Test Regist Headers."""
     length = len(REGIST_PAYLOAD) + len(ENC_PAYLOAD)
-    assert register.get_regist_headers(length) == HEADERS
+    assert register.get_regist_headers(TYPE_PS4, length) == HEADERS
 
 
 def test_parse_response():

@@ -4,16 +4,24 @@ import socket
 
 from Cryptodome.Random import get_random_bytes
 
-from .const import RP_PORT, RP_VERSION, TYPE_PS4, TYPE_PS5, USER_AGENT
+from .const import (
+    RP_PORT,
+    RP_VERSION_PS4,
+    RP_VERSION_PS5,
+    TYPE_PS4,
+    TYPE_PS5,
+    USER_AGENT,
+)
 from .crypt import SessionCipher
 from .ddp import get_host_type, get_status
-from .keys import REG_KEY_0, REG_KEY_1
+from .keys import REG_KEY_0_PS4, REG_KEY_1_PS4, REG_KEY_0_PS5, REG_KEY_1_PS5
 from .util import log_bytes
 
 _LOGGER = logging.getLogger(__name__)
 
 CLIENT_TYPE = "dabfa2ec873de5839bee8d3f4c0239c4282c07c25c6077a2931afcf0adc0d34f"
-REG_PATH = "/sie/ps4/rp/sess/rgst"
+REG_PATH_PS4 = "/sie/ps4/rp/sess/rgst"
+REG_PATH_PS5 = "/sie/ps5/rp/sess/rgst"
 REG_INIT_PS4 = b"SRC2"
 REG_START_PS4 = b"RES2"
 REG_INIT_PS5 = b"SRC3"
@@ -23,10 +31,18 @@ HOST_TYPES = {
     TYPE_PS4: {
         "init": REG_INIT_PS4,
         "start": REG_START_PS4,
+        "path": REG_PATH_PS4,
+        "version": RP_VERSION_PS4,
+        "reg_key_0": REG_KEY_0_PS4,
+        "reg_key_1": REG_KEY_1_PS4,
     },
     TYPE_PS5: {
         "init": REG_INIT_PS5,
         "start": REG_START_PS5,
+        "path": REG_PATH_PS5,
+        "version": RP_VERSION_PS5,
+        "reg_key_0": REG_KEY_0_PS5,
+        "reg_key_1": REG_KEY_1_PS5,
     },
 }
 
@@ -34,11 +50,12 @@ REG_DATA = bytearray(b"A" * 480)
 REG_KEY_SIZE = 16
 
 
-def gen_key_0(pin: int) -> bytes:
+def gen_key_0(host_type: str, pin: int) -> bytes:
     """Generate key from Key 0."""
+    reg_key = HOST_TYPES[host_type]["reg_key_0"]
     key = bytearray(REG_KEY_SIZE)
     for index in range(0, REG_KEY_SIZE):
-        key[index] = REG_KEY_0[index * 32 + 1]
+        key[index] = reg_key[index * 32 + 1]
     # Encode PIN into last 4 bytes
     shift = 0
     for index in range(12, REG_KEY_SIZE):
@@ -48,13 +65,15 @@ def gen_key_0(pin: int) -> bytes:
     return bytes(key)
 
 
-def gen_key_1(nonce: bytes) -> bytes:
+def gen_key_1(host_type: str, nonce: bytes) -> bytes:
     """Generate key from Key 1."""
+    reg_key = HOST_TYPES[host_type]["reg_key_1"]
     key = bytearray(REG_KEY_SIZE)
     nonce = bytearray(nonce)
+    offset = -45 if host_type == TYPE_PS5 else 41
     for index in range(0, REG_KEY_SIZE):
-        shift = REG_KEY_1[index * 32 + 8]
-        key[index] = ((nonce[index] ^ shift) + 41 + index) % 256
+        shift = reg_key[index * 32 + 8]
+        key[index] = ((nonce[index] ^ shift) + offset + index) % 256
     log_bytes("Key 1", key)
     return bytes(key)
 
@@ -84,16 +103,18 @@ def encrypt_payload(cipher, psn_id: str) -> bytes:
     return enc_payload
 
 
-def get_regist_headers(payload_length: int) -> bytes:
+def get_regist_headers(host_type: str, payload_length: int) -> bytes:
     """Get regist headers."""
+    path = HOST_TYPES[host_type]["path"]
+    version = HOST_TYPES[host_type]["version"]
     headers = (
         # Appears to use a malformed http request so have to construct it
-        f"POST {REG_PATH} HTTP/1.1\r\n HTTP/1.1\r\n"
+        f"POST {path} HTTP/1.1\r\n HTTP/1.1\r\n"
         "HOST: 10.0.2.15\r\n"  # Doesn't Matter
         f"User-Agent: {USER_AGENT}\r\n"
         "Connection: close\r\n"
         f"Content-Length: {payload_length}\r\n"
-        f"RP-Version: {RP_VERSION}\r\n\r\n"
+        f"RP-Version: {version}\r\n\r\n"
     )
     headers = headers.encode("utf-8")
     log_bytes("Regist Headers", headers)
@@ -180,13 +201,13 @@ def register(host: str, psn_id: str, pin: str, timeout: float = 2.0) -> dict:
     if not regist_init(host, host_type, timeout):
         return info
     nonce = get_random_bytes(16)
-    key_0 = gen_key_0(int(pin))
-    key_1 = gen_key_1(nonce)
+    key_0 = gen_key_0(host_type, int(pin))
+    key_1 = gen_key_1(host_type, nonce)
     payload = get_regist_payload(key_1)
-    cipher = SessionCipher(key_0, nonce, counter=0)
+    cipher = SessionCipher(host_type, key_0, nonce, counter=0)
     enc_payload = encrypt_payload(cipher, psn_id)
     payload = b"".join([payload, enc_payload])
-    headers = get_regist_headers(len(payload))
+    headers = get_regist_headers(host_type, len(payload))
     response = get_register_info(host, headers, payload, timeout)
     if response is not None:
         info = parse_response(cipher, response)
