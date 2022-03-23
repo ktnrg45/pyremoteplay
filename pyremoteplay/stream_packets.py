@@ -68,8 +68,8 @@ LAUNCH_SPEC = {
         "languagesUsed": ["en", "jp"],
     },
     "adaptiveStreamMode": "resize",
-    "videoCodec": "avc",
-    "dynamicRange": "HDR",
+    "videoCodec": "",
+    "dynamicRange": "",
     "handshakeKey": None,
 }
 
@@ -81,6 +81,8 @@ def get_launch_spec(
     rtt: int,
     mtu_in: int,
     quality: str,
+    codec: str,
+    hdr: bool,
 ) -> bytes:
     """Return launch spec."""
     quality = quality.upper()
@@ -96,6 +98,8 @@ def get_launch_spec(
     launch_spec["network"]["bwKbpsSent"] = bitrate
     launch_spec["network"]["mtu"] = mtu_in
     launch_spec["network"]["rtt"] = rtt
+    launch_spec["videoCodec"] = "hevc" if codec == "hevc" else "avc"
+    launch_spec["dynamicRange"] = "HDR" if hdr else "SDR"
     launch_spec["handshakeKey"] = b64encode(handshake_key).decode()
     launch_spec = json.dumps(launch_spec)
     launch_spec = launch_spec.replace(" ", "")  # minify
