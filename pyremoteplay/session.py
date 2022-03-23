@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from enum import IntEnum
 from functools import partial
 from struct import pack_into
+from isort import stream
 
 import requests
 from Cryptodome.Random import get_random_bytes
@@ -20,10 +21,12 @@ from .const import (
     RP_CRYPT_SIZE,
     RP_PORT,
     RP_VERSION_PS4,
+    RP_VERSION_PS5,
     TYPE_PS4,
     TYPE_PS5,
     USER_AGENT,
     Resolution,
+    StreamType,
 )
 from .crypt import SessionCipher
 from .ddp import async_get_status, async_wakeup
@@ -40,8 +43,9 @@ from .util import format_regist_key, log_bytes
 
 _LOGGER = logging.getLogger(__name__)
 
-RP_INIT_URL = "/sie/ps4/rp/sess/init"
-RP_SESSION_URL = "/sie/ps4/rp/sess/ctrl"
+RP_INIT_URL = "/sie/{}/rp/sess/init"
+RP_SESSION_URL = "/sie/{}/rp/sess/ctrl"
+
 
 DID_PREFIX = b"\x00\x18\x00\x00\x00\x07\x00\x40\x00\x80"
 
@@ -49,13 +53,19 @@ HEARTBEAT_RESPONSE = b"\x00\x00\x00\x00\x01\xfe\x00\x00"
 
 RP_ERROR = RPErrorHandler()
 
-SESSION_KEYS = {
-    TYPE_PS4: (SESSION_KEY_0_PS4, SESSION_KEY_1_PS4),
-    TYPE_PS5: (SESSION_KEY_0_PS5, SESSION_KEY_1_PS5),
+HOST_TYPES = {
+    TYPE_PS4: {
+        "keys": (SESSION_KEY_0_PS4, SESSION_KEY_1_PS4),
+        "version": RP_VERSION_PS4,
+    },
+    TYPE_PS5: {
+        "keys": (SESSION_KEY_0_PS5, SESSION_KEY_1_PS5),
+        "version": RP_VERSION_PS5,
+    },
 }
 
 
-def _get_headers(host: str, regist_key: str) -> dict:
+def _get_headers(host_type: str, host: str, regist_key: str) -> dict:
     """Return headers."""
     headers = {
         "Host": f"{host}:{RP_PORT}",
@@ -63,12 +73,20 @@ def _get_headers(host: str, regist_key: str) -> dict:
         "Connection": "close",
         "Content-Length": "0",
         "RP-Registkey": regist_key,
-        "Rp-Version": RP_VERSION_PS4,
+        "Rp-Version": HOST_TYPES[host_type]["version"],
     }
     return headers
 
 
-def _get_session_headers(host: str, auth: str, did: str, os_type: str, bitrate: str):
+def _get_session_headers(
+    host_type: str,
+    host: str,
+    auth: str,
+    did: str,
+    os_type: str,
+    bitrate: str,
+    stream_type: str,
+):
     """Return Connect Headers."""
     headers = {
         "Host": f"{host}:{RP_PORT}",
@@ -76,7 +94,7 @@ def _get_session_headers(host: str, auth: str, did: str, os_type: str, bitrate: 
         "Connection": "keep-alive",
         "Content-Length": "0",
         "RP-Auth": auth,
-        "RP-Version": RP_VERSION_PS4,
+        "RP-Version": HOST_TYPES[host_type]["version"],
         "RP-Did": did,
         "RP-ControllerType": "3",
         "RP-ClientType": "11",
@@ -84,17 +102,37 @@ def _get_session_headers(host: str, auth: str, did: str, os_type: str, bitrate: 
         "RP-ConPath": "1",
         "RP-StartBitrate": bitrate,
     }
-    _LOGGER.debug("Session Headers: %s", headers)
+    if host_type == TYPE_PS5:
+        headers["RP-StreamingType"] = stream_type
     return headers
+
+
+def _get_stream_type(hdr: bool) -> bytes:
+    """Return Stream Type."""
+    stream_type = StreamType.HDR if hdr else StreamType.DEFAULT
+    stream_type = int(stream_type)
+    return bytes(
+        bytearray(
+            [
+                stream_type & 255,
+                (stream_type >> 8) & 255,
+                (stream_type >> 16) & 255,
+                (stream_type >> 24) & 255,
+            ]
+        )
+    )
 
 
 def _get_rp_nonce(host_type: str, nonce: bytes) -> bytes:
     """Return RP nonce."""
-    session_key = SESSION_KEYS[host_type.upper()][0]
+    session_key = HOST_TYPES[host_type]["keys"][0]
     rp_nonce = bytearray(RP_CRYPT_SIZE)
     key = session_key[((nonce[0] >> 3) * 112) :]
     for index in range(0, RP_CRYPT_SIZE):
-        shift = nonce[index] + 54 + index
+        if host_type == TYPE_PS5:
+            shift = nonce[index] - 45 - index
+        else:
+            shift = nonce[index] + 54 + index
         shift ^= key[index]
         rp_nonce[index] = shift % 256
     rp_nonce = bytes(rp_nonce)
@@ -105,11 +143,16 @@ def _get_rp_nonce(host_type: str, nonce: bytes) -> bytes:
 def _get_aes_key(host_type: str, nonce: bytes, rp_key: bytes) -> bytes:
     """Return AES key."""
     aes_key = bytearray(16)
-    session_key = SESSION_KEYS[host_type.upper()][1]
+    session_key = HOST_TYPES[host_type]["keys"][1]
     key = session_key[((nonce[7] >> 3) * 112) :]
     for index in range(0, RP_CRYPT_SIZE):
-        shift = (key[index] ^ rp_key[index]) + 33 + index
-        shift ^= nonce[index]
+        if host_type == TYPE_PS5:
+            shift = rp_key[index] + 24 + index
+            shift ^= nonce[index]
+            shift ^= key[index]
+        else:
+            shift = (key[index] ^ rp_key[index]) + 33 + index
+            shift ^= nonce[index]
         aes_key[index] = shift % 256
     aes_key = bytes(aes_key)
     log_bytes("AES Key", aes_key)
@@ -185,6 +228,7 @@ class Session:
         fps="low",
         use_hw=False,
         quality="very_low",
+        hdr=False,
         **kwargs,
     ):
         self._host = host
@@ -205,6 +249,7 @@ class Session:
         self._stream = None
         self._worker = None
         self._kwargs = kwargs
+        self.hdr = hdr
         self.quality = quality
         self.use_hw = use_hw
         self.max_width = self.max_height = None
@@ -273,6 +318,7 @@ class Session:
         if request_type not in valid_types:
             raise RemotePlayError("Unknown request type")
         url_slug = RP_INIT_URL if request_type == "init" else RP_SESSION_URL
+        url_slug = url_slug.format(self.type.lower())
         url = f"http://{self.host}:{RP_PORT}{url_slug}"
         return url
 
@@ -291,7 +337,6 @@ class Session:
     def _parse_init(self, response: requests.models.Response) -> bytes:
         """Return nonce. Parse init response."""
         nonce = None
-        _LOGGER.debug(response.headers)
         if response.status_code != 200:
             reason = response.headers.get("RP-Application-Reason")
             reason = int.from_bytes(bytes.fromhex(reason), "big")
@@ -309,6 +354,7 @@ class Session:
 
     def _get_session_headers(self, nonce: bytes) -> dict:
         """Return Session headers."""
+        stream_type = _get_stream_type(self.hdr)
         rp_nonce = _get_rp_nonce(self.type, nonce)
         aes_key = _get_aes_key(self.type, nonce, self._rp_key)
         self._cipher = SessionCipher(self.type, aes_key, rp_nonce, counter=0)
@@ -320,7 +366,10 @@ class Session:
             self._cipher.encrypt(OS_TYPE.encode().ljust(10, b"\x00"))
         ).decode()
         bitrate = b64encode(self._cipher.encrypt(bytes(4))).decode()
-        return _get_session_headers(self.host, auth, did, os_type, bitrate)
+        stream_type = b64encode(self._cipher.encrypt(stream_type)).decode()
+        return _get_session_headers(
+            self.type, self.host, auth, did, os_type, bitrate, stream_type
+        )
 
     def _authenticate(self, nonce: bytes) -> bool:
         """Return True if successful. Send Session Auth."""
@@ -459,6 +508,8 @@ class Session:
             return False
         if not await self.run_io(self.connect):
             _LOGGER.error("Session Auth Failed")
+            if not self.error:
+                self.error = "Auth Failed."
             return False
         _LOGGER.info("Session Auth Success")
         self._state = Session.STATE_READY
@@ -472,9 +523,10 @@ class Session:
 
     def connect(self) -> bool:
         """Connect to Host."""
-        headers = _get_headers(self.host, self._regist_key)
+        headers = _get_headers(self.type, self.host, self._regist_key)
         response = self._send_auth_request("init", headers, stream=False)
         if response is None:
+            _LOGGER.error("No response for Init")
             return False
         nonce = self._parse_init(response)
         if nonce is None:
