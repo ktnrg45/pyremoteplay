@@ -363,7 +363,8 @@ class AVReceiver(abc.ABC):
             decoder = video_format
             codec = av.codec.Codec(decoder, "r").create()
         _LOGGER.info("Using Decoder: %s", decoder)
-        codec.options = AVReceiver.AV_CODEC_OPTIONS_H264
+        if decoder.startswith("h264"):
+            codec.options = AVReceiver.AV_CODEC_OPTIONS_H264
         codec.pix_fmt = "yuv420p"
         codec.flags = av.codec.context.Flags.LOW_DELAY
         codec.flags2 = av.codec.context.Flags2.FAST
