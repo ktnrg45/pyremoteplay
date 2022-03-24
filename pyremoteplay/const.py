@@ -33,8 +33,9 @@ DEFAULT_STANDBY_DELAY = 50
 class StreamType(IntEnum):
     """Enums for Stream type."""
 
-    DEFAULT = 2
-    HDR = 3
+    H264 = 1
+    HEVC = 2
+    HEVC_HDR = 3
 
 
 class Quality(IntEnum):
