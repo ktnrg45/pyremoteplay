@@ -111,7 +111,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.center_text.setWordWrap(True)
         self.center_text.setObjectName("center-text")
-        self.device_grid = DeviceGridWidget(self.main_frame, self)
+        self.device_grid = DeviceGridWidget(self.main_frame)
         self.toolbar = ToolbarWidget(self)
         self.options = OptionsWidget(self)
         self.controls = ControlsWidget(self)

@@ -184,24 +184,23 @@ class DeviceButton(QtWidgets.QPushButton):
 class DeviceGridWidget(QtWidgets.QWidget):
     """Widget that contains device buttons."""
 
-    def __init__(self, parent, main_window):
+    def __init__(self, parent):
         super().__init__(parent)
-        self.main_window = main_window
-        self.layout = QtWidgets.QGridLayout(self)
-        self.layout.setColumnMinimumWidth(0, 100)
-        self.widgets = {}
         self.setStyleSheet("QPushButton {padding: 50px 25px;}")
+        self.setLayout(QtWidgets.QGridLayout())
+        self.widgets = set()
 
     def add(self, button, row, col):
         """Add button to grid."""
         # self.layout.setRowStretch(row, 6)
-        self.layout.addWidget(button, row, col, Qt.AlignCenter)
-        self.widgets[button.device.host] = button
+        self.layout().addWidget(button, row, col, Qt.AlignCenter)
+        self.widgets.add(button)
 
     def create_grid(self, devices: dict):
         """Create Button Grid."""
         buttons = self._check_buttons(devices)
-
+        self.setLayout(QtWidgets.QGridLayout())
+        self.layout().setColumnMinimumWidth(0, 100)
         max_cols = 3
         if buttons:
             for index, button in enumerate(buttons):
@@ -209,50 +208,49 @@ class DeviceGridWidget(QtWidgets.QWidget):
                 row = index // max_cols
                 self.add(button, row, col)
             self.show()
-            self.main_window.center_text.hide()
+            self.window().center_text.hide()
         else:
             self.hide()
-            self.main_window.center_text.show()
+            self.window().center_text.show()
 
     def _check_buttons(self, devices: dict):
         """Return Current Buttons which should be shown."""
         buttons = []
-        if self.widgets:
-            for widget in self.widgets.values():
-                self.layout.removeWidget(widget)
-        widget = None
-        for ip_address in devices.keys():
-            if ip_address not in self.widgets:
-                buttons.append(DeviceButton(self.main_window, devices[ip_address]))
-            else:
-                widget = self.widgets.pop(ip_address)
+        for widget in self.layout().children():
+            if not isinstance(widget, DeviceButton):
+                continue
+            self.layout().removeWidget(widget)
+            if widget.device.ip_address in devices:
+                devices.pop(widget.device.ip_address)
                 if widget.device.status:
                     buttons.append(widget)
                     widget.update_state(widget.device.status)
-
-        for widget in self.widgets.values():
-            widget.setParent(None)
+                    continue
+            if widget in self.widgets:
+                self.widgets.remove(widget)
+            widget.hide()
             widget.deleteLater()
-        self.widgets = {}
+        for device in devices.values():
+            buttons.append(DeviceButton(self.window(), device))
         return buttons
 
     def session_stop(self):
         """Handle session stopped."""
-        if self.main_window.toolbar.refresh.isChecked():
+        if self.window().toolbar.refresh.isChecked():
             self.start_update()
         self.setDisabled(False)
         QtCore.QTimer.singleShot(10000, self.enable_buttons)
 
     def enable_buttons(self):
         """Enable all buttons."""
-        for button in self.widgets.values():
+        for button in self.widgets:
             button.setDisabled(False)
             button.setToolTip("")
 
     def start_update(self):
         """Start update service."""
-        self.main_window.async_handler.poll()
+        self.window().async_handler.poll()
 
     def stop_update(self):
         """Stop Updata Service."""
-        self.main_window.async_handler.stop_poll()
+        self.window().async_handler.stop_poll()
