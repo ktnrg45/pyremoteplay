@@ -89,7 +89,7 @@ class DDPProtocol(asyncio.DatagramProtocol):
             self._handle(data, addr)
 
     def _handle(self, data, addr):
-        data = parse_ddp_response(data.decode("utf-8"))
+        data = parse_ddp_response(data)
         data["host-ip"] = addr[0]
         address = addr[0]
 

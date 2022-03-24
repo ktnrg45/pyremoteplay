@@ -5,7 +5,7 @@ import re
 import select
 import socket
 import time
-from typing import Optional
+from typing import Optional, Union
 
 import asyncudp
 
@@ -49,9 +49,17 @@ def get_ddp_message(msg_type, data=None):
     return msg
 
 
-def parse_ddp_response(rsp):
+def parse_ddp_response(rsp: Union[str, bytes]):
     """Parse the response."""
     data = {}
+    if not isinstance(rsp, str):
+        if not isinstance(rsp, bytes):
+            raise ValueError("Expected str or bytes")
+        try:
+            rsp = rsp.decode("utf-8")
+        except UnicodeDecodeError:
+            _LOGGER.debug("DDP message is not utf-8: %s", rsp)
+            return data
     if DDP_TYPE_SEARCH in rsp:
         _LOGGER.info("Received %s message", DDP_TYPE_SEARCH)
         return data
@@ -223,7 +231,7 @@ def search(
         if response is not None:
             data, addr = response
         if data is not None and addr is not None:
-            data = parse_ddp_response(data.decode("utf-8"))
+            data = parse_ddp_response(data)
             if data not in ps_list and data:
                 data["host-ip"] = addr[0]
                 ps_list.append(data)
@@ -299,7 +307,7 @@ async def async_search(
         if response is not None:
             data, addr = response
         if data is not None and addr is not None:
-            data = parse_ddp_response(data.decode("utf-8"))
+            data = parse_ddp_response(data)
             if data not in device_list and data:
                 data["host-ip"] = addr[0]
                 device_list.append(data)
