@@ -107,9 +107,8 @@ def _get_session_headers(
     return headers
 
 
-def _get_stream_type(codec: str) -> bytes:
+def _get_stream_type(stream_type: StreamType) -> bytes:
     """Return Stream Type."""
-    stream_type = StreamType[codec.upper()]
     stream_type = int(stream_type)
     return bytes(
         bytearray(
@@ -229,6 +228,7 @@ class Session:
         use_hw=False,
         quality="very_low",
         codec="h264",
+        hdr=False,
         **kwargs,
     ):
         self._host = host
@@ -249,7 +249,8 @@ class Session:
         self._stream = None
         self._worker = None
         self._kwargs = kwargs
-        self._codec = codec if self.type.upper() == TYPE_PS5 else "h264"
+        self._hdr = hdr
+        self._codec = codec
         self.quality = quality
         self.use_hw = use_hw
         self.max_width = self.max_height = None
@@ -354,7 +355,7 @@ class Session:
 
     def _get_session_headers(self, nonce: bytes) -> dict:
         """Return Session headers."""
-        stream_type = _get_stream_type(self._codec)
+        stream_type = _get_stream_type(self.stream_type)
         rp_nonce = _get_rp_nonce(self.type, nonce)
         aes_key = _get_aes_key(self.type, nonce, self._rp_key)
         self._cipher = SessionCipher(self.type, aes_key, rp_nonce, counter=0)
@@ -665,9 +666,17 @@ class Session:
     @property
     def video_format(self) -> str:
         """Return video format"""
-        return self._codec.lower().replace("_hdr", "")
+        return self._codec.lower()
 
     @property
     def hdr(self) -> bool:
         """Return True if HDR."""
-        return "hdr" in self._codec.lower()
+        return self._hdr and "h264" not in self._codec
+
+    @property
+    def stream_type(self) -> StreamType:
+        """Return Stream Type."""
+        _type = self.video_format.upper()
+        if self.hdr:
+            _type = f"{_type}_HDR"
+        return StreamType[_type]

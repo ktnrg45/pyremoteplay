@@ -36,6 +36,8 @@ class Options:
     show_fps: bool = False
     use_hw: bool = False
     decoder: str = ""
+    codec: str = ""
+    hdr: bool = False
     resolution: str = "720p"
     fullscreen: bool = False
     profile: str = ""
@@ -68,10 +70,12 @@ class OptionsWidget(QtWidgets.QWidget):
         self.fps_show = AnimatedToggle("Show FPS", self)
         self.fullscreen = AnimatedToggle("Show Fullscreen", self)
         self.use_hw = AnimatedToggle("Use Hardware Decoding", self)
+        self.hdr = AnimatedToggle("Use HDR", self)
         self.resolution = QtWidgets.QComboBox(self)
         self.accounts = QtWidgets.QTreeWidget()
         self.audio_output = QtWidgets.QComboBox(self)
         self.decoder = QtWidgets.QComboBox(self)
+        self.codec = QtWidgets.QComboBox(self)
         self.devices = QtWidgets.QTreeWidget()
         self.use_qt_audio = AnimatedToggle("Use QT Audio", self)
 
@@ -107,6 +111,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self.resolution.addItems(list(RESOLUTION_PRESETS.keys()))
         self.audio_output.addItems(list(self.audio_devices.keys()))
         self.decoder.addItems(self.get_decoder())
+        self.codec.addItems(["h264", "hevc"])
         self.use_qt_audio.setToolTip("Uses PortAudio if disabled")
 
         self.set_options()
@@ -121,6 +126,8 @@ class OptionsWidget(QtWidgets.QWidget):
         self.use_hw.stateChanged.connect(self._change_options)
         self.resolution.currentTextChanged.connect(self._change_options)
         self.decoder.currentTextChanged.connect(self._change_options)
+        self.codec.currentTextChanged.connect(self._change_options)
+        self.hdr.stateChanged.connect(self._change_options)
         self.accounts.itemDoubleClicked.connect(self.set_profiles)
         self.devices.itemSelectionChanged.connect(lambda: del_device.setDisabled(False))
         self.use_qt_audio.stateChanged.connect(self._qt_audio_changed)
@@ -135,6 +142,7 @@ class OptionsWidget(QtWidgets.QWidget):
             ("Resolution", self.resolution, self.fullscreen),
             (res_label,),
             ("Video Decoder", self.decoder, self.use_hw),
+            ("Video Codec", self.codec, self.hdr),
             ("Audio Output", self.audio_output, self.use_qt_audio),
         )
 
@@ -241,6 +249,8 @@ class OptionsWidget(QtWidgets.QWidget):
             self.resolution.setCurrentText(options["resolution"])
             self.fullscreen.setChecked(options["fullscreen"])
             self.use_qt_audio.setChecked(options["use_qt_audio"])
+            self.codec.setCurrentText(options["codec"])
+            self.hdr.setChecked(options["hdr"])
 
             decoder = options["decoder"]
             found = False
@@ -526,6 +536,8 @@ class OptionsWidget(QtWidgets.QWidget):
             show_fps=self.fps_show.isChecked(),
             use_hw=self.use_hw.isChecked(),
             decoder=decoder,
+            codec=self.codec.currentText(),
+            hdr=self.hdr.isChecked(),
             resolution=self.resolution.currentText(),
             fullscreen=self.fullscreen.isChecked(),
             profile=profile,

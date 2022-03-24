@@ -220,7 +220,9 @@ class RPWorker(QtCore.QObject):
             resolution=options.get("resolution"),
             fps=options.get("fps"),
             av_receiver=QtReceiver(options.get("decoder")),
+            codec=options.get("codec"),
             use_hw=options.get("use_hw"),
+            hdr=options.get("hdr"),
             quality=options.get("quality"),
         )
 
