@@ -256,7 +256,7 @@ class OptionsWidget(QtWidgets.QWidget):
             self.resolution.setCurrentText(options["resolution"])
             self.fullscreen.setChecked(options["fullscreen"])
             self.use_qt_audio.setChecked(options["use_qt_audio"])
-            self.codec.setCurrentText(options["codec"])
+            self.codec.setCurrentText(codec)
             self.hdr.setChecked(options["hdr"])
 
             found = False
