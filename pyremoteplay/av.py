@@ -3,7 +3,6 @@ import abc
 import logging
 import time
 from collections import deque
-from io import BytesIO
 from struct import unpack_from
 import warnings
 
@@ -141,27 +140,30 @@ class AVStream:
         self._type = av_type
         self._callback = callback
         self._header = header
-        self._buf = BytesIO()
+        self._packets = []
         self._frame = -1
         self._last_unit = -1
         self._lost = 0
         self._received = 0
         self._last_index = -1
-        self._unit_size = 1400
-        self._aligned_size = aligned_size(self._unit_size)
+        self._aligned_size = aligned_size(1400)
         self._frame_bad_order = False
         self._missing = []
 
         if self._type not in [AVStream.TYPE_VIDEO, AVStream.TYPE_AUDIO]:
             raise ValueError("Invalid Type")
 
-    def _set_new_frame(self, frame_index: int):
+    def _set_aligned_size(self, packet: AVPacket):
+        remaining = int.from_bytes(packet.data[:2], "big")
+        self._aligned_size = aligned_size(remaining + len(packet.data))
+
+    def _set_new_frame(self, packet: AVPacket):
         self._frame_bad_order = False
         self._missing = []
-        self._frame = frame_index
+        self._packets = []
+        self._frame = packet.frame_index
         self._last_unit = -1
-        self._buf.close()
-        self._buf = BytesIO()
+        self._set_aligned_size(packet)
         _LOGGER.debug("Started New Frame: %s", self.frame)
 
     def _handle_missing_packet(self, index: int, unit_index: int):
@@ -173,7 +175,10 @@ class AVStream:
                 self.last_unit + 1,
             )
             self._frame_bad_order = True
-        self._buf.write(bytes(self._aligned_size) * (unit_index - (self.last_unit + 1)))
+
+        _range = range(self.last_unit + 1, unit_index)
+        for _ in _range:
+            self._packets.append(b"")
         self._missing.extend(range(self.last_unit + 1, unit_index))
         if self._lost > 65535:
             self._lost = 0
@@ -184,10 +189,15 @@ class AVStream:
 
     def _handle_src_packet(self, packet: AVPacket):
         if packet.is_last_src and not self._frame_bad_order:
-            _LOGGER.debug(
-                "Frame: %s finished with length: %s", self.frame, self._buf.tell()
+            if len(self._packets) < packet.frame_length_src:
+                _LOGGER.error("Frame buffer missing packets")
+                return
+            self._callback(
+                self._header
+                + b"".join(
+                    [packet[2:] for packet in self._packets[: packet.frame_length_src]]
+                )
             )
-            self._callback(b"".join([self._header, self._buf.getvalue()]))
 
     def _handle_fec_packet(self, packet: AVPacket):
         if not self._frame_bad_order and not self._missing:
@@ -195,15 +205,19 @@ class AVStream:
             return
         if packet.is_last:
             if len(self._missing) <= packet.frame_length_fec:
+                size = self._aligned_size
                 restored = b""
+                packets = self._packets
+                missing = tuple(self._missing)
+                buf = b"".join([packet.ljust(size, b"\x00") for packet in packets])
                 try:
                     _LOGGER.debug("Attempting FEC Decode")
                     restored = fec.decode(
                         packet.frame_length_src,
                         packet.frame_length_fec,
-                        self._aligned_size,
-                        self._buf.getvalue(),
-                        tuple(self._missing),
+                        size,
+                        buf,
+                        missing,
                     )
                 except NameError:
                     # FEC module is not available.
@@ -212,13 +226,16 @@ class AVStream:
                     _LOGGER.error(error)
                 if restored:
                     _LOGGER.debug("FEC Successful")
+                    for index in missing:
+                        packets[index] = restored[
+                            size * index : size * (index + 1)
+                        ].rstrip(b"\x00")
                     self._callback(
-                        b"".join(
+                        self._header
+                        + b"".join(
                             [
-                                self._header,
-                                restored[
-                                    : packet.frame_length_src * self._aligned_size
-                                ],
+                                packet[2:]
+                                for packet in packets[: packet.frame_length_src]
                             ]
                         )
                     )
@@ -240,15 +257,15 @@ class AVStream:
 
         # New Video Frame.
         if packet.frame_index != self.frame:
-            self._set_new_frame(packet.frame_index)
+            self._set_new_frame(packet)
 
         # Check if packet is in order
         if packet.unit_index != self.last_unit + 1:
             self._handle_missing_packet(packet.index, packet.unit_index)
 
         self._last_unit += 1
-        # Don't include first two decrypted bytes
-        self._buf.write(packet.data[2:].ljust(self._aligned_size, b"\x00"))
+        # First two decrypted bytes is the difference of the unit size and the data size.
+        self._packets.append(packet.data)
 
         # Current Frame is src.
         if not packet.is_fec:
