@@ -149,7 +149,7 @@ def test_fec_decode():
         erasures = test["erasures"]
         total = test["k"] + test["m"]
         packets = [
-            data[(i * size) + 2 : (i + 1) * size].ljust(aligned_size(size), b"\x00")
+            data[(i * size) : (i + 1) * size].ljust(aligned_size(size), b"\x00")
             for i in range(total)
         ]
         original = b"".join(packets)
@@ -171,7 +171,7 @@ def test_fec_decode_single_full():
     total = test["k"] + test["m"]
     for index in range(test["k"]):
         packets = [
-            data[(i * size) + 2 : (i + 1) * size].ljust(aligned_size(size), b"\x00")
+            data[(i * size) : (i + 1) * size].ljust(aligned_size(size), b"\x00")
             for i in range(total)
         ]
         original = b"".join(packets)
@@ -191,7 +191,7 @@ def test_fec_decode_multiple_full():
     cases = permutations(range(test["k"]), 2)
     for erasures in cases:
         packets = [
-            data[(i * size) + 2 : (i + 1) * size].ljust(aligned_size(size), b"\x00")
+            data[(i * size) : (i + 1) * size].ljust(aligned_size(size), b"\x00")
             for i in range(total)
         ]
         original = b"".join(packets)

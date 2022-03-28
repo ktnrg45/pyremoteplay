@@ -8,7 +8,6 @@ from concurrent.futures import ThreadPoolExecutor
 from enum import IntEnum
 from functools import partial
 from struct import pack_into
-from isort import stream
 
 import requests
 from Cryptodome.Random import get_random_bytes

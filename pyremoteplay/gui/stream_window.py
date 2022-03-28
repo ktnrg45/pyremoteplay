@@ -144,6 +144,7 @@ class AudioThread(QtCore.QThread):
         """Handle next audio frame."""
         self.queue.append(data)
 
+    # pylint: disable=unused-argument
     def callback(self, buf, frames, _time, status):
         """Callback to write new frames."""
         try:

@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from .errors import CryptError
 from .keys import HMAC_KEY_PS4, HMAC_KEY_PS5
 from .util import from_b, log_bytes, to_b
-from .const import TYPE_PS4, TYPE_PS5
+from .const import TYPE_PS5
 
 _LOGGER = logging.getLogger(__name__)
 
