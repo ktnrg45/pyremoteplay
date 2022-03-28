@@ -216,13 +216,15 @@ class RPWorker(QtCore.QObject):
         """Setup session."""
         self.window = window
         self.device = device
+        codec = options.get("codec")
+        if not options.get("use_hw"):
+            codec = codec.split("_")[0]
         self.session = self.device.create_session(
             user,
             resolution=options.get("resolution"),
             fps=options.get("fps"),
             av_receiver=QtReceiver(),
-            codec=options.get("codec"),
-            use_hw=options.get("use_hw"),
+            codec=codec,
             hdr=options.get("hdr"),
             quality=options.get("quality"),
         )

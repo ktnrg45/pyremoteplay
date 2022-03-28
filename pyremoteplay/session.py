@@ -224,7 +224,6 @@ class Session:
         loop=None,
         resolution="360p",
         fps="low",
-        use_hw=False,
         quality="very_low",
         codec="h264",
         hdr=False,
@@ -251,7 +250,6 @@ class Session:
         self._hdr = hdr
         self._codec = codec
         self.quality = quality
-        self.use_hw = use_hw
         self.max_width = self.max_height = None
         self.fps = FPS.preset(fps)
         self.resolution = Resolution.preset(resolution)
@@ -679,4 +677,8 @@ class Session:
         _type = _type.split("_")[0]  # Remove codec suffix
         if self.hdr:
             _type = f"{_type}_HDR"
-        return StreamType[_type]
+        try:
+            stream_type = StreamType[_type]
+        except KeyError:
+            stream_type = StreamType["H264"]
+        return stream_type

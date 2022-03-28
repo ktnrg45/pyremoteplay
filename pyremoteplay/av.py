@@ -412,8 +412,6 @@ class AVReceiver(abc.ABC):
     def get_video_codec(self):
         """Get Codec Context."""
         codec_name = self._session.video_format
-        if not self._session.use_hw:
-            codec_name = codec_name.split("_")[0]
         self.codec = AVReceiver.video_codec(codec_name)
 
     def set_session(self, session):
