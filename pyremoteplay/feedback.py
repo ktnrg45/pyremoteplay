@@ -38,6 +38,7 @@ class Controller:
 
     def worker(self):
         """Worker for sending feedback packets. Run in thread."""
+        self._should_send.acquire(timeout=1)
         while not self._session.is_stopped:
             if not self._should_send.acquire(timeout=1):
                 continue
