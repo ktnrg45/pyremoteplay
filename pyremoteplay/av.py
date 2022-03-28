@@ -413,6 +413,16 @@ class AVReceiver(abc.ABC):
         """Get Codec Context."""
         codec_name = self._session.video_format
         self.codec = AVReceiver.video_codec(codec_name)
+        try:
+            self.codec.open()
+        except av.error.ValueError as error:
+            if self._session:
+                try:
+                    msg = error.log[2]
+                except Exception:  # pylint: disable=broad-except
+                    msg = str(error)
+                self._session.error = msg
+                self._session.stop()
 
     def set_session(self, session):
         """Set Session."""
