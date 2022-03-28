@@ -35,7 +35,6 @@ class Options:
     fps: int = 30
     show_fps: bool = False
     use_hw: bool = False
-    decoder: str = ""
     codec: str = ""
     hdr: bool = False
     resolution: str = "720p"
@@ -240,6 +239,14 @@ class OptionsWidget(QtWidgets.QWidget):
         """Set Options."""
         options = get_options()
         try:
+            codec = options["codec"]
+            _codec = codec.split("_")
+            codec = _codec[0]
+            if len(_codec) > 1:
+                decoder = _codec[1]
+            else:
+                decoder = "CPU"
+
             self._devices = options["devices"]
             self.quality.setCurrentText(str(options["quality"]))
             self.use_opengl.setChecked(options["use_opengl"])
@@ -252,7 +259,6 @@ class OptionsWidget(QtWidgets.QWidget):
             self.codec.setCurrentText(options["codec"])
             self.hdr.setChecked(options["hdr"])
 
-            decoder = options["decoder"]
             found = False
             for index in range(0, self.decoder.count()):
                 item = self.decoder.itemText(index)
@@ -529,14 +535,17 @@ class OptionsWidget(QtWidgets.QWidget):
         profile = self.selected_profile
         decoder = self.decoder.currentText()
         decoder = decoder.split(" (")[0]
+        codec = self.codec.currentText()
+        if "CPU" not in decoder:
+            codec = f"{codec}_{decoder}"
+
         options = Options(
             quality=self.quality.currentText(),
             use_opengl=self.use_opengl.isChecked(),
             fps=int(self.fps.currentText()),
             show_fps=self.fps_show.isChecked(),
             use_hw=self.use_hw.isChecked(),
-            decoder=decoder,
-            codec=self.codec.currentText(),
+            codec=codec,
             hdr=self.hdr.isChecked(),
             resolution=self.resolution.currentText(),
             fullscreen=self.fullscreen.isChecked(),

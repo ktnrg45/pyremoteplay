@@ -23,8 +23,8 @@ _LOGGER = logging.getLogger(__name__)
 class QtReceiver(AVReceiver):
     """AV Receiver for QT."""
 
-    def __init__(self, codec_name=""):
-        super().__init__(codec_name)
+    def __init__(self):
+        super().__init__()
         self.video_signal = None
         self.audio_signal = None
         self.rgb = True
@@ -220,7 +220,7 @@ class RPWorker(QtCore.QObject):
             user,
             resolution=options.get("resolution"),
             fps=options.get("fps"),
-            av_receiver=QtReceiver(options.get("decoder")),
+            av_receiver=QtReceiver(),
             codec=options.get("codec"),
             use_hw=options.get("use_hw"),
             hdr=options.get("hdr"),

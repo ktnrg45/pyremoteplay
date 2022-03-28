@@ -676,6 +676,7 @@ class Session:
     def stream_type(self) -> StreamType:
         """Return Stream Type."""
         _type = self.video_format.upper()
+        _type = _type.split("_")[0]  # Remove codec suffix
         if self.hdr:
             _type = f"{_type}_HDR"
         return StreamType[_type]

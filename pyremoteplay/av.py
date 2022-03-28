@@ -366,21 +366,14 @@ class AVReceiver(abc.ABC):
         return found
 
     @staticmethod
-    def video_codec(video_format="h264", codec_name=""):
+    def video_codec(codec_name: str):
         """Return Codec Context."""
-        if not codec_name or codec_name == video_format or codec_name.lower() == "cpu":
-            decoder = video_format
-        else:
-            if not codec_name.startswith("h264") or not codec_name.startswith("hevc"):
-                decoder = f"{video_format}_{codec_name}"
         try:
-            codec = av.codec.Codec(decoder, "r").create()
+            codec = av.codec.Codec(codec_name, "r").create()
         except av.codec.codec.UnknownCodecError:
-            _LOGGER.error("Invalid codec: %s", decoder)
-            decoder = video_format
-            codec = av.codec.Codec(decoder, "r").create()
-        _LOGGER.info("Using Decoder: %s", decoder)
-        if decoder.startswith("h264"):
+            _LOGGER.error("Invalid codec: %s", codec_name)
+        _LOGGER.info("Using Decoder: %s", codec_name)
+        if codec_name.startswith("h264"):
             codec.options = AVReceiver.AV_CODEC_OPTIONS_H264
         codec.pix_fmt = "yuv420p"
         codec.flags = av.codec.context.Flags.LOW_DELAY
@@ -388,12 +381,11 @@ class AVReceiver(abc.ABC):
         codec.thread_type = av.codec.context.ThreadType.AUTO
         return codec
 
-    def __init__(self, codec_name=""):
+    def __init__(self):
         self._session = None
         self.codec = None
         self.audio_decoder = None
         self.audio_config = {}
-        self._codec_name = codec_name
 
     def get_audio_config(self, header: bytes):
         """Get Audio config from header."""
@@ -419,14 +411,10 @@ class AVReceiver(abc.ABC):
 
     def get_video_codec(self):
         """Get Codec Context."""
+        codec_name = self._session.video_format
         if not self._session.use_hw:
-            codec_name = self._session.video_format
-        else:
-            codec_name = self._codec_name
-        self.codec = AVReceiver.video_codec(
-            video_format=self._session.video_format,
-            codec_name=codec_name,
-        )
+            codec_name = codec_name.split("_")[0]
+        self.codec = AVReceiver.video_codec(codec_name)
 
     def set_session(self, session):
         """Set Session."""
@@ -485,8 +473,8 @@ class AVReceiver(abc.ABC):
 class QueueReceiver(AVReceiver):
     """Receiver which stores decoded frames in queues."""
 
-    def __init__(self, codec_name=""):
-        super().__init__(codec_name)
+    def __init__(self):
+        super().__init__()
         self.v_queue = deque(maxlen=10)
         self.a_queue = deque(maxlen=10)
 
