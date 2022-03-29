@@ -234,7 +234,8 @@ class RPWorker(QtCore.QObject):
         _LOGGER.debug("Session Start")
         if self.window:
             self.session.av_receiver.rgb = False if self.window.use_opengl else True
-
+        if standby:
+            self.session.av_receiver = None
         started = await self.device.connect()
 
         if not started:
