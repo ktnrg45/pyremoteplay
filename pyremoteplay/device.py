@@ -169,12 +169,11 @@ class RPDevice:
         if not self.is_on:
             _LOGGER.error("Device is not on.")
             return False
-
         if self.session is None:
             if not user:
                 _LOGGER.error("User needed")
                 return False
-            await self.create_session(user, profiles, profile_path)
+            self.create_session(user, profiles, profile_path)
         if not self.connected:
             if not await self.connect():
                 _LOGGER.error("Error connecting")

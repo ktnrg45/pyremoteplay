@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 
 from pyremoteplay.__version__ import VERSION
+from pyremoteplay.device import RPDevice
 from pyremoteplay.protocol import async_create_ddp_endpoint
 from pyremoteplay.ddp import async_get_status
 
@@ -27,6 +28,7 @@ class AsyncHandler(QtCore.QObject):
 
     status_updated = QtCore.Signal()
     manual_search_done = QtCore.Signal(str, dict)
+    standby_done = QtCore.Signal(str)
 
     def __init__(self, main_window):
         super().__init__()
@@ -34,6 +36,7 @@ class AsyncHandler(QtCore.QObject):
         self.protocol = None
         self.main_window = main_window
         self.__task = None
+        self.standby_done.connect(self.main_window.standby_callback)
 
     def start(self):
         """Start and run polling."""
@@ -78,6 +81,11 @@ class AsyncHandler(QtCore.QObject):
     def run_coro(self, coro, *args, **kwargs):
         """Run coroutine."""
         asyncio.run_coroutine_threadsafe(coro(*args, **kwargs), self.loop)
+
+    async def standby_host(self, device: RPDevice, user, profile):
+        """Place Host in standby"""
+        await device.standby(user, profile)
+        self.standby_done.emit(device.session.error)
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -203,13 +211,17 @@ class MainWindow(QtWidgets.QMainWindow):
         profile = self.check_profile(user, device)
         if not profile:
             return
-        self.rp_worker.setup(None, device, user, options)
-        self.rp_worker.run(standby=True)
+        self.async_handler.run_coro(
+            self.async_handler.standby_host, device, user, self.options.profiles
+        )
+        # self.rp_worker.setup(None, device, user, options)
+        # self.rp_worker.run(standby=True)
 
-    def standby_callback(self):
+    @QtCore.Slot(str)
+    def standby_callback(self, error: str):
         """Callback after attempting standby."""
-        if self.rp_worker.error:
-            message(self, "Standby Error", self.rp_worker.error)
+        if error:
+            message(self, "Standby Error", error)
         else:
             message(self, "Standby Success", "Set device to Standby", "info")
 

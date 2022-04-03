@@ -468,6 +468,7 @@ class Session:
 
     def standby(self):
         """Set host to standby."""
+
         msg = self._build_msg(Session.MessageType.STANDBY)
         self.send(msg)
         _LOGGER.info("Sending Standby")
