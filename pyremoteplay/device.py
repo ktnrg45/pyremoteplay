@@ -4,6 +4,7 @@ import logging
 from ssl import SSLError
 import time
 import asyncio
+from typing import Union
 
 import aiohttp
 from aiohttp.client_exceptions import ContentTypeError
@@ -127,14 +128,14 @@ class RPDevice:
             pass
 
     def create_session(
-        self, user, profiles=None, profile_path=None, **kwargs
-    ) -> Session:
-        """Return initialized session."""
+        self, user: str, profiles: dict = None, profile_path="", **kwargs
+    ) -> Union[Session, None]:
+        """Return initialized session if session created else return None."""
         if self.session:
             if not self.session.is_stopped:
                 _LOGGER.error("Device session already exists. Disconnect first.")
-                return
-            self.disconnect()
+                return None
+            self.disconnect()  # Cleanup session
         profile = self.get_profile(user, profiles, profile_path)
         if not profile:
             _LOGGER.error("Could not find valid user profile")
@@ -165,7 +166,11 @@ class RPDevice:
         self._session = None
 
     async def standby(self, user="", profiles=None, profile_path=None) -> bool:
-        """Place Device in standby. Return True if successful."""
+        """Place Device in standby. Return True if successful.
+
+        If there is a valid and connected session, no arguments need to be passed.
+        Otherwise creates and connects a session first.
+        """
         if not self.is_on:
             _LOGGER.error("Device is not on.")
             return False
@@ -183,7 +188,7 @@ class RPDevice:
             except asyncio.TimeoutError:
                 _LOGGER.error("Timed out waiting for stream to start")
                 return False
-        self.session.standby()
+        self.session.standby()  # TODO: Acually determine if this was successful
         return True
 
     def wakeup(
