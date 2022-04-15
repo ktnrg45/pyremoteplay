@@ -63,17 +63,6 @@ fi
 
 rm -rf dist
 rm -rf build
-rm 'pyremoteplay/fec_utils/fec.c'
-
-python3 setup.py install --build
-echo "Built extensions."
-
-read -p "Build Wheels?: y> " msg_wheels
-if [ "$msg_wheels" == "y" ];
-then
-    ./script/build_wheel
-    printf "\nBuilt wheels:\n$(ls ./wheels)\n\n"
-fi
 
 read -p "Upload to pypi?: y> " msg_pypi
 if [ "$msg_pypi" == "y" ];

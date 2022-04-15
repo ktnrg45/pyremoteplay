@@ -5,3 +5,4 @@ protobuf3>=0.2.1
 requests>=2.25.1
 pyee>=8.1.0
 asyncudp>=0.6.0
+pyjerasure>=1.0.0

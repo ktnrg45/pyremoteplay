@@ -1,6 +1,6 @@
 import base64
 from itertools import permutations
-from pyremoteplay.fec_utils import fec, aligned_size
+from pyjerasure import Matrix, align_size, decode_from_bytes
 
 
 TESTS = [
@@ -144,60 +144,65 @@ TESTS = [
 def test_fec_decode():
     """Test FEC decode for test cases."""
     for test in TESTS:
+        matrix = Matrix("cauchy", test["k"], test["m"], 8)
         data = base64.b64decode(test["data"].encode())
         size = test["size"]
+        aligned_size = align_size(matrix, size)
         erasures = test["erasures"]
         total = test["k"] + test["m"]
         packets = [
-            data[(i * size) : (i + 1) * size].ljust(aligned_size(size), b"\x00")
+            data[(i * size) : (i + 1) * size].ljust(aligned_size, b"\x00")
             for i in range(total)
         ]
         original = b"".join(packets)
         for e in erasures:
-            packets[e] = bytes(aligned_size(size))
+            packets[e] = bytes(aligned_size)
         erased = b"".join(packets)
         assert erased != original
-        result = fec.decode(
-            test["k"], test["m"], aligned_size(size), erased, test["erasures"]
-        )
+        matrix = Matrix("cauchy", test["k"], test["m"], 8)
+        result = decode_from_bytes(matrix, erased, test["erasures"], aligned_size)
         assert result == original
 
 
 def test_fec_decode_single_full():
     """Test FEC decode for all possible erasures."""
     test = TESTS[0]
+    matrix = Matrix("cauchy", test["k"], test["m"], 8)
     data = base64.b64decode(test["data"].encode())
     size = test["size"]
+    aligned_size = align_size(matrix, size)
     total = test["k"] + test["m"]
     for index in range(test["k"]):
         packets = [
-            data[(i * size) : (i + 1) * size].ljust(aligned_size(size), b"\x00")
+            data[(i * size) : (i + 1) * size].ljust(aligned_size, b"\x00")
             for i in range(total)
         ]
         original = b"".join(packets)
-        packets[index] = bytes(aligned_size(size))
+        packets[index] = bytes(aligned_size)
         erased = b"".join(packets)
         assert erased != original
-        result = fec.decode(test["k"], test["m"], aligned_size(size), erased, (index,))
+        result = decode_from_bytes(matrix, erased, (index,), aligned_size)
         assert result == original
 
 
 def test_fec_decode_multiple_full():
     """Test FEC decode for all permutations with multiple erasures."""
     test = TESTS[1]
+    matrix = Matrix("cauchy", test["k"], test["m"], 8)
     data = base64.b64decode(test["data"].encode())
     size = test["size"]
+    aligned_size = align_size(matrix, size)
     total = test["k"] + test["m"]
     cases = permutations(range(test["k"]), 2)
     for erasures in cases:
         packets = [
-            data[(i * size) : (i + 1) * size].ljust(aligned_size(size), b"\x00")
+            data[(i * size) : (i + 1) * size].ljust(aligned_size, b"\x00")
             for i in range(total)
         ]
         original = b"".join(packets)
         for e in erasures:
-            packets[e] = bytes(aligned_size(size))
+            packets[e] = bytes(aligned_size)
         erased = b"".join(packets)
         assert erased != original
-        result = fec.decode(test["k"], test["m"], aligned_size(size), erased, erasures)
+        result = decode_from_bytes(matrix, erased, erasures, aligned_size)
         assert result == original

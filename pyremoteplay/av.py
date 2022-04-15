@@ -6,16 +6,10 @@ from collections import deque
 from struct import unpack_from
 import warnings
 
-from pyremoteplay.codecs.opus import OpusDecoder
-from pyremoteplay.fec_utils import aligned_size
-from .stream_packets import AVPacket, Packet
+import pyjerasure
 
-try:
-    from pyremoteplay.fec_utils import fec
-except ImportError:
-    warnings.warn(
-        "Fec module not imported. No forward error correction will be performed",
-    )
+from pyremoteplay.codecs.opus import OpusDecoder
+from .stream_packets import AVPacket, Packet
 
 try:
     import av
@@ -146,7 +140,8 @@ class AVStream:
         self._lost = 0
         self._received = 0
         self._last_index = -1
-        self._aligned_size = aligned_size(1400)
+        self._matrix = None
+        self._aligned_size = 1
         self._frame_bad_order = False
         self._missing = []
 
@@ -155,7 +150,9 @@ class AVStream:
 
     def _set_aligned_size(self, packet: AVPacket):
         remaining = int.from_bytes(packet.data[:2], "big")
-        self._aligned_size = aligned_size(remaining + len(packet.data))
+        self._aligned_size = pyjerasure.align_size(
+            self._matrix, remaining + len(packet.data)
+        )
 
     def _set_new_frame(self, packet: AVPacket):
         self._frame_bad_order = False
@@ -163,6 +160,9 @@ class AVStream:
         self._packets = []
         self._frame = packet.frame_index
         self._last_unit = -1
+        self._matrix = pyjerasure.Matrix(
+            "cauchy", packet.frame_length_src, packet.frame_length_fec, 8
+        )
         self._set_aligned_size(packet)
         _LOGGER.debug("Started New Frame: %s", self.frame)
 
@@ -210,20 +210,13 @@ class AVStream:
                 packets = self._packets
                 missing = tuple(self._missing)
                 buf = b"".join([packet.ljust(size, b"\x00") for packet in packets])
-                try:
-                    _LOGGER.debug("Attempting FEC Decode")
-                    restored = fec.decode(
-                        packet.frame_length_src,
-                        packet.frame_length_fec,
-                        size,
-                        buf,
-                        missing,
-                    )
-                except NameError:
-                    # FEC module is not available.
-                    return
-                except Exception as error:  # pylint: disable=broad-except
-                    _LOGGER.error(error)
+                _LOGGER.debug("Attempting FEC Decode")
+                restored = pyjerasure.decode_from_bytes(
+                    self._matrix,
+                    buf,
+                    size,
+                    missing,
+                )
                 if restored:
                     _LOGGER.debug("FEC Successful")
                     for index in missing:
