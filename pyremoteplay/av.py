@@ -140,19 +140,11 @@ class AVStream:
         self._lost = 0
         self._received = 0
         self._last_index = -1
-        self._matrix = None
-        self._aligned_size = 1
         self._frame_bad_order = False
         self._missing = []
 
         if self._type not in [AVStream.TYPE_VIDEO, AVStream.TYPE_AUDIO]:
             raise ValueError("Invalid Type")
-
-    def _set_aligned_size(self, packet: AVPacket):
-        remaining = int.from_bytes(packet.data[:2], "big")
-        self._aligned_size = pyjerasure.align_size(
-            self._matrix, remaining + len(packet.data)
-        )
 
     def _set_new_frame(self, packet: AVPacket):
         self._frame_bad_order = False
@@ -160,10 +152,6 @@ class AVStream:
         self._packets = []
         self._frame = packet.frame_index
         self._last_unit = -1
-        self._matrix = pyjerasure.Matrix(
-            "cauchy", packet.frame_length_src, packet.frame_length_fec, 8
-        )
-        self._set_aligned_size(packet)
         _LOGGER.debug("Started New Frame: %s", self.frame)
 
     def _handle_missing_packet(self, index: int, unit_index: int):
@@ -205,18 +193,26 @@ class AVStream:
             return
         if packet.is_last:
             if len(self._missing) <= packet.frame_length_fec:
-                size = self._aligned_size
+                matrix = pyjerasure.Matrix(
+                    "cauchy", packet.frame_length_src, packet.frame_length_fec, 8
+                )
                 restored = b""
                 packets = self._packets
+                max_size = max([len(packet) for packet in packets])
+                size = pyjerasure.align_size(matrix, max_size)
                 missing = tuple(self._missing)
                 buf = b"".join([packet.ljust(size, b"\x00") for packet in packets])
                 _LOGGER.debug("Attempting FEC Decode")
-                restored = pyjerasure.decode_from_bytes(
-                    self._matrix,
-                    buf,
-                    size,
-                    missing,
-                )
+                try:
+                    restored = pyjerasure.decode_from_bytes(
+                        matrix,
+                        buf,
+                        missing,
+                        size,
+                    )
+                except Exception as err:
+                    _LOGGER.error(err)
+                    return
                 if restored:
                     _LOGGER.debug("FEC Successful")
                     for index in missing:
