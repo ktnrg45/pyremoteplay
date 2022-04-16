@@ -1,9 +1,13 @@
 # pylint: disable=c-extension-no-member,invalid-name
 """Device Grid Widget."""
+import logging
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from pyremoteplay.const import DEFAULT_STANDBY_DELAY
 from pyremoteplay.device import STATUS_OK
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class DeviceButton(QtWidgets.QPushButton):
@@ -184,55 +188,42 @@ class DeviceButton(QtWidgets.QPushButton):
 class DeviceGridWidget(QtWidgets.QWidget):
     """Widget that contains device buttons."""
 
+    MAX_COLS = 3
+
     def __init__(self, parent):
         super().__init__(parent)
         self.setStyleSheet("QPushButton {padding: 50px 25px;}")
         self.setLayout(QtWidgets.QGridLayout())
+        self.layout().setColumnMinimumWidth(0, 100)
         self.widgets = set()
 
     def add(self, button, row, col):
         """Add button to grid."""
-        # self.layout.setRowStretch(row, 6)
         self.layout().addWidget(button, row, col, Qt.AlignCenter)
         self.widgets.add(button)
 
     def create_grid(self, devices: dict):
         """Create Button Grid."""
-        buttons = self._check_buttons(devices)
-        self.setLayout(QtWidgets.QGridLayout())
-        self.layout().setColumnMinimumWidth(0, 100)
-        max_cols = 3
-        if buttons:
-            for index, button in enumerate(buttons):
-                col = index % max_cols
-                row = index // max_cols
+        # buttons = self._check_buttons(devices)
+        for widget in self.widgets:
+            if widget.device.ip_address in devices:
+                devices.pop(widget.device.ip_address)
+        if self.widgets or devices:
+            count = len(self.widgets)
+            for index, device in enumerate(devices.values()):
+                if not device.status:
+                    count -= 1
+                    continue
+                cur_index = index + count
+                col = cur_index % self.MAX_COLS
+                row = cur_index // self.MAX_COLS
+                button = DeviceButton(self.window(), device)
                 self.add(button, row, col)
             self.show()
             self.window().center_text.hide()
         else:
             self.hide()
             self.window().center_text.show()
-
-    def _check_buttons(self, devices: dict):
-        """Return Current Buttons which should be shown."""
-        buttons = []
-        for widget in self.layout().children():
-            if not isinstance(widget, DeviceButton):
-                continue
-            self.layout().removeWidget(widget)
-            if widget.device.ip_address in devices:
-                devices.pop(widget.device.ip_address)
-                if widget.device.status:
-                    buttons.append(widget)
-                    widget.update_state(widget.device.status)
-                    continue
-            if widget in self.widgets:
-                self.widgets.remove(widget)
-            widget.hide()
-            widget.deleteLater()
-        for device in devices.values():
-            buttons.append(DeviceButton(self.window(), device))
-        return buttons
 
     def session_stop(self):
         """Handle session stopped."""
