@@ -3,7 +3,7 @@ import logging
 import threading
 from collections import deque
 
-from .stream_packets import FeedbackEvent, FeedbackHeader
+from .stream_packets import FeedbackEvent, FeedbackHeader, ControllerState
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,16 +31,14 @@ class Controller:
         self._started = False
         self._should_send = threading.Semaphore()
 
-        self._stick_state = {
-            "left": {"x": 0, "y": 0},
-            "right": {"x": 0, "y": 0},
-        }
+        self._stick_state = ControllerState()
 
     def worker(self):
         """Worker for sending feedback packets. Run in thread."""
         self._should_send.acquire(timeout=1)
         while not self._session.is_stopped:
-            if not self._should_send.acquire(timeout=1):
+            if not self._should_send.acquire(timeout=Controller.STATE_INTERVAL_MAX_MS):
+                self.send_state()
                 continue
             self.send_state()
         _LOGGER.info("Controller stopped")
@@ -84,7 +82,7 @@ class Controller:
                 self.add_event_buffer(FeedbackEvent(button, is_active=False))
             self.send_event()
 
-    def stick(self, stick: str, axis: str = None, value: float = None, point=None):
+    def stick(self, stick_name: str, axis: str = None, value: float = None, point=None):
         """Set Stick Value."""
 
         def check_value(value):
@@ -99,8 +97,12 @@ class Controller:
                 [min([Controller.STICK_STATE_MAX, value]), Controller.STICK_STATE_MIN]
             )
 
-        stick = stick.lower()
-        if stick not in ("left", "right"):
+        stick_name = stick_name.lower()
+        if stick_name == "left":
+            stick = self._stick_state.left
+        elif stick_name == "right":
+            stick = self._stick_state.right
+        else:
             raise ValueError("Invalid stick: Expected 'left', 'right'")
 
         if point is not None:
@@ -111,19 +113,22 @@ class Controller:
             val_x, val_y = point
             val_x = scale_value(val_x)
             val_y = scale_value(val_y)
-            self._stick_state[stick]["x"] = val_x
-            self._stick_state[stick]["y"] = val_y
+            stick.x = val_x
+            stick.y = val_y
             self._should_send.release()
             return
 
         if axis is None or value is None:
             raise ValueError("Axis and Value can not be None")
         axis = axis.lower()
-        if axis not in ("x", "y"):
-            raise ValueError("Invalid axis: Expected 'x', 'y'")
         check_value(value)
         value = scale_value(value)
-        self._stick_state[stick][axis] = value
+        if axis == "x":
+            stick.x = value
+        elif axis == "y":
+            stick.y = value
+        else:
+            raise ValueError("Invalid axis: Expected 'x', 'y'")
         self._should_send.release()
 
     @property
@@ -132,6 +137,6 @@ class Controller:
         return self._sequence_event
 
     @property
-    def stick_state(self) -> dict:
-        """Return stick state as dict."""
+    def stick_state(self) -> ControllerState:
+        """Return stick state."""
         return self._stick_state

@@ -6,6 +6,7 @@ from base64 import b64encode
 from enum import IntEnum
 from struct import pack, pack_into, unpack_from
 from typing import Union
+from dataclasses import dataclass
 
 from .const import Quality
 from .crypt import StreamCipher
@@ -108,6 +109,22 @@ def get_launch_spec(
     launch_spec = launch_spec.encode()
     launch_spec = b"".join([launch_spec, b"\x00"])
     return launch_spec
+
+
+@dataclass
+class StickState:
+    """State of a single stick."""
+
+    x = 0
+    y = 0
+
+
+@dataclass
+class ControllerState:
+    """State of both controller sticks."""
+
+    left = StickState()
+    right = StickState()
 
 
 class PacketSection(abc.ABC):
@@ -696,11 +713,6 @@ class FeedbackState(PacketSection):
         ]
     )
 
-    DEFAULT = {
-        "left": {"x": 0, "y": 0},
-        "right": {"x": 0, "y": 0},
-    }
-
     class Type(IntEnum):
         """Enums for State."""
 
@@ -711,7 +723,7 @@ class FeedbackState(PacketSection):
 
     def __init__(self, state_type, **kwargs):
         super().__init__(state_type)
-        self.state = kwargs.get("state")
+        self.state: ControllerState = kwargs.get("state") or ControllerState()
 
     def pack(self, buf: bytearray):
         """Pack compiled bytes."""
@@ -720,10 +732,10 @@ class FeedbackState(PacketSection):
             buf,
             FeedbackHeader.LENGTH,
             self.PREFIX,
-            self.state["left"]["x"],
-            self.state["left"]["y"],
-            self.state["right"]["x"],
-            self.state["right"]["y"],
+            self.state.left.x,
+            self.state.left.y,
+            self.state.right.x,
+            self.state.right.y,
         )
 
 
