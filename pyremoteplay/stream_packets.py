@@ -118,6 +118,9 @@ class StickState:
     x = 0
     y = 0
 
+    def __repr__(self):
+        return f"{str(self.__class__)[:-1]} x={self.x} y={self.y}>"
+
 
 @dataclass
 class ControllerState:
@@ -125,6 +128,13 @@ class ControllerState:
 
     left = StickState()
     right = StickState()
+
+    def __repr__(self):
+        return (
+            f"{str(self.__class__)[:-1]} "
+            f"left=({self.left.x}, {self.left.y}) "
+            f"right=({self.right.x}, {self.right.y})>"
+        )
 
 
 class PacketSection(abc.ABC):
