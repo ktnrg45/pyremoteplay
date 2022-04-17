@@ -5,8 +5,7 @@ import logging
 from base64 import b64encode
 from enum import IntEnum
 from struct import pack, pack_into, unpack_from
-from typing import Union
-from dataclasses import dataclass
+from typing import Iterable, Union
 
 from .const import Quality
 from .crypt import StreamCipher
@@ -111,23 +110,54 @@ def get_launch_spec(
     return launch_spec
 
 
-@dataclass
 class StickState:
     """State of a single stick."""
 
-    x = 0
-    y = 0
+    STICK_STATE_MAX = 0x7FFF
+    STICK_STATE_MIN = -0x7FFF
 
     def __repr__(self):
         return f"{str(self.__class__)[:-1]} x={self.x} y={self.y}>"
 
+    def __eq__(self, other):
+        if not isinstance(other, StickState):
+            return False
+        return self.x == other.x and self.y == other.y
 
-@dataclass
+    def __init__(self, x: Union[int, float] = 0, y: Union[int, float] = 0):
+        self._x = self.__scale_normalize(x)
+        self._y = self.__scale_normalize(y)
+
+    def __scale_normalize(self, value: Union[int, float]):
+        if isinstance(value, float):
+            if value > 1.0 or value < -1.0:
+                raise ValueError("Stick Value must be between -1.0 and 1.0")
+            value = int(self.STICK_STATE_MAX * value)
+        return max([min([self.STICK_STATE_MAX, value]), self.STICK_STATE_MIN])
+
+    @property
+    def x(self) -> int:
+        """Return X value."""
+        return self._x
+
+    @x.setter
+    def x(self, value: Union[int, float]):
+        """Set X value."""
+        self._x = self.__scale_normalize(value)
+
+    @property
+    def y(self) -> int:
+        """Return Y value."""
+        return self._y
+
+    @y.setter
+    def y(self, value: Union[int, float]):
+        """Set Y value."""
+        self._y = self.__scale_normalize(value)
+
+
 class ControllerState:
     """State of both controller sticks."""
-
-    left = StickState()
-    right = StickState()
 
     def __repr__(self):
         return (
@@ -135,6 +165,55 @@ class ControllerState:
             f"left=({self.left.x}, {self.left.y}) "
             f"right=({self.right.x}, {self.right.y})>"
         )
+
+    def __eq__(self, other):
+        if not isinstance(other, ControllerState):
+            return False
+        return self.left == other.left and self.right == other.right
+
+    def __init__(
+        self,
+        left: Union[StickState, Iterable[Union[int, float]], None] = None,
+        right: Union[StickState, Iterable[Union[int, float]], None] = None,
+    ):
+        self._left: StickState = self.__state_setter(left)
+        self._right: StickState = self.__state_setter(right)
+
+    def __state_setter(
+        self, state: Union[StickState, Iterable[Union[int, float]], None]
+    ) -> StickState:
+        _state = None
+        if state is None:
+            _state = StickState()
+        elif isinstance(state, Iterable):
+            if len(state) != 2:
+                raise TypeError("Expected Iterable of length 2")
+            _state = StickState(*state)
+        elif isinstance(state, StickState):
+            _state = state
+        else:
+            raise TypeError("Invalid type")
+        return _state
+
+    @property
+    def left(self) -> StickState:
+        """Return left state."""
+        return self._left
+
+    @left.setter
+    def left(self, state: Union[StickState, Iterable[Union[int, float]], None]):
+        """Set left State."""
+        self._left = self.__state_setter(state)
+
+    @property
+    def right(self) -> StickState:
+        """Return right state."""
+        return self._right
+
+    @right.setter
+    def right(self, state: Union[StickState, Iterable[Union[int, float]], None]):
+        """Set right State."""
+        self._right = self.__state_setter(state)
 
 
 class PacketSection(abc.ABC):

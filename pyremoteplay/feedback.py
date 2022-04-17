@@ -3,7 +3,7 @@ import logging
 import threading
 from collections import deque
 
-from .stream_packets import FeedbackEvent, FeedbackHeader, ControllerState
+from .stream_packets import FeedbackEvent, FeedbackHeader, ControllerState, StickState
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,21 +30,23 @@ class Controller:
         self._params = kwargs
         self._started = False
         self._should_send = threading.Semaphore()
-
+        self._last_state = ControllerState()
         self._stick_state = ControllerState()
 
     def worker(self):
         """Worker for sending feedback packets. Run in thread."""
         self._should_send.acquire(timeout=1)
         while not self._session.is_stopped:
-            if not self._should_send.acquire(timeout=Controller.STATE_INTERVAL_MAX_MS):
-                self.send_state()
-                continue
+            self._should_send.acquire(timeout=Controller.STATE_INTERVAL_MAX_MS)
             self.send_state()
         _LOGGER.info("Controller stopped")
 
     def send_state(self):
         """Send controller stick state."""
+        if self.stick_state == self._last_state:
+            return
+        self._last_state.left = self.stick_state.left
+        self._last_state.right = self.stick_state.right
         self._session.stream.send_feedback(
             FeedbackHeader.Type.STATE, self._sequence_state, state=self.stick_state
         )
@@ -84,19 +86,6 @@ class Controller:
 
     def stick(self, stick_name: str, axis: str = None, value: float = None, point=None):
         """Set Stick Value."""
-
-        def check_value(value):
-            if not isinstance(value, float):
-                raise ValueError("Invalid value: Expected float")
-            if value > 1.0 or value < -1.0:
-                raise ValueError("Stick Value must be between -1.0 and 1.0")
-
-        def scale_value(value):
-            value = int(Controller.STICK_STATE_MAX * value)
-            return max(
-                [min([Controller.STICK_STATE_MAX, value]), Controller.STICK_STATE_MIN]
-            )
-
         stick_name = stick_name.lower()
         if stick_name == "left":
             stick = self._stick_state.left
@@ -106,29 +95,29 @@ class Controller:
             raise ValueError("Invalid stick: Expected 'left', 'right'")
 
         if point is not None:
-            if len(point) != 2:
-                raise ValueError("Point must have two values")
-            for val in point:
-                check_value(val)
-            val_x, val_y = point
-            val_x = scale_value(val_x)
-            val_y = scale_value(val_y)
-            stick.x = val_x
-            stick.y = val_y
+            state = StickState(*point)
+            if stick_name == "left":
+                self._stick_state.left = state
+            else:
+                self._stick_state.right = state
             self._should_send.release()
             return
 
         if axis is None or value is None:
             raise ValueError("Axis and Value can not be None")
         axis = axis.lower()
-        check_value(value)
-        value = scale_value(value)
+        values = [stick.x, stick.y]
         if axis == "x":
-            stick.x = value
+            values[0] = value
         elif axis == "y":
-            stick.y = value
+            values[1] = value
         else:
             raise ValueError("Invalid axis: Expected 'x', 'y'")
+        state = StickState(*values)
+        if stick_name == "left":
+            self._stick_state.left = state
+        else:
+            self._stick_state.right = state
         self._should_send.release()
 
     @property
