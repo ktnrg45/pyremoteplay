@@ -30,7 +30,6 @@ from .const import (
 from .crypt import SessionCipher
 from .ddp import async_get_status, async_wakeup
 from .errors import RemotePlayError, RPErrorHandler
-from .feedback import Controller
 from .keys import (
     SESSION_KEY_0_PS4,
     SESSION_KEY_1_PS4,
@@ -256,7 +255,6 @@ class Session:
         self.error = ""
         self.av_receiver = av_receiver
         self.av_handler = AVHandler(self)
-        self.controller = Controller(self)
         self.events = ExecutorEventEmitter()
 
         self.loop = asyncio.get_event_loop() if loop is None else loop
@@ -557,10 +555,6 @@ class Session:
         self.loop.create_task(self._stream.async_connect())
         if test:
             self.loop.create_task(self.wait_for_test(stop_event))
-        else:
-            self._tasks.append(
-                self.loop.create_task(self.run_io(self.controller.worker))
-            )
 
     async def wait_for_test(self, stop_event):
         """Wait for network test to complete. Uses defaults if timed out."""

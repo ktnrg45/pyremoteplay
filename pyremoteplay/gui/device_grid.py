@@ -155,8 +155,9 @@ class DeviceButton(QtWidgets.QPushButton):
     def _enable_toggle_power(self):
         self.action_power.setDisabled(False)
 
-    def update_state(self, state):
+    def update_state(self):
         """Callback for when state is updated."""
+        state = self.device.status
         cur_id = self.status.get("running-app-titleid")
         new_id = state.get("running-app-titleid")
         cur_status = self.status.get("status-code")
@@ -204,8 +205,8 @@ class DeviceGridWidget(QtWidgets.QWidget):
 
     def create_grid(self, devices: dict):
         """Create Button Grid."""
-        # buttons = self._check_buttons(devices)
         for widget in self.widgets:
+            widget.update_state()
             if widget.device.ip_address in devices:
                 devices.pop(widget.device.ip_address)
         if self.widgets or devices:

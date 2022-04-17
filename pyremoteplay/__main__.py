@@ -14,6 +14,7 @@ from .oauth import prompt as oauth_prompt
 from .register import register
 from .session import Session
 from .util import add_profile, add_regist_data, get_profiles, write_profiles
+from .feedback import Controller
 
 NEW_PROFILE = "New Profile"
 CANCEL = "Cancel"
@@ -242,6 +243,7 @@ class CLIInstance:
 
     def __init__(self, session: Session):
         self._session = session
+        self.controller = Controller()
         self.stdscr = None
         self.last_key = None
         self.map = self.MAP
@@ -292,6 +294,8 @@ class CLIInstance:
 
     def run(self, stdscr):
         """Run CLI Instance."""
+        self.controller.connect(self._session)
+        self.controller.start()
         self.stdscr = stdscr
         self._init_color()
         self.stdscr.scrollok(True)
@@ -310,7 +314,7 @@ class CLIInstance:
                     _last = key
             except curses.error:
                 if self.last_key is not None:
-                    self._session.controller.button(self.last_key, "release")
+                    self.controller.button(self.last_key, "release")
                     self.last_key = None
 
     def _write_str(self, text, color=1):
@@ -335,5 +339,5 @@ class CLIInstance:
                 self._session.standby()
                 self._session.loop.call_soon_threadsafe(self._session.loop.stop)
                 sys.exit()
-            self._session.controller.button(key, "press")
+            self.controller.button(key, "press")
         return key

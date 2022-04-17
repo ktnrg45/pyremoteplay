@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from PySide6.QtMultimedia import QAudioDevice
 from pyremoteplay.av import AVReceiver
 from pyremoteplay.device import RPDevice
+from pyremoteplay.feedback import Controller
 
 from .joystick import JoystickWidget
 from .controls import ControlsWidget
@@ -173,6 +174,7 @@ class RPWorker(QtCore.QObject):
         self.window = None
         self.device = None
         self.session = None
+        self.controller = None
         self.error = ""
         self.standby_done.connect(self.main_window.standby_callback)
 
@@ -248,7 +250,8 @@ class RPWorker(QtCore.QObject):
             _LOGGER.info("Standby Success: %s", result)
             self.stop(standby=True)
             return
-
+        self.controller = Controller(self.session)
+        self.controller.start()
         self.session.av_receiver.set_signals(
             self.window.video_frame, self.window.audio_frame
         )
@@ -269,7 +272,7 @@ class RPWorker(QtCore.QObject):
     ):
         """Send stick state"""
         if point is not None:
-            self.session.controller.stick(stick, point=point)
+            self.controller.stick(stick, point=point)
             return
 
         if direction in ("LEFT", "RIGHT"):
@@ -278,11 +281,11 @@ class RPWorker(QtCore.QObject):
             axis = "Y"
         if direction in ("UP", "LEFT") and value != 0.0:
             value *= -1.0
-        self.session.controller.stick(stick, axis, value)
+        self.controller.stick(stick, axis, value)
 
     def send_button(self, button, action):
         """Send button."""
-        self.session.controller.button(button, action)
+        self.controller.button(button, action)
 
 
 class StreamWindow(QtWidgets.QWidget):

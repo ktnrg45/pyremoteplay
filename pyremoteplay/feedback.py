@@ -21,7 +21,7 @@ class Controller:
     STICK_STATE_MAX = 0x7FFF
     STICK_STATE_MIN = -0x7FFF
 
-    def __init__(self, session, **kwargs):
+    def __init__(self, session=None, **kwargs):
         self._session = session
         self._sequence_event = 0
         self._sequence_state = 0
@@ -30,16 +30,52 @@ class Controller:
         self._params = kwargs
         self._started = False
         self._should_send = threading.Semaphore()
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread = None
         self._last_state = ControllerState()
         self._stick_state = ControllerState()
 
-    def worker(self):
+    def __del__(self):
+        self.disconnect()
+
+    def __worker(self):
         """Worker for sending feedback packets. Run in thread."""
         self._should_send.acquire(timeout=1)
-        while not self._session.is_stopped:
+        while not self._session.is_stopped and not self._stop_event.is_set():
             self._should_send.acquire(timeout=Controller.STATE_INTERVAL_MAX_MS)
             self.send_state()
+        self._session = None
+        self._thread = None
+        self._stop_event.clear()
+        self._should_send = threading.Semaphore()
         _LOGGER.info("Controller stopped")
+
+    def connect(self, session):
+        """Connect controller to session."""
+        if self._session is not None:
+            _LOGGER.warning("Controller already connected. Call disconnect first")
+            return
+        self._session = session
+
+    def start(self):
+        """Start Controller."""
+        if self._thread is not None:
+            _LOGGER.warning("Controller is running. Call stop first")
+            return
+        if self._session is None:
+            _LOGGER.warning("Controller has no session. Call connect first")
+            return
+        self._thread = threading.Thread(target=self.__worker, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        """Stop Controller."""
+        self._stop_event.set()
+
+    def disconnect(self):
+        """Stop and Disconnect Controller."""
+        self.stop()
+        self._session = None
 
     def send_state(self):
         """Send controller stick state."""
