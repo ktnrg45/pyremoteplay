@@ -79,7 +79,11 @@ class Controller:
 
     def send_state(self):
         """Send controller stick state."""
-        if self.stick_state == self._last_state:
+        if (
+            self._session is None
+            or self._session.is_stopped
+            or self.stick_state == self._last_state
+        ):
             return
         self._last_state.left = self.stick_state.left
         self._last_state.right = self.stick_state.right

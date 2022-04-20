@@ -242,9 +242,7 @@ class PacketSection(abc.ABC):
         self.__type = self.__class__.Type(_type)
 
     def __repr__(self) -> str:
-        return (
-            f"<{self.__module__}.{self.__class__.__name__} " f"type={self.type.name}>"
-        )
+        return f"{str(self.__class__)[:-1]} type={self.type.name}>"
 
     def _type_valid(self, _type: int) -> bool:
         """Return True if type is valid."""
@@ -521,7 +519,7 @@ class Packet(AbstractPacket):
 
     def __repr__(self) -> str:
         return (
-            f"<RP Packet "
+            f"{str(self.__class__)[:-1]} "
             f"type={self.type.name} chunk={self.chunk.type.name} "
             f"flag={self.chunk.flag}>"
         )
@@ -572,7 +570,7 @@ class AVPacket(AbstractPacket):
     def __repr__(self) -> str:
         nalu = self.nalu.hex() if self.has_nalu else None
         return (
-            f"<RP AVPacket "
+            f"{str(self.__class__)[:-1]} "
             f"type={self.type.name} "
             f"NALU={nalu} "
             f"codec={self.codec} "
@@ -754,7 +752,7 @@ class FeedbackHeader(PacketSection):
         STATE = Header.Type.FEEDBACK_STATE
 
     def __repr__(self) -> str:
-        return f"<RP Feedback Header " f"type={self.type}>"
+        return f"{str(self.__class__)[:-1]} type={self.type}>"
 
     def __init__(self, feedback_type: int, **kwargs):
         super().__init__(feedback_type)
@@ -808,7 +806,7 @@ class FeedbackState(PacketSection):
         STATE = 0
 
     def __repr__(self) -> str:
-        return f"<RP Feedback State " f"state={self.state}>"
+        return f"{str(self.__class__)[:-1]} state={self.state}>"
 
     def __init__(self, state_type, **kwargs):
         super().__init__(state_type)
@@ -857,7 +855,7 @@ class FeedbackEvent(PacketSection):
         TOUCHPAD = 0x91
 
     def __repr__(self) -> str:
-        return f"<RP Feedback Event " f"button={self.type.name} " f"state={self.state}>"
+        return f"{str(self.__class__)[:-1]} button={self.type.name} state={self.state}>"
 
     def __init__(self, button_type: int, **kwargs):
         super().__init__(button_type)
@@ -901,7 +899,7 @@ class FeedbackPacket(AbstractPacket):
         STATE = FeedbackHeader.Type.STATE
 
     def __repr__(self) -> str:
-        return f"<RP Feedback Packet " f"type={self.header.type.name}>"
+        return f"{str(self.__class__)[:-1]} type={self.header.type.name}>"
 
     def __init__(self, feedback_type: int, **kwargs):
         super().__init__(feedback_type)
@@ -959,7 +957,7 @@ class CongestionPacket(AbstractPacket):
 
     def __repr__(self) -> str:
         return (
-            f"<RP Packet "
+            f"{str(self.__class__)[:-1]} "
             f"type={self.type.name} "
             f"received={self.received} "
             f"lost={self.lost}>"
