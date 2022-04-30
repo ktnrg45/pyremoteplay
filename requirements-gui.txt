@@ -1,7 +1,6 @@
 wheel
 pyside6>=6.2.0
 av>=8.0.0
-pyogg==0.6.14a1
 PyOpenGL==3.1.5
 PyOpenGL-accelerate==3.1.5
 sounddevice>=0.4.4

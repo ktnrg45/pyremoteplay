@@ -18,7 +18,6 @@ This project provides an API to programmatically connect to and control Remote P
 The GUI requires dependencies that may be complex to install.
 Below is a list of such dependencies.
 - pyav (May require FFMPEG to be installed)
-- pyogg (May require libopus-dev, libopusfile-dev, libogg-dev to be installed on Linux)
 - PySide6
 
 ## Installation ##
