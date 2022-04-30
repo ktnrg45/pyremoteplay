@@ -293,17 +293,17 @@ class AVReceiver(abc.ABC):
     }
 
     @staticmethod
-    def audio_frame(buf, codec):
+    def audio_frame(buf, codec_ctx):
         """Return decoded audio frame."""
         packet = av.packet.Packet(buf)
-        frames = codec.decode(packet)
+        frames = codec_ctx.decode(packet)
         if not frames:
             return None
         frame = frames[0]
         return frame
 
     @staticmethod
-    def video_frame(buf, codec, to_rgb=True):
+    def video_frame(buf, codec_ctx, to_rgb=True):
         """Decode H264 Frame to raw image.
         Return AV Frame.
 
@@ -313,7 +313,7 @@ class AVReceiver(abc.ABC):
         (1 Cr & Cb sample per 2x2 Y samples)
         """
         packet = av.packet.Packet(buf)
-        frames = codec.decode(packet)
+        frames = codec_ctx.decode(packet)
         if not frames:
             return None
         frame = frames[0]
@@ -367,28 +367,29 @@ class AVReceiver(abc.ABC):
     def video_codec(codec_name: str):
         """Return Video Codec Context."""
         try:
-            codec = av.codec.Codec(codec_name, "r").create()
+            codec_ctx = av.codec.Codec(codec_name, "r").create()
         except av.codec.codec.UnknownCodecError:
             _LOGGER.error("Invalid codec: %s", codec_name)
         _LOGGER.info("Using Decoder: %s", codec_name)
         if codec_name.startswith("h264"):
-            codec.options = AVReceiver.AV_CODEC_OPTIONS_H264
-        codec.pix_fmt = "yuv420p"
-        codec.flags = av.codec.context.Flags.LOW_DELAY
-        codec.flags2 = av.codec.context.Flags2.FAST
-        codec.thread_type = av.codec.context.ThreadType.AUTO
-        return codec
+            codec_ctx.options = AVReceiver.AV_CODEC_OPTIONS_H264
+        codec_ctx.pix_fmt = "yuv420p"
+        codec_ctx.flags = av.codec.context.Flags.LOW_DELAY
+        codec_ctx.flags2 = av.codec.context.Flags2.FAST
+        codec_ctx.thread_type = av.codec.context.ThreadType.AUTO
+        return codec_ctx
 
     @staticmethod
     def audio_codec(codec_name: str = "opus"):
         """Return Audio Codec Context."""
-        ctx = av.codec.Codec(codec_name, "r").create()
-        ctx.format = "s16"
-        return ctx
+        codec_ctx = av.codec.Codec(codec_name, "r").create()
+        codec_ctx.format = "s16"
+        return codec_ctx
 
     def __init__(self):
         self._session = None
-        self.codec = None
+        self.rgb = False
+        self.video_decoder = None
         self.audio_decoder = None
         self.audio_resampler = None
         self.audio_config = {}
@@ -421,9 +422,9 @@ class AVReceiver(abc.ABC):
     def get_video_codec(self):
         """Get Codec Context."""
         codec_name = self._session.video_format
-        self.codec = AVReceiver.video_codec(codec_name)
+        self.video_decoder = AVReceiver.video_codec(codec_name)
         try:
-            self.codec.open()
+            self.video_decoder.open()
         except av.error.ValueError as error:
             if self._session:
                 try:
@@ -447,14 +448,14 @@ class AVReceiver(abc.ABC):
 
     def decode_video_frame(self, buf: bytes) -> av.VideoFrame:
         """Return decoded Video Frame."""
-        if not self.codec:
+        if not self.video_decoder:
             return None
-        frame = AVReceiver.video_frame(buf, self.codec)
+        frame = AVReceiver.video_frame(buf, self.video_decoder, self.rgb)
         return frame
 
     def decode_audio_frame(self, buf: bytes) -> av.AudioFrame:
         """Return decoded Audio Frame."""
-        if not self.audio_config and not self.audio_decoder:
+        if not self.audio_config or not self.audio_decoder:
             return None
 
         frame = AVReceiver.audio_frame(buf, self.audio_decoder)
@@ -481,8 +482,8 @@ class AVReceiver(abc.ABC):
 
     def close(self):
         """Close Receiver."""
-        if self.codec is not None:
-            self.codec.close()
+        if self.video_decoder is not None:
+            self.video_decoder.close()
 
 
 class QueueReceiver(AVReceiver):

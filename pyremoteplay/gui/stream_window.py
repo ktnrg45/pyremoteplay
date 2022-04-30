@@ -30,11 +30,6 @@ class QtReceiver(AVReceiver):
         self.audio_signal = None
         self.rgb = True
 
-    def decode_video_frame(self, buf: bytes) -> bytes:
-        """Decode Video Frame."""
-        frame = AVReceiver.video_frame(buf, self.codec, to_rgb=self.rgb)
-        return frame
-
     def handle_video(self, buf):
         """Handle video frame."""
         frame = self.decode_video_frame(buf)
