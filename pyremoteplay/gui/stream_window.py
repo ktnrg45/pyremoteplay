@@ -92,10 +92,11 @@ class QtAudioThread(QtCore.QThread):
         self.audio_buffer = self.audio_output.start()
         _LOGGER.debug("Audio Thread init")
 
-    def next_audio_frame(self, data):
+    def next_audio_frame(self, frame):
         """Handle next audio frame."""
         if self.audio_buffer:
-            self.audio_buffer.write(data)
+            buf = bytes(frame.planes[0])
+            self.audio_buffer.write(buf)
 
     def quit(self):
         """Quit Thread."""
@@ -141,9 +142,9 @@ class AudioThread(QtCore.QThread):
         self.audio_output.start()
         _LOGGER.debug("Audio Thread init")
 
-    def next_audio_frame(self, data):
+    def next_audio_frame(self, frame):
         """Handle next audio frame."""
-        self.queue.append(data)
+        self.queue.append(bytes(frame.planes[0]))
 
     # pylint: disable=unused-argument
     def callback(self, buf, frames, _time, status):

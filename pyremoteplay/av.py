@@ -8,7 +8,6 @@ import warnings
 
 import pyjerasure
 
-from pyremoteplay.codecs.opus import OpusDecoder
 from .stream_packets import AVPacket, Packet
 
 try:
@@ -241,7 +240,7 @@ class AVStream:
 
         # Audio frames are sent in one packet.
         if self._type == AVStream.TYPE_AUDIO:
-            self._callback(packet)
+            self._callback(packet.data[: packet.frame_size_audio])
             return
 
         # New Video Frame.
@@ -292,6 +291,16 @@ class AVReceiver(abc.ABC):
         "tune": "zerolatency",
         "preset": "ultrafast",
     }
+
+    @staticmethod
+    def audio_frame(buf, codec):
+        """Return decoded audio frame."""
+        packet = av.packet.Packet(buf)
+        frames = codec.decode(packet)
+        if not frames:
+            return None
+        frame = frames[0]
+        return frame
 
     @staticmethod
     def video_frame(buf, codec, to_rgb=True):
@@ -356,7 +365,7 @@ class AVReceiver(abc.ABC):
 
     @staticmethod
     def video_codec(codec_name: str):
-        """Return Codec Context."""
+        """Return Video Codec Context."""
         try:
             codec = av.codec.Codec(codec_name, "r").create()
         except av.codec.codec.UnknownCodecError:
@@ -370,10 +379,18 @@ class AVReceiver(abc.ABC):
         codec.thread_type = av.codec.context.ThreadType.AUTO
         return codec
 
+    @staticmethod
+    def audio_codec(codec_name: str = "opus"):
+        """Return Audio Codec Context."""
+        ctx = av.codec.Codec(codec_name, "r").create()
+        ctx.format = "s16"
+        return ctx
+
     def __init__(self):
         self._session = None
         self.codec = None
         self.audio_decoder = None
+        self.audio_resampler = None
         self.audio_config = {}
 
     def get_audio_config(self, header: bytes):
@@ -393,8 +410,11 @@ class AVReceiver(abc.ABC):
         _LOGGER.info("Audio Config: %s", self.audio_config)
 
         if not self.audio_decoder:
-            self.audio_decoder = OpusDecoder(
-                self.audio_config["rate"], self.audio_config["channels"]
+            self.audio_decoder = AVReceiver.audio_codec()
+            self.audio_resampler = av.audio.resampler.AudioResampler(
+                "s16",
+                self.audio_config["channels"],
+                self.audio_config["rate"],
             )
             self._session.events.emit("audio_config")
 
@@ -425,25 +445,23 @@ class AVReceiver(abc.ABC):
         """Start receiver."""
         self.notify_started()
 
-    def decode_video_frame(self, buf: bytes) -> bytes:
+    def decode_video_frame(self, buf: bytes) -> av.VideoFrame:
         """Return decoded Video Frame."""
+        if not self.codec:
+            return None
         frame = AVReceiver.video_frame(buf, self.codec)
         return frame
 
-    def decode_audio_frame(self, packet: AVPacket) -> bytes:
+    def decode_audio_frame(self, buf: bytes) -> av.AudioFrame:
         """Return decoded Audio Frame."""
-        if not self.audio_config:
+        if not self.audio_config and not self.audio_decoder:
             return None
 
-        assert len(packet.data) % packet.frame_size_audio == 0
-        buf = bytearray()
-        for count in range(0, packet.frame_length_src):
-            start = count * packet.frame_size_audio
-            end = (count + 1) * packet.frame_size_audio
-            data = packet.data[start:end]
-            _buf = self.audio_decoder.decode(data)
-            buf.extend(_buf)
-        return buf
+        frame = AVReceiver.audio_frame(buf, self.audio_decoder)
+        if frame:
+            # Need format to be s16. Format is float.
+            frame = self.audio_resampler.resample(frame)
+        return frame
 
     def get_video_frame(self):
         """Return Video Frame."""
