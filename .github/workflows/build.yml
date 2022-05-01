@@ -25,6 +25,7 @@ jobs:
     - name: Install/Test sdist
       run: |
         pip install dist/*.tar.gz
+        pip install pyjerasure
         pip install pytest
         pytest tests
         
