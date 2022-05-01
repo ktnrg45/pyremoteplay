@@ -46,7 +46,6 @@ setup_kwargs = {
     "packages": [
         "pyremoteplay",
         "pyremoteplay.gui",
-        "pyremoteplay.codecs",
     ],
     "url": "https://github.com/ktnrg45/pyremoteplay",
     "license": "GPLv3",
