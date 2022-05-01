@@ -506,28 +506,47 @@ class AVReceiver(abc.ABC):
 class QueueReceiver(AVReceiver):
     """Receiver which stores decoded frames in queues."""
 
-    def __init__(self):
+    def __init__(self, max_frames=10, max_video_frames=-1, max_audio_frames=-1):
         super().__init__()
-        self.v_queue = deque(maxlen=10)
-        self.a_queue = deque(maxlen=10)
+        max_video_frames = max_frames if max_video_frames < 0 else max_video_frames
+        max_audio_frames = max_frames if max_audio_frames < 0 else max_audio_frames
+        self._v_queue = deque(maxlen=max_video_frames)
+        self._a_queue = deque(maxlen=max_audio_frames)
 
     def close(self):
         """Close Receiver."""
         super().close()
-        self.v_queue.clear()
+        self._v_queue.clear()
+        self._a_queue.clear()
 
-    def get_video_frame(self):
+    def get_video_frame(self) -> av.VideoFrame:
         """Return oldest Video Frame from queue."""
         try:
-            frame = self.v_queue.popleft()
+            frame = self._v_queue[0]
             return frame
         except IndexError:
             return None
 
-    def get_audio_frame(self):
+    def get_audio_frame(self) -> av.AudioFrame:
         """Return oldest Audio Frame from queue."""
         try:
-            frame = self.a_queue.popleft()
+            frame = self._a_queue[0]
+            return frame
+        except IndexError:
+            return None
+
+    def get_latest_video_frame(self) -> av.VideoFrame:
+        """Return latest Video Frame from queue."""
+        try:
+            frame = self._v_queue[-1]
+            return frame
+        except IndexError:
+            return None
+
+    def get_latest_audio_frame(self) -> av.AudioFrame:
+        """Return latest Audio Frame from queue."""
+        try:
+            frame = self._a_queue[-1]
             return frame
         except IndexError:
             return None
@@ -537,10 +556,7 @@ class QueueReceiver(AVReceiver):
         frame = self.decode_video_frame(buf)
         if frame is None:
             return
-        if len(self.v_queue) >= self.v_queue.maxlen:
-            _LOGGER.warning("AV Receiver max video queue size exceeded")
-            self.v_queue.clear()
-        self.v_queue.append(frame)
+        self._v_queue.append(frame)
         self._session.events.emit("video_frame")
 
     def handle_audio(self, buf):
@@ -548,8 +564,17 @@ class QueueReceiver(AVReceiver):
         frame = self.decode_audio_frame(buf)
         if frame is None:
             return
-        if len(self.a_queue) >= self.a_queue.maxlen:
-            _LOGGER.warning("AV Receiver max audio queue size exceeded")
-            self.a_queue.clear()
-        self.a_queue.append(frame)
+        self._a_queue.append(frame)
         self._session.events.emit("audio_frame")
+
+    @property
+    def video_frames(self) -> list[av.VideoFrame]:
+        """Return Latest Video Frames."""
+        frames = list(self._v_queue)
+        return frames
+
+    @property
+    def audio_frames(self) -> list[av.AudioFrame]:
+        """Return Latest Audio Frames."""
+        frames = list(self._a_queue)
+        return frames
