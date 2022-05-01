@@ -1,4 +1,5 @@
 """AV for pyremoteplay."""
+from __future__ import annotations
 import abc
 import logging
 import time
