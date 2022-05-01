@@ -11,7 +11,6 @@ from aiohttp.client_exceptions import ContentTypeError
 from pyps4_2ndscreen.media_art import async_search_ps_store, ResultItem
 
 from pyremoteplay.receiver import AVReceiver
-from pyremoteplay.stream_packets import FeedbackEvent
 from .const import DEFAULT_POLL_COUNT, DDP_PORTS, DEFAULT_STANDBY_DELAY
 from .ddp import async_get_status, get_status, wakeup
 from .session import Session

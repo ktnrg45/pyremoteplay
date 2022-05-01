@@ -10,7 +10,6 @@ from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from PySide6.QtMultimedia import QAudioDevice
 from pyremoteplay.receiver import AVReceiver
 from pyremoteplay.device import RPDevice
-from pyremoteplay.feedback import Controller
 
 from .joystick import JoystickWidget
 from .controls import ControlsWidget

@@ -50,7 +50,7 @@ def start(ip_address):
 # >> device = start(ip_address)
 #
 # Retrieving latest video frames:
-# >> device.session.receiver.video_frames()
+# >> device.session.receiver.video_frames
 #
 # Tap Controller Button:
 # >> device.controller.button("cross", "tap")
