@@ -21,6 +21,9 @@ FFMPEG_PADDING = 64  # AV_INPUT_BUFFER_PADDING_SIZE
 class AVHandler:
     """AV Handler."""
 
+    def __del__(self):
+        self._queue.clear()
+
     def __init__(self, session):
         self._session = session
         self._receiver = None

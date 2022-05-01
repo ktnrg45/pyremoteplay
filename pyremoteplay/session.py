@@ -215,6 +215,9 @@ class Session:
             f"fps={self.fps}>"
         )
 
+    def __del__(self):
+        self.stop()
+
     def __init__(
         self,
         host: str,
@@ -577,16 +580,23 @@ class Session:
         if self._stream:
             self._stream.stop()
         self._stop_event.set()
-        self.events.emit("stop")
         if self._tasks:
             for task in self._tasks:
                 task.cancel()
         if self._thread_executor:
             self._thread_executor.shutdown()
-        self._thread_executor = None
         if self._protocol:
             self._protocol.close()
-        self.events.remove_all_listeners()
+        if self.events:
+            self.events.emit("stop")
+            self.events.remove_all_listeners()
+
+        self._tasks = []
+        self._stream = None
+        self._thread_executor = None
+        self._protocol = None
+        self.av_handler = None
+        self.events = None
 
     async def run_io(self, func, *args, **kwargs):
         """Run blocking function in executor."""
