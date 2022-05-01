@@ -6,8 +6,6 @@ from collections import deque
 from struct import unpack_from
 import warnings
 
-import pyjerasure
-
 from .stream_packets import AVPacket, Packet
 
 try:
@@ -191,6 +189,10 @@ class AVStream:
             )
 
     def _handle_fec_packet(self, packet: AVPacket):
+        try:
+            import pyjerasure  # pylint: disable=import-outside-toplevel
+        except ModuleNotFoundError:
+            pass
         if not self._frame_bad_order and not self._missing:
             # Ignore FEC packets if all src packets received.
             return
@@ -213,7 +215,7 @@ class AVStream:
                         missing,
                         size,
                     )
-                except Exception as err:
+                except Exception as err:  # pylint: disable=broad-except
                     _LOGGER.error(err)
                     return
                 if restored:
