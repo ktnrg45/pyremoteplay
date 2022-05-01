@@ -29,6 +29,8 @@ DDP_PORTS = {
 
 DEFAULT_STANDBY_DELAY = 50
 
+FFMPEG_PADDING = 64  # AV_INPUT_BUFFER_PADDING_SIZE
+
 
 class StreamType(IntEnum):
     """Enums for Stream type."""

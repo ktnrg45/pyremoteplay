@@ -8,7 +8,7 @@ import sounddevice
 from PySide6 import QtCore, QtMultimedia, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from PySide6.QtMultimedia import QAudioDevice
-from pyremoteplay.av import AVReceiver
+from pyremoteplay.receiver import AVReceiver
 from pyremoteplay.device import RPDevice
 from pyremoteplay.feedback import Controller
 
