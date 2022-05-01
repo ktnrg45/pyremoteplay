@@ -246,7 +246,7 @@ class RPWorker(QtCore.QObject):
             _LOGGER.info("Standby Success: %s", result)
             self.stop(standby=True)
             return
-        self.controller = Controller(self.session)
+        self.controller = self.device.controller
         self.controller.start()
         self.session.receiver.set_signals(
             self.window.video_frame, self.window.audio_frame

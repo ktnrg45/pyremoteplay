@@ -1,5 +1,5 @@
 """Remote Play Devices."""
-
+from __future__ import annotations
 import logging
 from ssl import SSLError
 import time
@@ -10,11 +10,14 @@ import aiohttp
 from aiohttp.client_exceptions import ContentTypeError
 from pyps4_2ndscreen.media_art import async_search_ps_store, ResultItem
 
+from pyremoteplay.receiver import AVReceiver
+from pyremoteplay.stream_packets import FeedbackEvent
 from .const import DEFAULT_POLL_COUNT, DDP_PORTS, DEFAULT_STANDBY_DELAY
-from .ddp import async_get_status, wakeup
+from .ddp import async_get_status, get_status, wakeup
 from .session import Session
 from .util import get_users, get_profiles, format_regist_key
 from .register import register
+from .feedback import Controller
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,6 +42,7 @@ class RPDevice:
         self._media_info = None
         self._image = None
         self._session = None
+        self._controller = None
 
     def get_users(self, profiles=None, profile_path=None):
         """Return Registered Users."""
@@ -66,8 +70,14 @@ class RPDevice:
         """Set callback for status changes."""
         self._callback = callback
 
-    async def get_status(self):
+    def get_status(self):
         """Return status."""
+        status = get_status(self.host)
+        self.set_status(status)
+        return status
+
+    async def async_get_status(self):
+        """Return status. Async."""
         status = async_get_status(self.host)
         self.set_status(status)
         return status
@@ -128,9 +138,22 @@ class RPDevice:
             pass
 
     def create_session(
-        self, user: str, profiles: dict = None, profile_path="", **kwargs
+        self,
+        user: str,
+        profiles: dict = None,
+        profile_path="",
+        receiver: Union[None, AVReceiver] = None,
+        loop=None,
+        resolution="360p",
+        fps="low",
+        quality="very_low",
+        codec="h264",
+        hdr=False,
+        **kwargs,
     ) -> Union[Session, None]:
-        """Return initialized session if session created else return None."""
+        """Return initialized session if session created else return None.
+        Also connects a controller.
+        """
         if self.session:
             if not self.session.is_stopped:
                 _LOGGER.error("Device session already exists. Disconnect first.")
@@ -143,8 +166,16 @@ class RPDevice:
         self._session = Session(
             self.host,
             profile,
+            receiver,
+            loop,
+            resolution,
+            fps,
+            quality,
+            codec,
+            hdr,
             **kwargs,
         )
+        self.controller = Controller(self.session)
         return self._session
 
     async def connect(self) -> bool:
@@ -317,3 +348,17 @@ class RPDevice:
     def standby_start(self) -> float:
         """Return timestamp when device was seen changing to standby."""
         return self._standby_start
+
+    @property
+    def controller(self) -> Controller:
+        """Return Controller."""
+        return self._controller
+
+    @controller.setter
+    def controller(self, controller: Controller):
+        """Set Controller. Also stops previously connected controller."""
+        if not isinstance(controller, Controller):
+            raise ValueError(f"Expected an instance of {Controller}")
+        if self.controller:
+            self.controller.stop()
+        self._controller = controller

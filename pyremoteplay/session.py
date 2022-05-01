@@ -263,7 +263,7 @@ class Session:
         self.av_handler = AVHandler(self)
         self.events = ExecutorEventEmitter()
 
-        self.loop = asyncio.get_event_loop() if loop is None else loop
+        self.loop = loop
         self._protocol = None
         self._transport = None
         self._tasks = []
@@ -271,8 +271,8 @@ class Session:
 
         self._ready_event = None
         self._stop_event = None
-        self.stream_ready = None
         self.receiver_started = None
+        self.stream_ready = None
 
         self.set_receiver(receiver)
 
@@ -497,8 +497,10 @@ class Session:
         self._stop_event = asyncio.Event()
         self.receiver_started = asyncio.Event()
         self.stream_ready = asyncio.Event()
-
         _LOGGER.debug("Running Async")
+
+        if not self.loop:
+            self.loop = asyncio.get_running_loop()
         status = await self._check_host()
         if not status[0]:
             self.error = f"Host @ {self._host} is not reachable."
@@ -584,7 +586,8 @@ class Session:
         _LOGGER.debug("Session Received Stop Signal")
         if self._stream:
             self._stream.stop()
-        self._stop_event.set()
+        if self._stop_event:
+            self._stop_event.set()
         if self._tasks:
             for task in self._tasks:
                 task.cancel()

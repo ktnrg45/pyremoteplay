@@ -2,6 +2,8 @@
 import logging
 import threading
 from collections import deque
+from enum import IntEnum, auto
+import time
 
 from .stream_packets import FeedbackEvent, FeedbackHeader, ControllerState, StickState
 
@@ -11,15 +13,23 @@ _LOGGER = logging.getLogger(__name__)
 class Controller:
     """Emulated controller input."""
 
+    class ButtonAction(IntEnum):
+        """Button Action Types."""
+
+        PRESS = auto()
+        RELEASE = auto()
+        TAP = auto()
+
     MAX_EVENTS = 16
-    ACTION_TAP = "tap"
-    ACTION_RELEASE = "release"
-    ACTION_PRESS = "press"
-    ACTIONS = (ACTION_TAP, ACTION_RELEASE, ACTION_PRESS)
     STATE_INTERVAL_MAX_MS = 0.200
     STATE_INTERVAL_MIN_MS = 0.100
     STICK_STATE_MAX = 0x7FFF
     STICK_STATE_MIN = -0x7FFF
+
+    @staticmethod
+    def buttons() -> list:
+        """Return list of valid buttons."""
+        return [button.name for button in FeedbackEvent.Type]
 
     def __init__(self, session=None, **kwargs):
         self._session = session
@@ -108,22 +118,35 @@ class Controller:
         event.pack(buf)
         self._event_buf.appendleft(buf)
 
-    def button(self, name: str, action="tap"):
-        """Emulate pressing or releasing button."""
-        if action not in self.ACTIONS:
-            raise ValueError(f"Invalid Action: {action}")
+    def button(self, name: str, action="tap", delay=0.1):
+        """Emulate pressing or releasing button.
+
+        If action is `tap` this method will block by delay.
+
+        :param name: The name of button. Use buttons() to show valid buttons.
+        :param action: One of press, release, tap
+        :param delay: Delay between press and release. Only used when action is `tap`.
+        """
+        try:
+            _action = self.ButtonAction[action.upper()]
+        except KeyError:
+            _LOGGER.error("Invalid Action: %s", action)
+            return
         try:
             button = int(FeedbackEvent.Type[name.upper()])
         except KeyError:
             _LOGGER.error("Invalid button: %s", name)
         else:
-            if action == self.ACTION_PRESS:
+            if _action == self.ButtonAction.PRESS:
                 self.add_event_buffer(FeedbackEvent(button, is_active=True))
-            elif action == self.ACTION_RELEASE:
+            elif _action == self.ButtonAction.RELEASE:
                 self.add_event_buffer(FeedbackEvent(button, is_active=False))
-            elif action == self.ACTION_TAP:
+            elif _action == self.ButtonAction.TAP:
                 self.add_event_buffer(FeedbackEvent(button, is_active=True))
-                self.add_event_buffer(FeedbackEvent(button, is_active=False))
+                self.send_event()
+                time.sleep(delay)
+                self.button(name, "release")
+                return
             self.send_event()
 
     def stick(self, stick_name: str, axis: str = None, value: float = None, point=None):
