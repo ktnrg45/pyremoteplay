@@ -17,6 +17,8 @@ except ModuleNotFoundError:
 
 _LOGGER = logging.getLogger(__name__)
 
+FFMPEG_PADDING = 64  # AV_INPUT_BUFFER_PADDING_SIZE
+
 
 class AVHandler:
     """AV Handler."""
@@ -144,6 +146,8 @@ class AVStream:
 
         if self._type not in [AVStream.TYPE_VIDEO, AVStream.TYPE_AUDIO]:
             raise ValueError("Invalid Type")
+        if av_type == AVStream.TYPE_VIDEO:
+            self._header = b"".join([self._header, bytes(FFMPEG_PADDING)])
 
     def _set_new_frame(self, packet: AVPacket):
         self._frame_bad_order = False
@@ -292,6 +296,11 @@ class AVReceiver(abc.ABC):
         "preset": "ultrafast",
     }
 
+    AV_CODEC_OPTIONS_HEVC = {
+        "tune": "zerolatency",
+        "preset": "ultrafast",
+    }
+
     @staticmethod
     def audio_frame(buf, codec_ctx):
         """Return decoded audio frame."""
@@ -312,7 +321,7 @@ class AVReceiver(abc.ABC):
         YUV 4:2:0, 12bpp
         (1 Cr & Cb sample per 2x2 Y samples)
         """
-        packet = av.packet.Packet(buf)
+        packet = av.packet.Packet(b"".join([buf, bytes(FFMPEG_PADDING)]))
         frames = codec_ctx.decode(packet)
         if not frames:
             return None
@@ -373,6 +382,8 @@ class AVReceiver(abc.ABC):
         _LOGGER.info("Using Decoder: %s", codec_name)
         if codec_name.startswith("h264"):
             codec_ctx.options = AVReceiver.AV_CODEC_OPTIONS_H264
+        elif codec_name.startswith("hevc"):
+            codec_ctx.options = AVReceiver.AV_CODEC_OPTIONS_HEVC
         codec_ctx.pix_fmt = "yuv420p"
         codec_ctx.flags = av.codec.context.Flags.LOW_DELAY
         codec_ctx.flags2 = av.codec.context.Flags2.FAST
