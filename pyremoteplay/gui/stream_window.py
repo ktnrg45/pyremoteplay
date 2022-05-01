@@ -221,7 +221,7 @@ class RPWorker(QtCore.QObject):
             user,
             resolution=options.get("resolution"),
             fps=options.get("fps"),
-            av_receiver=QtReceiver(),
+            receiver=QtReceiver(),
             codec=codec,
             hdr=options.get("hdr"),
             quality=options.get("quality"),
@@ -231,9 +231,9 @@ class RPWorker(QtCore.QObject):
         """Start Session."""
         _LOGGER.debug("Session Start")
         if self.window:
-            self.session.av_receiver.rgb = False if self.window.use_opengl else True
+            self.session.receiver.rgb = False if self.window.use_opengl else True
         if standby:
-            self.session.av_receiver = None
+            self.session.receiver = None
         started = await self.device.connect()
 
         if not started:
@@ -248,7 +248,7 @@ class RPWorker(QtCore.QObject):
             return
         self.controller = Controller(self.session)
         self.controller.start()
-        self.session.av_receiver.set_signals(
+        self.session.receiver.set_signals(
             self.window.video_frame, self.window.audio_frame
         )
         self.window.audio_frame.connect(
@@ -412,7 +412,7 @@ class StreamWindow(QtWidgets.QWidget):
 
     def _init_audio(self):
         self.audio_thread.start(
-            self.audio_device, self.rp_worker.session.av_receiver.audio_config
+            self.audio_device, self.rp_worker.session.receiver.audio_config
         )
 
     def _init_fps(self):

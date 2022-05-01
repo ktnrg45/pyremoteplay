@@ -1,8 +1,10 @@
 """Remote Play Session."""
+from __future__ import annotations
 import asyncio
 import logging
 import socket
 import time
+from typing import Union
 from base64 import b64decode, b64encode
 from concurrent.futures import ThreadPoolExecutor
 from enum import IntEnum
@@ -13,6 +15,7 @@ import requests
 from Cryptodome.Random import get_random_bytes
 from pyee import ExecutorEventEmitter
 
+from pyremoteplay.receiver import AVReceiver
 from .av import AVHandler
 from .const import (
     FPS,
@@ -222,7 +225,7 @@ class Session:
         self,
         host: str,
         profile: dict,
-        av_receiver=None,
+        receiver: Union[None, AVReceiver] = None,
         loop=None,
         resolution="360p",
         fps="low",
@@ -256,7 +259,7 @@ class Session:
         self.fps = FPS.preset(fps)
         self.resolution = Resolution.preset(resolution)
         self.error = ""
-        self.av_receiver = av_receiver
+        self._receiver = None
         self.av_handler = AVHandler(self)
         self.events = ExecutorEventEmitter()
 
@@ -270,6 +273,8 @@ class Session:
         self._stop_event = None
         self.stream_ready = None
         self.receiver_started = None
+
+        self.set_receiver(receiver)
 
     def _init_profile_kwargs(self, device: dict) -> bool:
         """Return True if can init profile from kwargs."""
@@ -548,8 +553,8 @@ class Session:
             return
         stop_event = self._stop_event if not test else asyncio.Event()
         cb_stop = self._cb_stop_test if test else None
-        if not test and self.av_receiver:
-            self.av_handler.add_receiver(self.av_receiver)
+        if not test and self.receiver:
+            self.av_handler.add_receiver(self.receiver)
             _LOGGER.info("Waiting for Receiver...")
             self.loop.create_task(self.receiver_started.wait())
         self._stream = RPStream(
@@ -611,6 +616,20 @@ class Session:
     def sync_run_io(self, func, *args, **kwargs):
         """Run blocking function in executor. Called from sync method."""
         asyncio.ensure_future(self.run_io(func, *args, **kwargs))
+
+    def set_receiver(self, receiver: AVReceiver):
+        """Set AV Receiver. Should be set before starting session."""
+        cls = AVReceiver
+        if receiver is None:
+            return
+        if not isinstance(receiver, AVReceiver):
+            raise ValueError(f"Receiver must be a subclass of {cls}")
+        if receiver.__class__ == AVReceiver:
+            raise ValueError(f"Cannot set receiver of abstract class {cls}")
+        old_receiver = self._receiver
+        self._receiver = receiver
+        if old_receiver:
+            old_receiver.close()
 
     @property
     def host(self) -> str:
@@ -688,3 +707,8 @@ class Session:
         except KeyError:
             stream_type = StreamType["H264"]
         return stream_type
+
+    @property
+    def receiver(self) -> AVReceiver:
+        """Return AV Receiver."""
+        return self._receiver
