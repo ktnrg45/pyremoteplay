@@ -44,7 +44,6 @@ class Controller:
         while not self._session.is_stopped and not self._stop_event.is_set():
             self._should_send.acquire(timeout=Controller.STATE_INTERVAL_MAX_MS)
             self.send_state()
-            self.send_event()
         self._session = None
         self._thread = None
         self._stop_event.clear()
@@ -125,7 +124,7 @@ class Controller:
             elif action == self.ACTION_TAP:
                 self.add_event_buffer(FeedbackEvent(button, is_active=True))
                 self.add_event_buffer(FeedbackEvent(button, is_active=False))
-            self._should_send.release()
+            self.send_event()
 
     def stick(self, stick_name: str, axis: str = None, value: float = None, point=None):
         """Set Stick Value."""
