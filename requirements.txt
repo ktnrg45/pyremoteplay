@@ -1,3 +1,4 @@
+wheel
 pyps4-2ndscreen>=1.2.1
 cryptography>=3.4.6
 protobuf>=3.15.3
