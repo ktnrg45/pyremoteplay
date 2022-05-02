@@ -50,7 +50,7 @@ REG_DATA = bytearray(b"A" * 480)
 REG_KEY_SIZE = 16
 
 
-def gen_key_0(host_type: str, pin: int) -> bytes:
+def _gen_key_0(host_type: str, pin: int) -> bytes:
     """Generate key from Key 0."""
     reg_key = HOST_TYPES[host_type]["reg_key_0"]
     key = bytearray(REG_KEY_SIZE)
@@ -65,7 +65,7 @@ def gen_key_0(host_type: str, pin: int) -> bytes:
     return bytes(key)
 
 
-def gen_key_1(host_type: str, nonce: bytes) -> bytes:
+def _gen_key_1(host_type: str, nonce: bytes) -> bytes:
     """Generate key from Key 1."""
     reg_key = HOST_TYPES[host_type]["reg_key_1"]
     key = bytearray(REG_KEY_SIZE)
@@ -78,7 +78,7 @@ def gen_key_1(host_type: str, nonce: bytes) -> bytes:
     return bytes(key)
 
 
-def get_regist_payload(key_1: bytes) -> bytes:
+def _get_regist_payload(key_1: bytes) -> bytes:
     """Return regist payload."""
     payload = b"".join(
         [
@@ -93,7 +93,7 @@ def get_regist_payload(key_1: bytes) -> bytes:
     return payload
 
 
-def encrypt_payload(cipher, psn_id: str) -> bytes:
+def _encrypt_payload(cipher, psn_id: str) -> bytes:
     """Return Encrypted Register Payload."""
     payload = (f"Client-Type: {CLIENT_TYPE}\r\n" f"Np-AccountId: {psn_id}\r\n").encode(
         "utf-8"
@@ -103,7 +103,7 @@ def encrypt_payload(cipher, psn_id: str) -> bytes:
     return enc_payload
 
 
-def get_regist_headers(host_type: str, payload_length: int) -> bytes:
+def _get_regist_headers(host_type: str, payload_length: int) -> bytes:
     """Get regist headers."""
     path = HOST_TYPES[host_type]["path"]
     version = HOST_TYPES[host_type]["version"]
@@ -121,7 +121,7 @@ def get_regist_headers(host_type: str, payload_length: int) -> bytes:
     return headers
 
 
-def regist_init(host: str, host_type: str, timeout: float) -> bool:
+def _regist_init(host: str, host_type: str, timeout: float) -> bool:
     """Check if device is accepting registrations."""
     success = False
     data = HOST_TYPES.get(host_type)
@@ -150,7 +150,7 @@ def regist_init(host: str, host_type: str, timeout: float) -> bool:
     return success
 
 
-def get_register_info(
+def _get_register_info(
     host: str, headers: bytes, payload: bytes, timeout: float
 ) -> bytes:
     """Send Register Packet and receive register info."""
@@ -170,7 +170,7 @@ def get_register_info(
     return response
 
 
-def parse_response(cipher, response: bytes) -> dict:
+def _parse_response(cipher, response: bytes) -> dict:
     """Parse Register Response."""
     info = {}
     response = response.split(b"\r\n")
@@ -191,24 +191,31 @@ def parse_response(cipher, response: bytes) -> dict:
 
 
 def register(host: str, psn_id: str, pin: str, timeout: float = 2.0) -> dict:
-    """Return Register info. Register as Remote Play client."""
+    """Return Register info.
+    Register this client and a PSN Account with a Remote Play Device.
+
+    :param host: IP Address of Remote Play Device
+    :param psn_id: Base64 encoded PSN ID from completing OAuth login
+    :param pin: PIN for linking found on Remote Play Host
+    :param timeout: Timeout to wait for completion
+    """
     info = {}
     status = get_status(host)
     if not status:
         _LOGGER.error("Host: %s not found", host)
         return info
     host_type = get_host_type(status).upper()
-    if not regist_init(host, host_type, timeout):
+    if not _regist_init(host, host_type, timeout):
         return info
     nonce = get_random_bytes(16)
-    key_0 = gen_key_0(host_type, int(pin))
-    key_1 = gen_key_1(host_type, nonce)
-    payload = get_regist_payload(key_1)
+    key_0 = _gen_key_0(host_type, int(pin))
+    key_1 = _gen_key_1(host_type, nonce)
+    payload = _get_regist_payload(key_1)
     cipher = SessionCipher(host_type, key_0, nonce, counter=0)
-    enc_payload = encrypt_payload(cipher, psn_id)
+    enc_payload = _encrypt_payload(cipher, psn_id)
     payload = b"".join([payload, enc_payload])
-    headers = get_regist_headers(host_type, len(payload))
-    response = get_register_info(host, headers, payload, timeout)
+    headers = _get_regist_headers(host_type, len(payload))
+    response = _get_register_info(host, headers, payload, timeout)
     if response is not None:
-        info = parse_response(cipher, response)
+        info = _parse_response(cipher, response)
     return info

@@ -216,35 +216,35 @@ RAW_RESPONSE = b"".join(
 def test_key_0():
     """Test Key 0."""
     mock_pin = 12345678
-    assert register.gen_key_0(TYPE_PS4, mock_pin) == KEY_0
+    assert register._gen_key_0(TYPE_PS4, mock_pin) == KEY_0
 
 
 def test_key_1():
     """Test Key 1."""
-    assert register.gen_key_1(TYPE_PS4, NONCE)
+    assert register._gen_key_1(TYPE_PS4, NONCE)
 
 
 def test_regist_payload():
     """Test Regist Payload."""
-    assert register.get_regist_payload(KEY_1) == REGIST_PAYLOAD
+    assert register._get_regist_payload(KEY_1) == REGIST_PAYLOAD
 
 
 def test_encrypt_payload():
     """Test Encrypt payload."""
     mock_id = "x3HEK6t1aw8="
     cipher = register.SessionCipher(TYPE_PS4, KEY_0, NONCE, counter=0)
-    mock_payload = register.encrypt_payload(cipher, mock_id)
+    mock_payload = register._encrypt_payload(cipher, mock_id)
     assert mock_payload == ENC_PAYLOAD
 
 
 def test_get_regist_headers():
     """Test Regist Headers."""
     length = len(REGIST_PAYLOAD) + len(ENC_PAYLOAD)
-    assert register.get_regist_headers(TYPE_PS4, length) == HEADERS
+    assert register._get_regist_headers(TYPE_PS4, length) == HEADERS
 
 
 def test_parse_response():
     """Test Parse Response."""
     cipher = MagicMock()
     cipher.decrypt = MagicMock(return_value=RESPONSE)
-    assert register.parse_response(cipher, RAW_RESPONSE) == json.loads(INFO)
+    assert register._parse_response(cipher, RAW_RESPONSE) == json.loads(INFO)
