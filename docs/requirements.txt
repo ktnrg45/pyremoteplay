@@ -2,3 +2,4 @@ sphinx
 sphinx-rtd-theme
 myst-parser
 sphinxcontrib-apidoc
+av>=8.0.0
