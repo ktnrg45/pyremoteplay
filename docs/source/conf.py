@@ -27,7 +27,7 @@ author = "ktnrg45"
 from pyremoteplay.__version__ import VERSION
 
 # The short X.Y version
-version = ""
+version = ".".join(VERSION.split(".")[:2])
 # The full version, including alpha/beta/rc tags
 release = VERSION
 
