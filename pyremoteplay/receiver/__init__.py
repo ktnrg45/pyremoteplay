@@ -206,19 +206,31 @@ class AVReceiver(abc.ABC):
             frame = self.audio_resampler.resample(frame)
         return frame
 
-    def get_video_frame(self):
+    def handle_video_data(self, buf: bytes):
+        """Handle video data."""
+        frame = self.decode_video_frame(buf)
+        if frame is not None:
+            self.handle_video(frame)
+
+    def handle_audio_data(self, buf: bytes):
+        """Handle audio data."""
+        frame = self.decode_audio_frame(buf)
+        if frame is not None:
+            self.handle_audio(frame)
+
+    def get_video_frame(self) -> av.VideoFrame:
         """Return Video Frame."""
         raise NotImplementedError
 
-    def get_audio_frame(self):
+    def get_audio_frame(self) -> av.AudioFrame:
         """Return Audio Frame."""
         raise NotImplementedError
 
-    def handle_video(self, buf: bytes):
+    def handle_video(self, frame: av.VideoFrame):
         """Handle video frame."""
         raise NotImplementedError
 
-    def handle_audio(self, buf: bytes):
+    def handle_audio(self, frame: av.AudioFrame):
         """Handle audio frame."""
         raise NotImplementedError
 
@@ -276,19 +288,13 @@ class QueueReceiver(AVReceiver):
         except IndexError:
             return None
 
-    def handle_video(self, buf):
+    def handle_video(self, frame: av.VideoFrame):
         """Handle video frame. Add to queue."""
-        frame = self.decode_video_frame(buf)
-        if frame is None:
-            return
         self._v_queue.append(frame)
         self._session.events.emit("video_frame")
 
-    def handle_audio(self, buf):
+    def handle_audio(self, frame: av.AudioFrame):
         """Handle Audio Frame. Add to queue."""
-        frame = self.decode_audio_frame(buf)
-        if frame is None:
-            return
         self._a_queue.append(frame)
         self._session.events.emit("audio_frame")
 

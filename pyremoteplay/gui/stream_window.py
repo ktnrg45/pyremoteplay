@@ -4,6 +4,7 @@ import time
 import logging
 from collections import deque
 
+import av
 import sounddevice
 from PySide6 import QtCore, QtMultimedia, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
@@ -29,18 +30,12 @@ class QtReceiver(AVReceiver):
         self.audio_signal = None
         self.rgb = True
 
-    def handle_video(self, buf):
+    def handle_video(self, frame: av.VideoFrame):
         """Handle video frame."""
-        frame = self.decode_video_frame(buf)
-        if frame is None:
-            return
         self.video_signal.emit(frame)
 
-    def handle_audio(self, buf):
+    def handle_audio(self, frame: av.AudioFrame):
         """Handle Audio Frame."""
-        frame = self.decode_audio_frame(buf)
-        if frame is None:
-            return
         self.audio_signal.emit(frame)
 
     def set_signals(self, video_signal, audio_signal):

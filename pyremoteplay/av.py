@@ -45,8 +45,12 @@ class AVHandler:
     def set_headers(self, v_header, a_header):
         """Set headers."""
         if self._receiver:
-            self._v_stream = AVStream("video", v_header, self._receiver.handle_video)
-            self._a_stream = AVStream("audio", a_header, self._receiver.handle_audio)
+            self._v_stream = AVStream(
+                "video", v_header, self._receiver.handle_video_data
+            )
+            self._a_stream = AVStream(
+                "audio", a_header, self._receiver.handle_audio_data
+            )
             self._receiver.get_audio_config(a_header)
 
     def add_packet(self, packet):
