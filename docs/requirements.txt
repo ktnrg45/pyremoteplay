@@ -1,5 +1,4 @@
-sphinx==2.1.2
-
+sphinx
 sphinx-rtd-theme
 myst-parser
 sphinxcontrib-apidoc
