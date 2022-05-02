@@ -14,7 +14,7 @@ from .oauth import prompt as oauth_prompt
 from .register import register
 from .session import Session
 from .util import add_profile, add_regist_data, get_profiles, write_profiles
-from .feedback import Controller
+from .controller import Controller
 
 NEW_PROFILE = "New Profile"
 CANCEL = "Cancel"

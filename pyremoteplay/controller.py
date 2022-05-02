@@ -1,11 +1,16 @@
-"""Feedback for pyremoteplay."""
+"""Controller methods."""
+from __future__ import annotations
 import logging
 import threading
+from typing import Iterable, TYPE_CHECKING
 from collections import deque
 from enum import IntEnum, auto
 import time
 
 from .stream_packets import FeedbackEvent, FeedbackHeader, ControllerState, StickState
+
+if TYPE_CHECKING:
+    from .session import Session
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,22 +58,27 @@ class Controller:
         self._should_send.acquire(timeout=1)
         while not self._session.is_stopped and not self._stop_event.is_set():
             self._should_send.acquire(timeout=Controller.STATE_INTERVAL_MAX_MS)
-            self.send_state()
+            self.update_sticks()
         self._session = None
         self._thread = None
         self._stop_event.clear()
         self._should_send = threading.Semaphore()
         _LOGGER.info("Controller stopped")
 
-    def connect(self, session):
+    def connect(self, session: Session):
         """Connect controller to session."""
+        if not isinstance(session, Session):
+            raise TypeError(f"Expected instance of {Session}")
         if self._session is not None:
             _LOGGER.warning("Controller already connected. Call disconnect first")
             return
         self._session = session
 
     def start(self):
-        """Start Controller."""
+        """Start Controller.
+        This starts the controller worker which listens for when the sticks changes and sends the state to the host.
+        If this is not called, the 'update_sticks()' method needs to be called for the host to receive the state.
+        """
         if self._thread is not None:
             _LOGGER.warning("Controller is running. Call stop first")
             return
@@ -87,8 +97,11 @@ class Controller:
         self.stop()
         self._session = None
 
-    def send_state(self):
-        """Send controller stick state."""
+    def update_sticks(self):
+        """Send controller stick state to host.
+
+        Will be called automatically if controller has been started.
+        """
         if (
             self._session is None
             or self._session.is_stopped
@@ -102,7 +115,7 @@ class Controller:
         )
         self._sequence_state += 1
 
-    def send_event(self):
+    def _send_event(self):
         """Send controller button event."""
         data = b"".join(self._event_buf)
         if not data:
@@ -112,8 +125,11 @@ class Controller:
         )
         self._sequence_event += 1
 
-    def add_event_buffer(self, event: FeedbackEvent):
-        """Append event to beginning of byte buf."""
+    def _add_event_buffer(self, event: FeedbackEvent):
+        """Append event to beginning of byte buffer.
+        Oldest event is at the end and is removed
+        when buffer is full and a new event is added
+        """
         buf = bytearray(FeedbackEvent.LENGTH)
         event.pack(buf)
         self._event_buf.appendleft(buf)
@@ -138,19 +154,46 @@ class Controller:
             _LOGGER.error("Invalid button: %s", name)
         else:
             if _action == self.ButtonAction.PRESS:
-                self.add_event_buffer(FeedbackEvent(button, is_active=True))
+                self._add_event_buffer(FeedbackEvent(button, is_active=True))
             elif _action == self.ButtonAction.RELEASE:
-                self.add_event_buffer(FeedbackEvent(button, is_active=False))
+                self._add_event_buffer(FeedbackEvent(button, is_active=False))
             elif _action == self.ButtonAction.TAP:
-                self.add_event_buffer(FeedbackEvent(button, is_active=True))
-                self.send_event()
+                self._add_event_buffer(FeedbackEvent(button, is_active=True))
+                self._send_event()
                 time.sleep(delay)
                 self.button(name, "release")
                 return
-            self.send_event()
+            self._send_event()
 
-    def stick(self, stick_name: str, axis: str = None, value: float = None, point=None):
-        """Set Stick Value."""
+    def stick(
+        self,
+        stick_name: str,
+        axis: str = None,
+        value: float = None,
+        point: Iterable[float, float] = None,
+    ):
+        """Set Stick State.
+
+        If controller has not been started with `start()`,
+        the `update_sticks()` method needs to be called manually to send stick state.
+
+        The value param represents how far to push the stick away from center.
+
+        The direction mapping is shown below:
+
+                    Up -1.0
+
+        Left -1.0   Center 0.0  Right 1.0
+
+                    Down 1.0
+
+        :param stick_name: The stick to move. One of 'left' or 'right'
+        :param axis: The axis to move. One of 'x' or 'y'
+        :param value: The value to move stick to. Must be between -1.0 and 1.0
+        :param point: An interable of two floats, which represent coordinates.
+            Point takes precedence over axis and value.
+            The first value represents the x axis and the second represents the y axis
+        """
         stick_name = stick_name.lower()
         if stick_name == "left":
             stick = self._stick_state.left

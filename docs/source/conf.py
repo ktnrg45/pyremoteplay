@@ -62,6 +62,8 @@ apidoc_excluded_paths = [
     "stream_packets.py",
     "protobuf.py",
     "crypt.py",
+    "stream.py",
+    "util.py",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
