@@ -8,7 +8,7 @@ import aiohttp
 from Cryptodome.Hash import SHA256
 
 __CLIENT_ID = "ba495a24-818c-472b-b12d-ff231c1b5745"
-__CLIENT_SECRET = "mvaiZkRsAsI1IBkY"
+__CLIENT_SECRET = "bXZhaVprUnNBc0kxSUJrWQ=="
 
 __REDIRECT_URL = "https://remoteplay.dl.playstation.net/remoteplay/redirect"
 __LOGIN_URL = (
@@ -75,7 +75,9 @@ async def async_get_user_account(redirect_url: str) -> dict:
 
 async def _get_token(code):
     _LOGGER.debug("Sending POST request")
-    auth = aiohttp.BasicAuth(__CLIENT_ID, password=__CLIENT_SECRET)
+    auth = aiohttp.BasicAuth(
+        __CLIENT_ID, password=base64.b64decode(__CLIENT_SECRET.encode()).decode()
+    )
     body = __TOKEN_BODY.format(code).encode("ascii")
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -91,7 +93,9 @@ async def _get_token(code):
 
 
 async def _fetch_account_info(token):
-    auth = aiohttp.BasicAuth(__CLIENT_ID, password=__CLIENT_SECRET)
+    auth = aiohttp.BasicAuth(
+        __CLIENT_ID, password=base64.b64decode(__CLIENT_SECRET.encode()).decode()
+    )
     async with aiohttp.ClientSession() as session:
         async with session.get(
             url=f"{__TOKEN_URL}/{token}", auth=auth, timeout=3
