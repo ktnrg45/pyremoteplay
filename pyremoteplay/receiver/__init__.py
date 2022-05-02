@@ -18,7 +18,12 @@ except ModuleNotFoundError:
 
 
 class AVReceiver(abc.ABC):
-    """Base Class for AV Receiver."""
+    """Base Class for AV Receiver. Abstract. Must use subclass for session.
+
+    This class exposes the audio/video stream of the Remote Play Session.
+    The `handle_video` and `handle_audio` methods need to be reimplemented.
+    Re-implementing this class provides custom handling of audio and video frames.
+    """
 
     AV_CODEC_OPTIONS_H264 = {
         # "profile": "0",
@@ -218,35 +223,63 @@ class AVReceiver(abc.ABC):
         if frame is not None:
             self.handle_audio(frame)
 
-    def get_video_frame(self) -> av.VideoFrame:
-        """Return Video Frame."""
-        raise NotImplementedError
-
-    def get_audio_frame(self) -> av.AudioFrame:
-        """Return Audio Frame."""
-        raise NotImplementedError
-
     def handle_video(self, frame: av.VideoFrame):
-        """Handle video frame."""
+        """Handle video frame. Re-implementation required.
+
+        This method is called as soon as a video frame is decoded.
+        This method should define what should happen when this frame is received.
+        For example the frame can be stored, sent somewhere, processed further, etc.
+        """
         raise NotImplementedError
 
     def handle_audio(self, frame: av.AudioFrame):
-        """Handle audio frame."""
+        """Handle audio frame. Re-implementation required.
+
+        This method is called as soon as an audio frame is decoded.
+        This method should define what should happen when this frame is received.
+        For example the frame can be stored, sent somewhere, processed further, etc.
+        """
+        raise NotImplementedError
+
+    def get_video_frame(self) -> av.VideoFrame:
+        """Return Video Frame. Re-implementation optional.
+
+        This method is a placeholder for retrieving a frame from a collection.
+        """
+        raise NotImplementedError
+
+    def get_audio_frame(self) -> av.AudioFrame:
+        """Return Audio Frame. Re-implementation optional.
+
+        This method is a placeholder for retrieving a frame from a collection.
+        """
         raise NotImplementedError
 
     def close(self):
         """Close Receiver."""
         if self.video_decoder is not None:
             self.video_decoder.close()
+        if self.audio_decoder is not None:
+            self.audio_decoder.close()
+        self.video_decoder = self.audio_decoder = None
 
 
 class QueueReceiver(AVReceiver):
-    """Receiver which stores decoded frames in queues."""
+    """Receiver which stores decoded frames in queues.
+    New Frames are added to the end of queue.
+    When queue is full the oldest frame is removed.
+
+    :param max_frames: Maximum number of frames to be stored
+    :param max_video_frames: Maximum video frames that can be stored.
+        If <= 0, max_frames will be used.
+    :param max_audio_frames: Maximum audio frames that can be stored.
+        If <= 0, max_frames will be used.
+    """
 
     def __init__(self, max_frames=10, max_video_frames=-1, max_audio_frames=-1):
         super().__init__()
-        max_video_frames = max_frames if max_video_frames < 0 else max_video_frames
-        max_audio_frames = max_frames if max_audio_frames < 0 else max_audio_frames
+        max_video_frames = max_frames if max_video_frames <= 0 else max_video_frames
+        max_audio_frames = max_frames if max_audio_frames <= 0 else max_audio_frames
         self._v_queue = deque(maxlen=max_video_frames)
         self._a_queue = deque(maxlen=max_audio_frames)
 
