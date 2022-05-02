@@ -1,5 +1,6 @@
 """Constants for pyremoteplay."""
 from enum import IntEnum
+from typing import Union
 
 PROFILE_DIR = ".pyremoteplay"
 PROFILE_FILE = ".profile.json"
@@ -90,7 +91,7 @@ class FPS(IntEnum):
     HIGH = 60
 
     @staticmethod
-    def preset(fps) -> int:
+    def preset(fps: Union[int, str]) -> int:
         """Return FPS Value."""
         if isinstance(fps, str):
             return FPS[fps.upper()].value

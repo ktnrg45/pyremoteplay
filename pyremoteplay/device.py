@@ -11,7 +11,7 @@ from aiohttp.client_exceptions import ContentTypeError
 from pyps4_2ndscreen.media_art import async_search_ps_store, ResultItem
 
 from pyremoteplay.receiver import AVReceiver
-from .const import DEFAULT_POLL_COUNT, DDP_PORTS, DEFAULT_STANDBY_DELAY
+from .const import DEFAULT_POLL_COUNT, DDP_PORTS, DEFAULT_STANDBY_DELAY, Quality
 from .ddp import async_get_status, get_status, wakeup
 from .session import Session
 from .util import get_users, get_profiles, format_regist_key
@@ -61,14 +61,6 @@ class RPDevice:
             return None
         return profiles.get(user)
 
-    def set_unreachable(self, state: bool):
-        """Set unreachable attribute."""
-        self._unreachable = state
-
-    def set_callback(self, callback: callable):
-        """Set callback for status changes."""
-        self._callback = callback
-
     def get_status(self):
         """Return status."""
         status = get_status(self.host)
@@ -80,6 +72,14 @@ class RPDevice:
         status = async_get_status(self.host)
         self.set_status(status)
         return status
+
+    def set_unreachable(self, state: bool):
+        """Set unreachable attribute."""
+        self._unreachable = state
+
+    def set_callback(self, callback: callable):
+        """Set callback for status changes."""
+        self._callback = callback
 
     def set_status(self, data):
         """Set status."""
@@ -141,17 +141,22 @@ class RPDevice:
         user: str,
         profiles: dict = None,
         profile_path="",
-        receiver: Union[None, AVReceiver] = None,
-        loop=None,
+        receiver: AVReceiver = None,
+        loop: asyncio.AbstractEventLoop = None,
         resolution="360p",
-        fps="low",
-        quality="very_low",
+        fps: Union[str, int] = "low",
+        quality: Union[str, Quality] = "very_low",
         codec="h264",
         hdr=False,
         **kwargs,
     ) -> Union[Session, None]:
         """Return initialized session if session created else return None.
         Also connects a controller.
+
+        See 'Session' for param details.
+
+        :param user: Name of user to use. Can be found with `get_users`
+
         """
         if self.session:
             if not self.session.is_stopped:

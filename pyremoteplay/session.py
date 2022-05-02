@@ -29,6 +29,7 @@ from .const import (
     USER_AGENT,
     Resolution,
     StreamType,
+    Quality,
 )
 from .crypt import SessionCipher
 from .ddp import async_get_status, async_wakeup
@@ -167,7 +168,20 @@ def _gen_did() -> bytes:
 
 
 class Session:
-    """RP Session Async."""
+    """Remote Play Session Async.
+
+    :param host: IP Address of Remote Play Host
+    :param profile: Profile data to connect with. From registering
+    :param receiver: A receiver for handling video and audio frames
+    :param loop: A running asyncio event loop
+    :param resolution: The resolution of video stream.
+        One of '360p', '540p', '720p', '1080p'
+    :param fps: Frames per second for video stream.
+        One of 'low', '30' or 'high', '60'
+    :param quality: Quality of video stream. Name of member of `Quality` enum or `Quality` enum
+    :param codec: Video Codec to use. One of 'h264' or 'hevc'
+    :param hdr: If True use HDR for video. Ignored if codec is 'h264'
+    """
 
     STATE_INIT = "init"
     STATE_READY = "ready"
@@ -225,11 +239,11 @@ class Session:
         self,
         host: str,
         profile: dict,
-        receiver: Union[None, AVReceiver] = None,
-        loop=None,
+        receiver: AVReceiver = None,
+        loop: asyncio.AbstractEventLoop = None,
         resolution="360p",
-        fps="low",
-        quality="very_low",
+        fps: Union[str, int] = "low",
+        quality: Union[str, Quality] = "very_low",
         codec="h264",
         hdr=False,
         **kwargs,
@@ -254,15 +268,11 @@ class Session:
         self._kwargs = kwargs
         self._hdr = hdr
         self._codec = codec
-        self.quality = quality
         self.max_width = self.max_height = None
-        self.fps = FPS.preset(fps)
-        self.resolution = Resolution.preset(resolution)
         self.error = ""
         self._receiver = None
         self.av_handler = AVHandler(self)
         self.events = ExecutorEventEmitter()
-
         self.loop = loop
         self._protocol = None
         self._transport = None
@@ -273,6 +283,15 @@ class Session:
         self._stop_event = None
         self.receiver_started = None
         self.stream_ready = None
+
+        if quality.upper() in Quality.__members__:
+            self.quality = quality
+        elif isinstance(quality, Quality):
+            self.quality = quality.name
+        else:
+            self.quality = Quality.DEFAULT.name
+        self.fps = FPS.preset(fps)
+        self.resolution = Resolution.preset(resolution)
 
         self.set_receiver(receiver)
 
