@@ -7,16 +7,16 @@ from urllib.parse import parse_qs, urlparse
 import aiohttp
 from Cryptodome.Hash import SHA256
 
-CLIENT_ID = "ba495a24-818c-472b-b12d-ff231c1b5745"
-CLIENT_SECRET = "mvaiZkRsAsI1IBkY"
+__CLIENT_ID = "ba495a24-818c-472b-b12d-ff231c1b5745"
+__CLIENT_SECRET = "mvaiZkRsAsI1IBkY"
 
-REDIRECT_URL = "https://remoteplay.dl.playstation.net/remoteplay/redirect"
-LOGIN_URL = (
+__REDIRECT_URL = "https://remoteplay.dl.playstation.net/remoteplay/redirect"
+__LOGIN_URL = (
     "https://auth.api.sonyentertainmentnetwork.com/"
     "2.0/oauth/authorize"
     "?service_entity=urn:service-entity:psn"
-    f"&response_type=code&client_id={CLIENT_ID}"
-    f"&redirect_uri={REDIRECT_URL}"
+    f"&response_type=code&client_id={__CLIENT_ID}"
+    f"&redirect_uri={__REDIRECT_URL}"
     "&scope=psn:clientapp"
     "&request_locale=en_US&ui=pr"
     "&service_logo=ps"
@@ -27,16 +27,27 @@ LOGIN_URL = (
     "&no_captcha=true&"
 )
 
-TOKEN_URL = "https://auth.api.sonyentertainmentnetwork.com/2.0/oauth/token"
-TOKEN_BODY = "grant_type=authorization_code" "&code={}" f"&redirect_uri={REDIRECT_URL}&"
-HEADERS = {"Content-Type": "application/x-www-form-urlencoded"}
+__TOKEN_URL = "https://auth.api.sonyentertainmentnetwork.com/2.0/oauth/token"
+__TOKEN_BODY = (
+    "grant_type=authorization_code" "&code={}" f"&redirect_uri={__REDIRECT_URL}&"
+)
+__HEADERS = {"Content-Type": "application/x-www-form-urlencoded"}
 
 logging.basicConfig(level=logging.INFO)
 _LOGGER = logging.getLogger(__name__)
 
 
-def get_user_account(redirect_url: str, loop=None):
-    """Return Account. Use async_get_user_account if from loop."""
+def get_login_url() -> str:
+    """Return Login Url."""
+    return __LOGIN_URL
+
+
+def get_user_account(redirect_url: str, loop: asyncio.AbstractEventLoop = None) -> dict:
+    """Return user account.
+
+    :param redirect_url: Redirect url found after logging in
+    :param loop: Asyncio Loop
+    """
     if loop is None:
         loop = asyncio.get_event_loop()
         if not loop.is_running():
@@ -48,7 +59,10 @@ def get_user_account(redirect_url: str, loop=None):
 
 
 async def async_get_user_account(redirect_url: str) -> dict:
-    """Asyncio coroutine to get user account."""
+    """Return user account.
+
+    :param redirect_url: Redirect url found after logging in
+    """
     code = _parse_redirect_url(redirect_url)
     if code is None:
         return None
@@ -61,11 +75,11 @@ async def async_get_user_account(redirect_url: str) -> dict:
 
 async def _get_token(code):
     _LOGGER.debug("Sending POST request")
-    auth = aiohttp.BasicAuth(CLIENT_ID, password=CLIENT_SECRET)
-    body = TOKEN_BODY.format(code).encode("ascii")
+    auth = aiohttp.BasicAuth(__CLIENT_ID, password=__CLIENT_SECRET)
+    body = __TOKEN_BODY.format(code).encode("ascii")
     async with aiohttp.ClientSession() as session:
         async with session.post(
-            url=TOKEN_URL, auth=auth, headers=HEADERS, data=body, timeout=3
+            url=__TOKEN_URL, auth=auth, headers=__HEADERS, data=body, timeout=3
         ) as resp:
             if resp.status == 200:
                 content = await resp.json()
@@ -77,10 +91,10 @@ async def _get_token(code):
 
 
 async def _fetch_account_info(token):
-    auth = aiohttp.BasicAuth(CLIENT_ID, password=CLIENT_SECRET)
+    auth = aiohttp.BasicAuth(__CLIENT_ID, password=__CLIENT_SECRET)
     async with aiohttp.ClientSession() as session:
         async with session.get(
-            url=f"{TOKEN_URL}/{token}", auth=auth, timeout=3
+            url=f"{__TOKEN_URL}/{token}", auth=auth, timeout=3
         ) as resp:
             if resp.status == 200:
                 account_info = await resp.json()
@@ -96,8 +110,8 @@ async def _fetch_account_info(token):
 
 
 def _parse_redirect_url(redirect_url):
-    if not redirect_url.startswith(REDIRECT_URL):
-        _LOGGER.error("Redirect URL does not start with %s", REDIRECT_URL)
+    if not redirect_url.startswith(__REDIRECT_URL):
+        _LOGGER.error("Redirect URL does not start with %s", __REDIRECT_URL)
         return None
     code_url = urlparse(redirect_url)
     query = parse_qs(code_url.query)
@@ -134,7 +148,7 @@ def prompt():
         "\r\n\r\nGo to the url below in a web browser, "
         "log into your PSN Account, "
         "then copy and paste the URL of the page that shows 'redirect'."
-        f"\r\n\r\n{LOGIN_URL} \r\n\r\nEnter Redirect URL >"
+        f"\r\n\r\n{__LOGIN_URL} \r\n\r\nEnter Redirect URL >"
     )
 
     redirect_url = input(msg)

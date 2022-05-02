@@ -11,7 +11,7 @@ from PySide6.QtMultimedia import QMediaDevices  # pylint: disable=no-name-in-mod
 
 from pyremoteplay.receiver import AVReceiver
 from pyremoteplay.const import RESOLUTION_PRESETS, Quality
-from pyremoteplay.oauth import LOGIN_URL, get_user_account
+from pyremoteplay.oauth import get_login_url, get_user_account
 from pyremoteplay.register import register
 from pyremoteplay.util import (
     add_profile,
@@ -432,11 +432,12 @@ class OptionsWidget(QtWidgets.QWidget):
         dialog.setOption(QtWidgets.QInputDialog.UseListViewForComboBoxItems)
         url = ""
         grp = 60
-        for ivl in range(0, len(LOGIN_URL) // grp):
+        login_url = get_login_url()
+        for ivl in range(0, len(login_url) // grp):
             end = grp * (ivl + 1)
             start = grp * ivl
-            url = f"{url}{LOGIN_URL[start:end]}\n"
-        url = f"{url}{LOGIN_URL[grp * -1]}"
+            url = f"{url}{login_url[start:end]}\n"
+        url = f"{url}{login_url[grp * -1]}"
         dialog.setComboBoxItems([url])
         dialog.setLabelText(
             "Go to the following url in a web browser and sign in using your PSN Account:\n\n"
@@ -445,7 +446,7 @@ class OptionsWidget(QtWidgets.QWidget):
         )
         clipboard = QtWidgets.QApplication.clipboard()
         clipboard.clear(mode=clipboard.Clipboard)
-        clipboard.setText(LOGIN_URL, mode=clipboard.Clipboard)
+        clipboard.setText(login_url, mode=clipboard.Clipboard)
         if not dialog.exec():
             return
 
