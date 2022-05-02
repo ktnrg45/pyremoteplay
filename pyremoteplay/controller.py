@@ -181,11 +181,11 @@ class Controller:
 
         The direction mapping is shown below:
 
-                    Up -1.0
+        X Axis: Left -1.0, Right 1.0
 
-        Left -1.0   Center 0.0  Right 1.0
+        Y Axis: Up -1.0, Down 1.0
 
-                    Down 1.0
+        Center 0.0
 
         :param stick_name: The stick to move. One of 'left' or 'right'
         :param axis: The axis to move. One of 'x' or 'y'

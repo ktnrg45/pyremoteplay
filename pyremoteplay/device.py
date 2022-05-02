@@ -16,7 +16,7 @@ from .ddp import async_get_status, get_status, wakeup
 from .session import Session
 from .util import get_users, get_profiles, format_regist_key
 from .register import register
-from .feedback import Controller
+from .controller import Controller
 
 _LOGGER = logging.getLogger(__name__)
 
