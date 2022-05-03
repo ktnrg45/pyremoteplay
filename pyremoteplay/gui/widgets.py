@@ -189,7 +189,7 @@ class AnimatedToggle(QCheckBox):
         if self.pulse_anim.state() == QPropertyAnimation.Running:
             painter.setBrush(
                 self._pulse_checked_color
-                if self.isChecked()
+                if self.isChecked() and self.isEnabled()
                 else self._pulse_unchecked_color
             )
             painter.drawEllipse(
@@ -198,7 +198,7 @@ class AnimatedToggle(QCheckBox):
                 self._pulse_radius,
             )
 
-        if self.isChecked():
+        if self.isChecked() and self.isEnabled():
             painter.setBrush(self._bar_checked_brush)
             painter.drawRoundedRect(track_rect, rounding, rounding)
             painter.setBrush(self._toggle_checked_brush)

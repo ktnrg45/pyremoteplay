@@ -7,7 +7,7 @@ from enum import IntEnum
 from struct import pack, pack_into, unpack_from
 from typing import Iterable, Union
 
-from .const import Quality
+from .const import Quality, Resolution, FPS, StreamType
 from .crypt import StreamCipher
 
 _LOGGER = logging.getLogger(__name__)
@@ -76,25 +76,28 @@ LAUNCH_SPEC = {
 
 def get_launch_spec(
     handshake_key: bytes,
-    resolution: dict,
-    max_fps: int,
+    resolution: Resolution,
+    fps: FPS,
+    quality: Quality,
+    stream_type: StreamType,
+    hdr: bool,
     rtt: int,
     mtu_in: int,
-    quality: str,
-    codec: str,
-    hdr: bool,
 ) -> bytes:
     """Return launch spec."""
-    quality = quality.upper()
-    if quality == "DEFAULT":
+    resolution = Resolution.preset(resolution)
+    if quality == Quality.DEFAULT:
         bitrate = resolution["bitrate"]
     else:
-        bitrate = int(Quality[quality])
+        bitrate = Quality.preset(quality)
+    fps = FPS.preset(fps)
+    codec = StreamType.preset(stream_type)
+    hdr = stream_type == StreamType.HEVC_HDR
     _LOGGER.info("Using bitrate: %s kbps", bitrate)
     launch_spec = LAUNCH_SPEC
     launch_spec["streamResolutions"][0]["resolution"]["width"] = resolution["width"]
     launch_spec["streamResolutions"][0]["resolution"]["height"] = resolution["height"]
-    launch_spec["streamResolutions"][0]["maxFps"] = max_fps
+    launch_spec["streamResolutions"][0]["maxFps"] = fps
     launch_spec["network"]["bwKbpsSent"] = bitrate
     launch_spec["network"]["mtu"] = mtu_in
     launch_spec["network"]["rtt"] = rtt

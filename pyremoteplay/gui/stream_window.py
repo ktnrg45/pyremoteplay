@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from PySide6.QtMultimedia import QAudioDevice
 from pyremoteplay.receiver import AVReceiver
 from pyremoteplay.device import RPDevice
+from pyremoteplay.const import Resolution
 
 from .joystick import JoystickWidget
 from .controls import ControlsWidget
@@ -211,13 +212,15 @@ class RPWorker(QtCore.QObject):
         codec = options.get("codec")
         if not options.get("use_hw"):
             codec = codec.split("_")[0]
+        hdr = options.get("hdr")
+        if hdr and codec == "hevc":
+            codec = "hevc_hdr"
         self.session = self.device.create_session(
             user,
             resolution=options.get("resolution"),
             fps=options.get("fps"),
             receiver=QtReceiver(),
             codec=codec,
-            hdr=options.get("hdr"),
             quality=options.get("quality"),
         )
 
@@ -354,14 +357,15 @@ class StreamWindow(QtWidgets.QWidget):
         self.audio_device = audio_device
         self.setWindowTitle(f"Session {user} @ {device.host}")
         self.rp_worker.setup(self, device, user, options)
+        resolution = Resolution.preset(self.rp_worker.session.resolution)
         self.resize(
-            self.rp_worker.session.resolution["width"],
-            self.rp_worker.session.resolution["height"],
+            resolution["width"],
+            resolution["height"],
         )
         output = YUVGLWidget if self.use_opengl else VideoWidget
         self.video_output = output(
-            self.rp_worker.session.resolution["width"],
-            self.rp_worker.session.resolution["height"],
+            resolution["width"],
+            resolution["height"],
         )
         self.video_output.hide()
         self.layout.addWidget(self.video_output)

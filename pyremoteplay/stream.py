@@ -99,8 +99,6 @@ class RPStream:
         self.cipher = None
         self.proto = ProtoHandler(self)
         self.av_handler = session.av_handler
-        self.resolution = session.resolution
-        self.max_fps = session.fps
         self.rtt = rtt if rtt is not None else DEFAULT_RTT
         self.mtu = mtu if mtu is not None else DEFAULT_MTU
         self.stream_info = None
@@ -306,13 +304,13 @@ class RPStream:
     def _format_launch_spec(self, handshake_key: bytes, format_type=None) -> bytes:
         launch_spec = get_launch_spec(
             handshake_key=handshake_key,
-            resolution=self.resolution,
-            max_fps=self.max_fps,
+            resolution=self._session.resolution,
+            fps=self._session.fps,
+            quality=self._session.quality,
+            stream_type=self._session.stream_type,
+            hdr=self._session.hdr,
             rtt=int(self.rtt),
             mtu_in=self.mtu,
-            quality=self._session.quality,
-            codec=self._session.video_format,
-            hdr=self._session.hdr,
         )
         if format_type == "raw":
             return launch_spec

@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt, QTimer  # pylint: disable=no-name-in-module
 from PySide6.QtMultimedia import QMediaDevices  # pylint: disable=no-name-in-module
 
 from pyremoteplay.receiver import AVReceiver
-from pyremoteplay.const import RESOLUTION_PRESETS, Quality
+from pyremoteplay.const import Resolution, Quality, StreamType, FPS
 from pyremoteplay.oauth import get_login_url, get_user_account
 from pyremoteplay.register import register
 from pyremoteplay.util import (
@@ -106,11 +106,13 @@ class OptionsWidget(QtWidgets.QWidget):
 
         self.quality.addItems([item.name for item in Quality])
         self.use_opengl.setToolTip("Recommended if using Hardware Decoding")
-        self.fps.addItems(["30", "60"])
-        self.resolution.addItems(list(RESOLUTION_PRESETS.keys()))
+        self.fps.addItems([str(item.value) for item in FPS])
+        self.resolution.addItems(
+            [item.name.replace("RESOLUTION_", "").lower() for item in Resolution]
+        )
         self.audio_output.addItems(list(self.audio_devices.keys()))
         self.decoder.addItems(self.get_decoder())
-        self.codec.addItems(["h264", "hevc"])
+        self.codec.addItems({StreamType.preset(item) for item in StreamType})
         self.use_qt_audio.setToolTip("Uses PortAudio if disabled")
 
         self.set_options()
@@ -318,6 +320,7 @@ class OptionsWidget(QtWidgets.QWidget):
 
     # pylint: disable=unused-argument
     def _change_options(self, *args):
+        self.hdr.setDisabled(self.codec.currentText() == StreamType.H264.name.lower())
         self.options_data.save()
 
     # pylint: disable=unused-argument

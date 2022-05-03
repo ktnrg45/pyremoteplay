@@ -175,12 +175,11 @@ class Session:
     :param receiver: A receiver for handling video and audio frames
     :param loop: A running asyncio event loop
     :param resolution: The resolution of video stream.
-        One of '360p', '540p', '720p', '1080p'
+        Name of or value of or `Resolution` enum
     :param fps: Frames per second for video stream.
-        One of 'low', '30' or 'high', '60'
-    :param quality: Quality of video stream. Name of member of `Quality` enum or `Quality` enum
-    :param codec: Video Codec to use. One of 'h264' or 'hevc'
-    :param hdr: If True use HDR for video. Ignored if codec is 'h264'
+        Name of or value of or `FPS` enum
+    :param quality: Quality of video stream. Name of or value of or `Quality` enum
+    :param codec: Video Codec to use. Name of or value of or `StreamType` enum
     """
 
     STATE_INIT = "init"
@@ -241,11 +240,10 @@ class Session:
         profile: dict,
         receiver: AVReceiver = None,
         loop: asyncio.AbstractEventLoop = None,
-        resolution="360p",
-        fps: Union[str, int] = "low",
-        quality: Union[str, Quality] = "very_low",
-        codec="h264",
-        hdr=False,
+        resolution: Union[Resolution, str, int] = "360p",
+        fps: Union[FPS, str, int] = "low",
+        quality: Union[Quality, str, int] = "very_low",
+        codec: Union[StreamType, str, int] = "h264",
         **kwargs,
     ):
         self._host = host
@@ -266,8 +264,6 @@ class Session:
         self._stream = None
         self._worker = None
         self._kwargs = kwargs
-        self._hdr = hdr
-        self._codec = codec
         self.max_width = self.max_height = None
         self.error = ""
         self._receiver = None
@@ -284,14 +280,10 @@ class Session:
         self.receiver_started = None
         self.stream_ready = None
 
-        if quality.upper() in Quality.__members__:
-            self.quality = quality
-        elif isinstance(quality, Quality):
-            self.quality = quality.name
-        else:
-            self.quality = Quality.DEFAULT.name
-        self.fps = FPS.preset(fps)
-        self.resolution = Resolution.preset(resolution)
+        self.quality = Quality.parse(quality)
+        self.fps = FPS.parse(fps)
+        self.resolution = Resolution.parse(resolution)
+        self._stream_type = StreamType.parse(codec)
 
         self.set_receiver(receiver)
 
@@ -710,25 +702,17 @@ class Session:
     @property
     def video_format(self) -> str:
         """Return video format"""
-        return self._codec.lower()
+        return StreamType.preset(self.stream_type)
 
     @property
     def hdr(self) -> bool:
         """Return True if HDR."""
-        return self._hdr and "h264" not in self._codec
+        return self.stream_type == StreamType.HEVC_HDR
 
     @property
     def stream_type(self) -> StreamType:
         """Return Stream Type."""
-        _type = self.video_format.upper()
-        _type = _type.split("_")[0]  # Remove codec suffix
-        if self.hdr:
-            _type = f"{_type}_HDR"
-        try:
-            stream_type = StreamType[_type]
-        except KeyError:
-            stream_type = StreamType["H264"]
-        return stream_type
+        return self._stream_type
 
     @property
     def receiver(self) -> AVReceiver:

@@ -147,13 +147,6 @@ class ProtoHandler:
                 self._recv_info = True
                 res = msg.stream_info_payload.resolution[0]
                 v_header = res.video_header
-                s_width = self._stream.resolution["width"]
-                s_height = self._stream.resolution["height"]
-                if s_width != res.width or s_height != res.height:
-                    _LOGGER.warning(
-                        "RECV Unexpected resolution: %s x %s", res.width, res.height
-                    )
-
                 _LOGGER.debug("RECV Stream Info")
                 self._parse_streaminfo(msg.stream_info_payload, v_header)
             channel = 9

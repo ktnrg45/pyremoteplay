@@ -11,12 +11,21 @@ from aiohttp.client_exceptions import ContentTypeError
 from pyps4_2ndscreen.media_art import async_search_ps_store, ResultItem
 
 from pyremoteplay.receiver import AVReceiver
-from .const import DEFAULT_POLL_COUNT, DDP_PORTS, DEFAULT_STANDBY_DELAY, Quality
+from .const import (
+    DEFAULT_POLL_COUNT,
+    DDP_PORTS,
+    DEFAULT_STANDBY_DELAY,
+    Quality,
+    Resolution,
+    StreamType,
+    FPS,
+)
 from .ddp import async_get_status, get_status, wakeup
 from .session import Session
 from .util import get_users, get_profiles, format_regist_key
 from .register import register
 from .controller import Controller
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -143,11 +152,10 @@ class RPDevice:
         profile_path="",
         receiver: AVReceiver = None,
         loop: asyncio.AbstractEventLoop = None,
-        resolution="360p",
-        fps: Union[str, int] = "low",
-        quality: Union[str, Quality] = "very_low",
-        codec="h264",
-        hdr=False,
+        resolution: Union[Resolution, str, int] = "360p",
+        fps: Union[FPS, str, int] = "low",
+        quality: Union[Quality, str, int] = "very_low",
+        codec: Union[StreamType, str, int] = "h264",
         **kwargs,
     ) -> Union[Session, None]:
         """Return initialized session if session created else return None.
@@ -176,7 +184,6 @@ class RPDevice:
             fps,
             quality,
             codec,
-            hdr,
             **kwargs,
         )
         self.controller = Controller(self.session)

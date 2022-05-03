@@ -1,4 +1,5 @@
 """Constants for pyremoteplay."""
+from __future__ import annotations
 from enum import IntEnum
 from typing import Union
 
@@ -34,15 +35,34 @@ FFMPEG_PADDING = 64  # AV_INPUT_BUFFER_PADDING_SIZE
 
 
 class StreamType(IntEnum):
-    """Enums for Stream type."""
+    """Enums for Stream type. Represents Video stream type.
+
+    Do Not Change.
+    """
 
     H264 = 1
     HEVC = 2
     HEVC_HDR = 3
 
+    @staticmethod
+    def parse(value: Union[StreamType, str, int]) -> StreamType:
+        """Return Enum from enum, name or value."""
+        if isinstance(value, StreamType):
+            return value
+        if isinstance(value, str):
+            _enum = StreamType.__members__.get(value.upper())
+            if _enum is not None:
+                return _enum
+        return StreamType(value)
+
+    @staticmethod
+    def preset(value: Union[StreamType, str, int]) -> str:
+        """Return Stream Type name."""
+        return StreamType.parse(value).name.replace("_HDR", "").lower()
+
 
 class Quality(IntEnum):
-    """Enums for quality."""
+    """Enums for quality. Value represents video bitrate."""
 
     DEFAULT = 0
     VERY_LOW = 2000
@@ -50,6 +70,22 @@ class Quality(IntEnum):
     MEDIUM = 6000
     HIGH = 10000
     VERY_HIGH = 15000
+
+    @staticmethod
+    def parse(value: Union[Quality, str, int]) -> Quality:
+        """Return Enum from enum, name or value."""
+        if isinstance(value, Quality):
+            return value
+        if isinstance(value, str):
+            _enum = Quality.__members__.get(value.upper())
+            if _enum is not None:
+                return _enum
+        return Quality(value)
+
+    @staticmethod
+    def preset(value: Union[Quality, str, int]) -> int:
+        """Return Quality Value."""
+        return Quality.parse(value).value
 
 
 RESOLUTION_360P = {
@@ -91,12 +127,20 @@ class FPS(IntEnum):
     HIGH = 60
 
     @staticmethod
-    def preset(fps: Union[int, str]) -> int:
+    def parse(value: Union[FPS, str, int]) -> FPS:
+        """Return Enum from enum, name or value."""
+        if isinstance(value, FPS):
+            return value
+        if isinstance(value, str):
+            _enum = FPS.__members__.get(value.upper())
+            if _enum is not None:
+                return _enum
+        return FPS(value)
+
+    @staticmethod
+    def preset(value: Union[FPS, str, int]) -> int:
         """Return FPS Value."""
-        if isinstance(fps, str):
-            return FPS[fps.upper()].value
-        if isinstance(fps, int):
-            return FPS(fps).value
+        return FPS.parse(value).value
 
 
 class Resolution(IntEnum):
@@ -108,18 +152,22 @@ class Resolution(IntEnum):
     RESOLUTION_1080P = 4
 
     @staticmethod
-    def preset(resolution) -> dict:
+    def parse(value: Union[Resolution, str, int]) -> Resolution:
+        """Return Enum from enum, name or value."""
+        if isinstance(value, Resolution):
+            return value
+        if isinstance(value, str):
+            _value = f"RESOLUTION_{value}".upper()
+            _enum = Resolution.__members__.get(_value.upper())
+            if _enum is not None:
+                return _enum
+        return Resolution(value)
+
+    @staticmethod
+    def preset(value: Union[Resolution, str, int]) -> dict:
         """Return Resolution preset dict."""
-        if isinstance(resolution, str):
-            return RESOLUTION_PRESETS[
-                Resolution[f"RESOLUTION_{resolution}".upper()]
-                .name.replace("RESOLUTION_", "")
-                .lower()
-            ]
-        if isinstance(resolution, int):
-            return RESOLUTION_PRESETS[
-                Resolution(resolution).name.replace("RESOLUTION_", "").lower()
-            ]
+        enum = Resolution.parse(value)
+        return RESOLUTION_PRESETS[enum.name.replace("RESOLUTION_", "").lower()]
 
 
 # AV_CODEC_OPTIONS_H264 = {
