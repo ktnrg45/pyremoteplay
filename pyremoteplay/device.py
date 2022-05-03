@@ -34,11 +34,17 @@ STATUS_STANDBY = 620
 
 
 class RPDevice:
-    """Represents a Remote Play device."""
+    """Represents a Remote Play device/host.
 
-    def __init__(self, host, max_polls=DEFAULT_POLL_COUNT):
+    Most, if not all user interactions should be performed with this class.
+    Status must be polled manually with `get_status`.
+
+    :param host: IP address of Remote Play Host
+    """
+
+    def __init__(self, host: str):
         self._host = host
-        self._max_polls = max_polls
+        self._max_polls = DEFAULT_POLL_COUNT
         self._host_type = None
         self._host_name = None
         self._mac_address = None
@@ -52,7 +58,7 @@ class RPDevice:
         self._session = None
         self._controller = None
 
-    def get_users(self, profiles=None, profile_path=None):
+    def get_users(self, profiles: dict = None, profile_path="") -> list[str]:
         """Return Registered Users."""
         if not self.mac_address:
             _LOGGER.error("Device ID is unknown. Status needs to be updated.")
@@ -60,8 +66,12 @@ class RPDevice:
         users = get_users(self.mac_address, profiles, profile_path)
         return users
 
-    def get_profile(self, user: str, profiles=None, profile_path=None):
-        """Return valid profile for user."""
+    def get_profile(self, user: str, profiles: dict = None, profile_path="") -> dict:
+        """Return valid profile for user.
+
+        :param profiles: dict of all user profiles. If None, profiles will be retrieved from default location. Optional.
+        :param profile_path: Path to saved profile file. Specify if profile data was not saved to the default path. Optional.
+        """
         if not profiles:
             profiles = get_profiles(profile_path)
         users = self.get_users(profiles)
@@ -70,7 +80,7 @@ class RPDevice:
             return None
         return profiles.get(user)
 
-    def get_status(self):
+    def get_status(self) -> dict:
         """Return status."""
         status = get_status(self.host)
         self.set_status(status)
@@ -106,7 +116,7 @@ class RPDevice:
             _LOGGER.debug("Status: %s", self.status)
             title_id = self.status.get("running-app-titleid")
             if title_id and asyncio.get_event_loop().is_running:
-                asyncio.ensure_future(self.get_media_info(title_id))
+                asyncio.ensure_future(self._get_media_info(title_id))
             else:
                 self._media_info = None
                 self._image = None
@@ -126,16 +136,16 @@ class RPDevice:
                     DEFAULT_STANDBY_DELAY,
                 )
 
-    async def get_media_info(self, title_id, region="United States"):
+    async def _get_media_info(self, title_id: str, region="United States"):
         """Retrieve Media info."""
         result = await async_search_ps_store(title_id, region)
         self._media_info = result
         if self._media_info.cover_art:
-            await self.get_image(self.media_info.cover_art)
+            await self._get_image(self.media_info.cover_art)
         if self.callback:
             self.callback()  # pylint: disable=not-callable
 
-    async def get_image(self, url):
+    async def _get_image(self, url: str):
         """Get media image."""
         try:
             async with aiohttp.ClientSession() as session:
@@ -207,11 +217,13 @@ class RPDevice:
             del self._session
         self._session = None
 
-    async def standby(self, user="", profiles=None, profile_path=None) -> bool:
+    async def standby(self, user="", profiles: dict = None, profile_path="") -> bool:
         """Place Device in standby. Return True if successful.
 
         If there is a valid and connected session, no arguments need to be passed.
         Otherwise creates and connects a session first.
+
+        :param user: Name of user to use. Can be found with `get_users`
         """
         if not self.is_on:
             _LOGGER.error("Device is not on.")
@@ -240,7 +252,14 @@ class RPDevice:
         profile_path: str = None,
         key: str = "",
     ):
-        """Send Wakeup."""
+        """Send Wakeup.
+
+        Either one of key or user needs to be specified.
+        Key takes precedence over user.
+
+        :param user: Name of user to use. Can be found with `get_users`
+        :param key: Regist key from registering
+        """
         if not key:
             if not user:
                 raise ValueError("User must be specified")
