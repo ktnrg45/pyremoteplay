@@ -117,7 +117,7 @@ class ProtoHandler:
     def _ack(self, msg, channel: int):
         chunk_flag = 1
         msg = msg.SerializeToString()
-        log_bytes("Proto Send", msg)
+        # log_bytes("Proto Send", msg)
         self._stream.send_data(msg, chunk_flag, channel, proto=True)
 
     def _parse_streaminfo(self, msg, video_header: bytes):

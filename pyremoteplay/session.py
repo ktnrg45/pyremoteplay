@@ -41,7 +41,7 @@ from .keys import (
     SESSION_KEY_1_PS5,
 )
 from .stream import RPStream
-from .util import format_regist_key, log_bytes
+from .util import format_regist_key
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -137,7 +137,7 @@ def _get_rp_nonce(host_type: str, nonce: bytes) -> bytes:
         shift ^= key[index]
         rp_nonce[index] = shift % 256
     rp_nonce = bytes(rp_nonce)
-    log_bytes("RP Nonce", rp_nonce)
+    # log_bytes("RP Nonce", rp_nonce)
     return rp_nonce
 
 
@@ -156,14 +156,14 @@ def _get_aes_key(host_type: str, nonce: bytes, rp_key: bytes) -> bytes:
             shift ^= nonce[index]
         aes_key[index] = shift % 256
     aes_key = bytes(aes_key)
-    log_bytes("AES Key", aes_key)
+    # log_bytes("AES Key", aes_key)
     return aes_key
 
 
 def _gen_did() -> bytes:
     """Generate Device ID."""
     did = b"".join([DID_PREFIX, get_random_bytes(16), bytes(6)])
-    log_bytes("Device ID", did)
+    # log_bytes("Device ID", did)
     return did
 
 
@@ -364,7 +364,7 @@ class Session:
         nonce = response.headers.get("RP-Nonce")
         if nonce is not None:
             nonce = b64decode(nonce.encode())
-            log_bytes("Nonce", nonce)
+            # log_bytes("Nonce", nonce)
         return nonce
 
     def _get_session_headers(self, nonce: bytes) -> dict:
@@ -421,14 +421,14 @@ class Session:
             for char in session_id:
                 new_id.append(chr(char).encode())
             new_id = b"".join(new_id)
-            log_bytes("New Session ID", new_id)
+            # log_bytes("New Session ID", new_id)
             return new_id
 
-        log_bytes("Session RECV Data", data)
+        # log_bytes("Session RECV Data", data)
         payload = data[8:]
         if payload:
             payload = self._cipher.decrypt(payload)
-            log_bytes("Session PAYLOAD", payload)
+            # log_bytes("Session PAYLOAD", payload)
         try:
             msg_type = Session.MessageType(data[5])
             _LOGGER.debug("RECV %s", Session.MessageType(msg_type).name)
@@ -445,7 +445,7 @@ class Session:
                 _LOGGER.warning("RECV Session ID again")
                 return
             session_id = payload[2:]
-            log_bytes("Session ID", session_id)
+            # log_bytes("Session ID", session_id)
             try:
                 session_id.decode()
             except UnicodeDecodeError:
@@ -494,7 +494,7 @@ class Session:
     def send(self, data: bytes):
         """Send Data."""
         self._protocol.transport.write(data)
-        log_bytes("Session Send", data)
+        # log_bytes("Session Send", data)
 
     async def wakeup(self):
         """Wakeup Host."""

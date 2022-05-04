@@ -15,8 +15,9 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from .errors import CryptError
 from .keys import HMAC_KEY_PS4, HMAC_KEY_PS5
-from .util import from_b, log_bytes, to_b
 from .const import TYPE_PS5
+
+from .util import from_b, to_b
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -425,7 +426,7 @@ class StreamECDH:
     def get_handshake_key(handshake: bytes = None):
         """Return random key for ECDH."""
         handshake_key = handshake or get_random_bytes(16)
-        log_bytes("Handshake Key", handshake_key)
+        # log_bytes("Handshake Key", handshake_key)
         return handshake_key
 
     @staticmethod
@@ -441,7 +442,7 @@ class StreamECDH:
         """Return Private Key for ECDH."""
         private_numbers = local_ec.private_numbers().private_value
         private_key = to_b(private_numbers, 32)
-        log_bytes("Private Key", private_key)
+        # log_bytes("Private Key", private_key)
         return private_key
 
     @staticmethod
@@ -449,7 +450,7 @@ class StreamECDH:
         """Return Public Key for ECDH."""
         pub = local_ec.public_key()
         public_key = pub.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
-        log_bytes("Public Key", public_key)
+        # log_bytes("Public Key", public_key)
         return public_key
 
     @staticmethod
@@ -457,7 +458,7 @@ class StreamECDH:
         """Return authenticated signature of public key."""
         hmac = HMAC.new(key=handshake_key, msg=public_key, digestmod=SHA256)
         local_sig = hmac.digest()
-        log_bytes("Public Key Sig", local_sig)
+        # log_bytes("Public Key Sig", local_sig)
         return local_sig
 
     @staticmethod
@@ -468,7 +469,7 @@ class StreamECDH:
         )
         remote_key.public_numbers()
         secret = local_key.exchange(ec.ECDH(), remote_key)
-        log_bytes("Secret", secret)
+        # log_bytes("Secret", secret)
         return secret
 
     def __init__(self, handshake: bytes = None, private_key: bytes = None):
@@ -493,13 +494,13 @@ class StreamECDH:
         """Return True if Remote Signature is valid."""
         hmac = HMAC.new(key=self.handshake_key, msg=remote_key, digestmod=SHA256)
         _remote_sig = hmac.digest()
-        log_bytes("Public Key Remote", remote_key)
-        log_bytes("Public Key Sig", _remote_sig)
+        # log_bytes("Public Key Remote", remote_key)
+        # log_bytes("Public Key Sig", _remote_sig)
         if _remote_sig == remote_sig:
             _LOGGER.debug("Remote Signature Verified")
             return True
         _LOGGER.error("Remote Signature Invalid")
-        log_bytes("Expected Sig", remote_sig)
+        # log_bytes("Expected Sig", remote_sig)
         return False
 
     def set_secret(self, remote_key: bytes, remote_sig: bytes):

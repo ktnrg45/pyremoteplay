@@ -20,7 +20,7 @@ from .stream_packets import (
     Packet,
     get_launch_spec,
 )
-from .util import listener, log_bytes
+from .util import listener
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -200,7 +200,7 @@ class RPStream:
 
     def send(self, msg: bytes):
         """Send Message."""
-        log_bytes("Stream Send", msg)
+        # log_bytes("Stream Send", msg)
         self._protocol.sendto(msg, (self._host, self._port))
 
     def handle(self, msg):
@@ -224,7 +224,7 @@ class RPStream:
     def _handle_later(self, msg):
         packet = Packet.parse(msg)
         _LOGGER.debug(packet)
-        log_bytes("Stream RECV", msg)
+        # log_bytes("Stream RECV", msg)
         if self.cipher:
             gmac = packet.header.gmac
             _gmac = int.to_bytes(gmac, 4, "big")
@@ -298,7 +298,7 @@ class RPStream:
             ecdh_pub_key=ecdh_pub_key,
             ecdh_sig=ecdh_sig,
         )
-        log_bytes("Big Payload", data)
+        # log_bytes("Big Payload", data)
         self.send_data(data, chunk_flag, channel)
 
     def _format_launch_spec(self, handshake_key: bytes, format_type=None) -> bytes:
@@ -522,7 +522,7 @@ class StreamTest:
 
     def recv_mtu(self, msg: bytes):
         """Receive MTU."""
-        log_bytes("Mtu", msg)
+        # log_bytes("Mtu", msg)
         # Add UDP header length
         mtu = len(msg) + UDP_IPV4_SIZE
         self._last_mtu = mtu
