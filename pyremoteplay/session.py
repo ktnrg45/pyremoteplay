@@ -712,6 +712,8 @@ class Session:
     @property
     def stream_type(self) -> StreamType:
         """Return Stream Type."""
+        if self.type == TYPE_PS4:
+            return StreamType.H264
         return self._stream_type
 
     @property
