@@ -14,7 +14,6 @@ from pyremoteplay.receiver import AVReceiver
 from .const import (
     DEFAULT_POLL_COUNT,
     DDP_PORTS,
-    DEFAULT_STANDBY_DELAY,
     Quality,
     Resolution,
     StreamType,
@@ -41,6 +40,13 @@ class RPDevice:
 
     :param host: IP address of Remote Play Host
     """
+
+    @staticmethod
+    def get_all_users(profiles: dict = None, profile_path="") -> list:
+        """Return all users that have been authenticated with OAuth."""
+        if not profiles:
+            profiles = get_profiles(profile_path)
+        return list(profiles.keys())
 
     def __init__(self, host: str):
         self._host = host
@@ -130,11 +136,6 @@ class RPDevice:
                 and self.status.get("status-code") == STATUS_STANDBY
             ):
                 self._standby_start = time.time()
-                _LOGGER.debug(
-                    "Status changed from OK to Standby."
-                    "Disabling polls for %s seconds",
-                    DEFAULT_STANDBY_DELAY,
-                )
 
     async def _get_media_info(self, title_id: str, region="United States"):
         """Retrieve Media info."""
@@ -210,7 +211,7 @@ class RPDevice:
         return await self.session.start()
 
     def disconnect(self):
-        """Disconnect and stop session."""
+        """Disconnect and stop session. This also sets session to None."""
         if self.session:
             if self.connected:
                 self.session.stop()
@@ -271,8 +272,30 @@ class RPDevice:
         regist_key = format_regist_key(key)
         wakeup(self.host, regist_key, host_type=self.host_type)
 
-    def register(self, psn_id: str, pin: str, timeout: float = 2.0) -> dict:
-        """Register psn_id with device. Return register info."""
+    def register(
+        self,
+        user: str,
+        pin: str,
+        timeout: float = 2.0,
+        profiles: dict = None,
+        profile_path="",
+    ) -> dict:
+        """Register psn_id with device. Return register info.
+
+        :param user: User name. Can be found with `get_all_users`
+        :param pin: PIN for linking found on Remote Play Host
+        :param timeout: Timeout to wait for completion
+        """
+        if not profiles:
+            profiles = get_profiles(profile_path)
+        data = profiles.get(user)
+        if not data:
+            _LOGGER.error("User: %s not found", user)
+            return {}
+        psn_id = data.get("id")
+        if not psn_id:
+            _LOGGER.error("Error retrieving ID for user: %s", user)
+            return {}
         return register(self.host, psn_id, pin, timeout)
 
     @property
