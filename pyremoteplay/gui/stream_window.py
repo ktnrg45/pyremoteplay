@@ -85,7 +85,7 @@ class QtAudioThread(QtCore.QThread):
     def next_audio_frame(self, frame):
         """Handle next audio frame."""
         if self.audio_buffer:
-            buf = bytes(frame.planes[0])
+            buf = bytes(frame.planes[0])[: self.config["packet_size"]]
             self.audio_buffer.write(buf)
 
     def quit(self):
@@ -134,7 +134,7 @@ class AudioThread(QtCore.QThread):
 
     def next_audio_frame(self, frame):
         """Handle next audio frame."""
-        self.queue.append(bytes(frame.planes[0]))
+        self.queue.append(bytes(frame.planes[0])[: self.config["packet_size"]])
 
     # pylint: disable=unused-argument
     def callback(self, buf, frames, _time, status):

@@ -142,7 +142,7 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         # self.glViewport(0, 0, self.width(), self.height())
 
         for index, plane in enumerate(self.frame.planes):
-            self.update_texture(index, plane.to_bytes())
+            self.update_texture(index, bytes(plane))
 
         self.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
 
@@ -196,7 +196,7 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
 
 
 class VideoWidget(QtWidgets.QLabel):
-    """Video output widget using Pixmap."""
+    """Video output widget using Pixmap. Requires RGB frame."""
 
     frame_updated = Signal()
 
@@ -208,7 +208,7 @@ class VideoWidget(QtWidgets.QLabel):
     def next_video_frame(self, frame):
         """Update widget with next video frame."""
         image = QtGui.QImage(
-            bytearray(frame.planes[0]),
+            bytes(frame.planes[0]),
             frame.width,
             frame.height,
             frame.width * 3,

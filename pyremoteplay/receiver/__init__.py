@@ -6,6 +6,7 @@ from struct import unpack_from
 import warnings
 import logging
 from collections import deque
+from typing import Iterable
 
 from pyremoteplay.const import FFMPEG_PADDING
 
@@ -208,7 +209,13 @@ class AVReceiver(abc.ABC):
         frame = AVReceiver.audio_frame(buf, self.audio_decoder)
         if frame:
             # Need format to be s16. Format is float.
-            frame = self.audio_resampler.resample(frame)
+            frames = self.audio_resampler.resample(frame)
+            if not frames:
+                return None
+            if isinstance(frames, Iterable):
+                frame = frames[0]
+            else:
+                frame = frames
         return frame
 
     def handle_video_data(self, buf: bytes):
