@@ -13,7 +13,7 @@ def main():
     )
     app = QtWidgets.QApplication([])
     app.setApplicationName("PyRemotePlay")
-    widget = MainWindow(app)
+    widget = MainWindow()
     widget.resize(800, 600)
     widget.show()
     sys.exit(app.exec())

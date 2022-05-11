@@ -52,8 +52,8 @@ class JoystickWidget(QtWidgets.QFrame):
     def default_pos(self):
         """Move widget to default position."""
         if self.window.fullscreen:
-            width = self.window.main_window.screen.virtualSize().width()
-            height = self.window.main_window.screen.virtualSize().height()
+            width = self.screen().virtualSize().width()
+            height = self.screen().virtualSize().height()
         else:
             width = self.window.size().width()
             height = self.window.size().height()
@@ -81,8 +81,8 @@ class JoystickWidget(QtWidgets.QFrame):
             diff = global_pos - self._last_pos
             new_pos = self.mapFromGlobal(cur_pos + diff)
             if self.window.fullscreen:
-                max_x = self.window.main_window.screen.virtualSize().width()
-                max_y = self.window.main_window.screen.virtualSize().height()
+                max_x = self.screen().virtualSize().width()
+                max_y = self.screen().virtualSize().height()
             else:
                 max_x = self.window.size().width()
                 max_y = self.window.size().height()

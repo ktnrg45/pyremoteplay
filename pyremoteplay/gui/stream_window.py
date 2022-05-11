@@ -3,6 +3,7 @@
 import time
 import logging
 from collections import deque
+import asyncio
 
 import av
 import sounddevice
@@ -157,17 +158,16 @@ class RPWorker(QtCore.QObject):
 
     finished = QtCore.Signal()
     started = QtCore.Signal()
-    standby_done = QtCore.Signal()
+    standby_done = QtCore.Signal(str)
 
-    def __init__(self, main_window):
+    def __init__(self, loop: asyncio.AbstractEventLoop):
         super().__init__()
-        self.main_window = main_window
+        self.loop = loop
         self.window = None
         self.device = None
         self.session = None
         self.controller = None
         self.error = ""
-        self.standby_done.connect(self.main_window.standby_callback)
 
     def run(self, standby=False):
         """Run Session."""
@@ -183,7 +183,7 @@ class RPWorker(QtCore.QObject):
         # pylint: disable=protected-access
         if self.window:
             self.session.events.on("audio_config", self.window._init_audio)
-        self.session.loop = self.main_window.async_handler.loop
+        self.session.loop = self.loop
         self.session.loop.create_task(self.start(standby))
 
     def stop(self, standby=False):
@@ -193,7 +193,7 @@ class RPWorker(QtCore.QObject):
             _LOGGER.info("Stopping Session @ %s", self.session.host)
             self.session.stop()
         if standby:
-            self.standby_done.emit()
+            self.standby_done.emit(self.error)
         self.session = None
         self.device = None
         self.window = None
@@ -301,13 +301,9 @@ class StreamWindow(QtWidgets.QWidget):
         super().__init__()
         self.main_window = main_window
         self.hide()
-        _LOGGER.debug(
-            "Screen Size: %s x %s",
-            self.main_window.screen.virtualSize().width(),
-            self.main_window.screen.virtualSize().height(),
-        )
-        self.setMaximumWidth(self.main_window.screen.virtualSize().width())
-        self.setMaximumHeight(self.main_window.screen.virtualSize().height())
+
+        self.setMaximumWidth(self.screen().virtualSize().width())
+        self.setMaximumHeight(self.screen().virtualSize().height())
         self.setObjectName("stream-window")
         self.setStyleSheet("#stream-window{background-color: black}")
         self.video_output = None

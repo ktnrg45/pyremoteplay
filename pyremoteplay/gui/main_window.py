@@ -28,21 +28,25 @@ class AsyncHandler(QtCore.QObject):
 
     status_updated = QtCore.Signal()
     manual_search_done = QtCore.Signal(str, dict)
-    standby_done = QtCore.Signal(str)
 
-    def __init__(self, main_window):
+    def __init__(self):
         super().__init__()
         self.loop = None
         self.protocol = None
-        self.main_window = main_window
+        self.rp_worker = None
         self.__task = None
-        self.standby_done.connect(self.main_window.standby_callback)
+        self._thread = QtCore.QThread()
+        self.moveToThread(self._thread)
+        self._thread.started.connect(self.start)
+        self._thread.start()
 
     def start(self):
         """Start and run polling."""
         if sys.platform == "win32":
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         self.loop = asyncio.new_event_loop()
+        self.rp_worker = RPWorker(self.loop)
+        self.rp_worker.moveToThread(self._thread)
         self.__task = self.loop.create_task(self.run())
         self.loop.run_until_complete(self.__task)
         self.loop.run_forever()
@@ -67,6 +71,7 @@ class AsyncHandler(QtCore.QObject):
         while self.loop.is_running():
             if time.time() - start > 5:
                 break
+        self._thread.quit()
 
     async def run(self):
         """Start poll service."""
@@ -85,7 +90,7 @@ class AsyncHandler(QtCore.QObject):
     async def standby_host(self, device: RPDevice, user, profile):
         """Place Host in standby"""
         await device.standby(user, profile)
-        self.standby_done.emit(device.session.error)
+        self.async_handler.rp_worker.standby_done.emit(device.session.error)
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -93,27 +98,24 @@ class MainWindow(QtWidgets.QMainWindow):
 
     session_finished = QtCore.Signal()
 
-    def __init__(self, app):
+    def __init__(self):
         super().__init__()
-        self._app = app
-        self.screen = self._app.primaryScreen()
         self.idle = True
         self.toolbar = None
         self.device_grid = None
-        self.async_handler = AsyncHandler(self)
-        self.async_handler.status_updated.connect(self.event_status_updated)
-        self.async_thread = QtCore.QThread()
-        self.async_handler.moveToThread(self.async_thread)
-        self.async_thread.started.connect(self.async_handler.start)
-        self.async_thread.start()
+        self.async_handler = AsyncHandler()
         self._stream_window = None
+        self.rp_worker = self.async_handler.rp_worker
+
         self._init_window()
-        self._init_rp_worker()
+        self.async_handler.rp_worker.standby_done.connect(self.standby_callback)
+        self.async_handler.status_updated.connect(self.event_status_updated)
+        self.session_finished.connect(self.check_error_finish)
 
     def _init_window(self):
         self.setWindowTitle("PyRemotePlay")
         self.main_frame = QtWidgets.QWidget(self)
-        self.main_frame.layout = QtWidgets.QVBoxLayout(self.main_frame)
+        self.main_frame.setLayout(QtWidgets.QVBoxLayout())
         self.center_text = QtWidgets.QLabel(
             "Searching for devices...", alignment=Qt.AlignCenter
         )
@@ -126,8 +128,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.addToolBar(self.toolbar)
         self.setStatusBar(QtWidgets.QStatusBar())
         self.statusBar().showMessage(f"v{VERSION}")
-        self.main_frame.layout.addWidget(self.center_text)
-        self.main_frame.layout.addWidget(self.device_grid)
+        self.main_frame.layout().addWidget(self.center_text)
+        self.main_frame.layout().addWidget(self.device_grid)
         widget = QtWidgets.QStackedWidget()
         widget.addWidget(self.main_frame)
         widget.addWidget(self.options)
@@ -136,12 +138,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._set_style()
         self.toolbar.refresh.setChecked(True)
         self.device_grid.start_update()
-        self.session_finished.connect(self.check_error_finish)
         QtCore.QTimer.singleShot(7000, self._startup_check_grid)
-
-    def _init_rp_worker(self):
-        self.rp_worker = RPWorker(self)
-        self.rp_worker.moveToThread(self.async_thread)
 
     def _startup_check_grid(self):
         if not self.device_grid.widgets:
@@ -258,7 +255,7 @@ class MainWindow(QtWidgets.QMainWindow):
             input_map=self.controls.get_map(),
             input_options=self.controls.get_options(),
         )
-        self._app.setActiveWindow(self._stream_window)
+        QtWidgets.QApplication.instance().setActiveWindow(self._stream_window)
 
     def session_start(self):
         """Start Session."""
@@ -268,7 +265,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """Callback for stopping session."""
         _LOGGER.debug("Detected Session Stop")
         self.rp_worker.stop()
-        self._app.setActiveWindow(self)
+        QtWidgets.QApplication.instance().setActiveWindow(self)
         self.device_grid.session_stop()
         if self._stream_window:
             self._stream_window.hide()
@@ -299,5 +296,4 @@ class MainWindow(QtWidgets.QMainWindow):
             self._stream_window.close()
         self.hide()
         self.async_handler.shutdown()
-        self.async_thread.quit()
         event.accept()
