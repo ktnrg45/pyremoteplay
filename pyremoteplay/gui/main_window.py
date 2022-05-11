@@ -33,10 +33,11 @@ class AsyncHandler(QtCore.QObject):
         super().__init__()
         self.loop = None
         self.protocol = None
-        self.rp_worker = None
+        self.rp_worker = RPWorker()
         self.__task = None
         self._thread = QtCore.QThread()
         self.moveToThread(self._thread)
+        self.rp_worker.moveToThread(self._thread)
         self._thread.started.connect(self.start)
         self._thread.start()
 
@@ -45,8 +46,7 @@ class AsyncHandler(QtCore.QObject):
         if sys.platform == "win32":
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         self.loop = asyncio.new_event_loop()
-        self.rp_worker = RPWorker(self.loop)
-        self.rp_worker.moveToThread(self._thread)
+        self.rp_worker.setLoop(self.loop)
         self.__task = self.loop.create_task(self.run())
         self.loop.run_until_complete(self.__task)
         self.loop.run_forever()

@@ -160,54 +160,49 @@ class RPWorker(QtCore.QObject):
     started = QtCore.Signal()
     standby_done = QtCore.Signal(str)
 
-    def __init__(self, loop: asyncio.AbstractEventLoop):
+    def __init__(self):
         super().__init__()
-        self.loop = loop
-        self.window = None
+        self._loop = None
         self.device = None
-        self.session = None
-        self.controller = None
         self.error = ""
+
+    def setLoop(self, loop: asyncio.AbstractEventLoop):
+        """Set Loop."""
+        self._loop = loop
 
     def run(self, standby=False):
         """Run Session."""
-        if not self.session:
+        if not self.device:
+            _LOGGER.warning("No Device")
+            self.stop()
+            return
+        if not self.device.session:
             _LOGGER.warning("No Session")
             self.stop()
             return
-        if not self.window and not standby:
-            _LOGGER.warning("No Stream Window")
-            self.stop()
-            return
-        self.session.events.on("stop", self.stop)
-        # pylint: disable=protected-access
-        if self.window:
-            self.session.events.on("audio_config", self.window._init_audio)
-        self.session.loop = self.loop
-        self.session.loop.create_task(self.start(standby))
+
+        self.device.session.events.on("stop", self.stop)
+        self._loop.create_task(self.start(standby))
 
     def stop(self, standby=False):
         """Stop session."""
-        if self.session:
-            self.error = self.session.error
-            _LOGGER.info("Stopping Session @ %s", self.session.host)
-            self.session.stop()
-        if standby:
-            self.standby_done.emit(self.error)
-        self.session = None
+        if self.device and self.device.session:
+            self.error = self.device.session.error
+            _LOGGER.info("Stopping Session @ %s", self.device.host)
+            self.device.disconnect()
+            if standby:
+                self.standby_done.emit(self.error)
         self.device = None
-        self.window = None
         self.finished.emit()
 
     def setup(
         self,
-        window,
         device: RPDevice,
         user: str,
         options: dict,
+        receiver: QtReceiver,
     ):
         """Setup session."""
-        self.window = window
         self.device = device
         codec = options.get("codec")
         if not options.get("use_hw"):
@@ -215,22 +210,22 @@ class RPWorker(QtCore.QObject):
         hdr = options.get("hdr")
         if hdr and codec == "hevc":
             codec = "hevc_hdr"
-        self.session = self.device.create_session(
+
+        self.device.create_session(
             user,
             resolution=options.get("resolution"),
             fps=options.get("fps"),
-            receiver=QtReceiver(),
+            receiver=receiver,
             codec=codec,
             quality=options.get("quality"),
+            loop=self._loop,
         )
 
     async def start(self, standby=False):
         """Start Session."""
         _LOGGER.debug("Session Start")
-        if self.window:
-            self.session.receiver.rgb = False if self.window.use_opengl else True
         if standby:
-            self.session.receiver = None
+            self.device.session.receiver = None
         started = await self.device.connect()
 
         if not started:
@@ -243,21 +238,12 @@ class RPWorker(QtCore.QObject):
             _LOGGER.info("Standby Success: %s", result)
             self.stop(standby=True)
             return
-        self.controller = self.device.controller
-        self.controller.start()
-        self.session.receiver.set_signals(
-            self.window.video_frame, self.window.audio_frame
-        )
-        self.window.audio_frame.connect(
-            self.window.audio_thread.next_audio_frame, Qt.QueuedConnection
-        )
-        self.window.video_frame.connect(
-            self.window.video_output.next_video_frame, Qt.QueuedConnection
-        )
+
+        self.device.controller.start()
         self.started.emit()
 
-        if self.session.stop_event:
-            await self.session.stop_event.wait()
+        if self.device.session.stop_event:
+            await self.device.session.stop_event.wait()
             _LOGGER.info("Session Finished")
 
     def stick_state(
@@ -265,7 +251,7 @@ class RPWorker(QtCore.QObject):
     ):
         """Send stick state"""
         if point is not None:
-            self.controller.stick(stick, point=point)
+            self.device.controller.stick(stick, point=point)
             return
 
         if direction in ("LEFT", "RIGHT"):
@@ -274,11 +260,11 @@ class RPWorker(QtCore.QObject):
             axis = "Y"
         if direction in ("UP", "LEFT") and value != 0.0:
             value *= -1.0
-        self.controller.stick(stick, axis, value)
+        self.device.controller.stick(stick, axis, value)
 
     def send_button(self, button, action):
         """Send button."""
-        self.controller.button(button, action)
+        self.device.controller.button(button, action)
 
 
 class StreamWindow(QtWidgets.QWidget):
@@ -294,6 +280,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.fullscreen = False
         self.use_opengl = False
         self.show_fps = False
+        self.video_output = None
         self.audio_device = None
         self.audio_thread = None
         self.fps_sample = 0
@@ -306,8 +293,6 @@ class StreamWindow(QtWidgets.QWidget):
         self.setMaximumHeight(self.screen().virtualSize().height())
         self.setObjectName("stream-window")
         self.setStyleSheet("#stream-window{background-color: black}")
-        self.video_output = None
-        self.opengl = False
         self.center_text = FadeOutLabel(
             "Starting Stream...", self, alignment=Qt.AlignCenter
         )
@@ -327,6 +312,19 @@ class StreamWindow(QtWidgets.QWidget):
         super().resizeEvent(event)
         self.center_text.setFixedSize(self.size().width(), 100)
 
+    def setup_receiver(self) -> QtReceiver:
+        """Setup Receiver."""
+        receiver = QtReceiver()
+        receiver.rgb = not self.use_opengl
+        receiver.set_signals(self.video_frame, self.audio_frame)
+        self.audio_frame.connect(
+            self.audio_thread.next_audio_frame, Qt.QueuedConnection
+        )
+        self.video_frame.connect(
+            self.video_output.next_video_frame, Qt.QueuedConnection
+        )
+        return receiver
+
     def start(
         self,
         device: RPDevice,
@@ -337,6 +335,7 @@ class StreamWindow(QtWidgets.QWidget):
         input_options: dict = None,
     ):
         """Start Session."""
+        self.setWindowTitle(f"Session {user} @ {device.host}")
         _LOGGER.debug(audio_device)
         if options["use_qt_audio"]:
             self.audio_thread = QtAudioThread()
@@ -351,15 +350,17 @@ class StreamWindow(QtWidgets.QWidget):
         self.use_opengl = options.get("use_opengl")
         self.show_fps = options.get("show_fps")
         self.audio_device = audio_device
-        self.setWindowTitle(f"Session {user} @ {device.host}")
-        self.rp_worker.setup(self, device, user, options)
-        resolution = Resolution.preset(self.rp_worker.session.resolution)
-        self.resize(
+        resolution = Resolution.preset(options["resolution"])
+        output = YUVGLWidget if self.use_opengl else VideoWidget
+        self.video_output = output(
             resolution["width"],
             resolution["height"],
         )
-        output = YUVGLWidget if self.use_opengl else VideoWidget
-        self.video_output = output(
+
+        receiver = self.setup_receiver()
+        self.rp_worker.setup(device, user, options, receiver)
+        device.session.events.on("audio_config", self._init_audio)
+        self.resize(
             resolution["width"],
             resolution["height"],
         )
@@ -406,7 +407,7 @@ class StreamWindow(QtWidgets.QWidget):
 
     def _init_audio(self):
         self.audio_thread.start(
-            self.audio_device, self.rp_worker.session.receiver.audio_config
+            self.audio_device, self.rp_worker.device.session.receiver.audio_config
         )
 
     def _init_fps(self):
@@ -498,8 +499,9 @@ class StreamWindow(QtWidgets.QWidget):
 
     def send_standby(self):
         """Place host in standby."""
-        if self.rp_worker.session is not None:
-            self.rp_worker.session.standby()
+        if self.rp_worker.device:
+            if self.rp_worker.device.session:
+                self.rp_worker.device.session.standby()
 
     def closeEvent(self, event):
         """Close Event."""
