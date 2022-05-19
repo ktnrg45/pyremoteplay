@@ -2,12 +2,10 @@
 """Stream Window for GUI."""
 import time
 import logging
-from collections import deque
 import asyncio
 
 import av
-import sounddevice
-from PySide6 import QtCore, QtMultimedia, QtWidgets
+from PySide6 import QtCore, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from PySide6.QtMultimedia import QAudioDevice
 from pyremoteplay.receiver import AVReceiver
@@ -19,6 +17,7 @@ from .controls import ControlsWidget
 from .util import label, message
 from .video import VideoWidget, YUVGLWidget
 from .widgets import FadeOutLabel
+from .audio import QtAudioWorker, SoundDeviceAudioWorker
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,113 +43,6 @@ class QtReceiver(AVReceiver):
         """Set signals."""
         self.video_signal = video_signal
         self.audio_signal = audio_signal
-
-
-class QtAudioThread(QtCore.QThread):
-    """Thread for audio using QT."""
-
-    def __init__(self):
-        super().__init__()
-        self.audio_output = None
-        self.audio_buffer = None
-        self.device = None
-        self.config = {}
-        self.started.connect(self._init_audio)
-
-    def start(self, device, config):
-        """Start thread."""
-        self.device = device
-        self.config = config
-        super().start()
-
-    def _init_audio(self):
-        config = self.config
-        if not config:
-            return
-        if self.audio_buffer or self.audio_output:
-            return
-        audio_format = QtMultimedia.QAudioFormat()
-        audio_format.setChannelCount(config["channels"])
-        audio_format.setSampleRate(config["rate"])
-        audio_format.setSampleFormat(QtMultimedia.QAudioFormat.Int16)
-
-        bytes_per_second = audio_format.bytesForDuration(1000 * 1000)
-        interval = int(1 / (bytes_per_second / config["packet_size"]) * 1000)
-        _LOGGER.debug(interval)
-
-        self.audio_output = QtMultimedia.QAudioSink(self.device, format=audio_format)
-        self.audio_output.setBufferSize(config["packet_size"] * 4)
-        self.audio_buffer = self.audio_output.start()
-        _LOGGER.debug("Audio Thread init")
-
-    def next_audio_frame(self, frame):
-        """Handle next audio frame."""
-        if self.audio_buffer:
-            buf = bytes(frame.planes[0])[: self.config["packet_size"]]
-            self.audio_buffer.write(buf)
-
-    def quit(self):
-        """Quit Thread."""
-        self.audio_buffer = None
-        if self.audio_output:
-            self.audio_output.stop()
-        super().quit()
-
-
-class AudioThread(QtCore.QThread):
-    """Thread for audio using sounddevice."""
-
-    def __init__(self):
-        super().__init__()
-        self.audio_output = None
-        self.queue = deque(maxlen=5)
-        self.device = None
-        self.config = {}
-        self.__blank_frame = b""
-        self.started.connect(self._init_audio)
-
-    def start(self, device, config):
-        """Start thread."""
-        self.device = device.get("index")
-        self.config = config
-        super().start()
-
-    def _init_audio(self):
-        config = self.config
-        if not config:
-            return
-        self.audio_output = sounddevice.RawOutputStream(
-            samplerate=config["rate"],
-            blocksize=config["frame_size"],
-            channels=config["channels"],
-            dtype=f"int{config['bits']}",
-            latency="low",
-            dither_off=True,
-            callback=self.callback,
-            device=self.device,
-        )
-        self.__blank_frame = bytes(config["packet_size"])
-        self.audio_output.start()
-        _LOGGER.debug("Audio Thread init")
-
-    def next_audio_frame(self, frame):
-        """Handle next audio frame."""
-        self.queue.append(bytes(frame.planes[0])[: self.config["packet_size"]])
-
-    # pylint: disable=unused-argument
-    def callback(self, buf, frames, _time, status):
-        """Callback to write new frames."""
-        try:
-            data = self.queue.popleft()
-        except IndexError:
-            data = self.__blank_frame
-        buf[:] = data
-
-    def quit(self):
-        """Quit Thread."""
-        if self.audio_output:
-            self.audio_output.stop()
-        super().quit()
 
 
 class RPWorker(QtCore.QObject):
@@ -338,9 +230,9 @@ class StreamWindow(QtWidgets.QWidget):
         self.setWindowTitle(f"Session {user} @ {device.host}")
         _LOGGER.debug(audio_device)
         if options["use_qt_audio"]:
-            self.audio_thread = QtAudioThread()
+            self.audio_thread = QtAudioWorker()
         else:
-            self.audio_thread = AudioThread()
+            self.audio_thread = SoundDeviceAudioWorker()
         self.input_options = input_options
         self.mapping = (
             ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
