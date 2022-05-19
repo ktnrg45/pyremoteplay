@@ -296,8 +296,8 @@ class StreamWindow(QtWidgets.QWidget):
         self.center_text = FadeOutLabel(
             "Starting Stream...", self, alignment=Qt.AlignCenter
         )
-        self.layout = QtWidgets.QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(QtWidgets.QVBoxLayout())
+        self.layout().setContentsMargins(0, 0, 0, 0)
         self.joystick = JoystickWidget(self, left=True, right=True)
         self.joystick.hide()
         self.input_options = None
@@ -365,7 +365,7 @@ class StreamWindow(QtWidgets.QWidget):
             resolution["height"],
         )
         self.video_output.hide()
-        self.layout.addWidget(self.video_output)
+        self.layout().addWidget(self.video_output)
         self.joystick.setParent(self.video_output)
         self.fps_label.setParent(self.video_output)
 
