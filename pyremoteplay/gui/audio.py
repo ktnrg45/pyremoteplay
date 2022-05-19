@@ -40,6 +40,7 @@ class AbstractAudioWorker(QtCore.QObject):
     def _init_audio(self):
         raise NotImplementedError
 
+    @QtCore.Slot(av.AudioFrame)
     def next_audio_frame(self, frame: av.AudioFrame):
         """Handle next audio frame."""
         buf = bytes(frame.planes[0])[: self._config["packet_size"]]

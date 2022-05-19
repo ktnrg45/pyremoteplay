@@ -2,6 +2,7 @@
 """Video Output for Stream."""
 from textwrap import dedent
 
+import av
 from OpenGL import GL
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Signal
@@ -90,13 +91,11 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         QSurfaceFormat.setDefaultFormat(surface_format)
         return surface_format
 
-    def __init__(self, width, height, surface_format=None, parent=None):
+    def __init__(self, width, height, parent=None):
         QOpenGLWidget.__init__(self, parent)
         QOpenGLFunctions.__init__(self)
-        if not surface_format:
-            surface_format = YUVGLWidget.surface_format()
+        surface_format = YUVGLWidget.surface_format()
         self.setFormat(surface_format)
-        self._surface_format = surface_format
         self.textures = []
         self.frame_width = width
         self.frame_height = height
@@ -188,7 +187,8 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
             VoidPtr(pixels),
         )
 
-    def next_video_frame(self, frame):
+    @QtCore.Slot(av.VideoFrame)
+    def next_video_frame(self, frame: av.VideoFrame):
         """Update widget with next video frame."""
         self.frame = frame
         self.update()
@@ -205,7 +205,8 @@ class VideoWidget(QtWidgets.QLabel):
         self.frame_width = width
         self.frame_height = height
 
-    def next_video_frame(self, frame):
+    @QtCore.Slot(av.VideoFrame)
+    def next_video_frame(self, frame: av.VideoFrame):
         """Update widget with next video frame."""
         image = QtGui.QImage(
             bytes(frame.planes[0]),

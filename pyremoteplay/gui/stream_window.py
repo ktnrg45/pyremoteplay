@@ -174,7 +174,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.show_fps = False
         self.video_output = None
         self.audio_device = None
-        self.audio_thread = None
+        self.audio_output = None
         self.fps_sample = 0
         self.last_time = time.time()
         super().__init__()
@@ -210,7 +210,7 @@ class StreamWindow(QtWidgets.QWidget):
         receiver.rgb = not self.use_opengl
         receiver.set_signals(self.video_frame, self.audio_frame)
         self.audio_frame.connect(
-            self.audio_thread.next_audio_frame, Qt.QueuedConnection
+            self.audio_output.next_audio_frame, Qt.QueuedConnection
         )
         self.video_frame.connect(
             self.video_output.next_video_frame, Qt.QueuedConnection
@@ -230,9 +230,9 @@ class StreamWindow(QtWidgets.QWidget):
         self.setWindowTitle(f"Session {user} @ {device.host}")
         _LOGGER.debug(audio_device)
         if options["use_qt_audio"]:
-            self.audio_thread = QtAudioWorker()
+            self.audio_output = QtAudioWorker()
         else:
-            self.audio_thread = SoundDeviceAudioWorker()
+            self.audio_output = SoundDeviceAudioWorker()
         self.input_options = input_options
         self.mapping = (
             ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
@@ -298,7 +298,7 @@ class StreamWindow(QtWidgets.QWidget):
         self.setFixedSize(self.width(), self.height())
 
     def _init_audio(self):
-        self.audio_thread.start(
+        self.audio_output.start(
             self.audio_device, self.rp_worker.device.session.receiver.audio_config
         )
 
@@ -408,6 +408,6 @@ class StreamWindow(QtWidgets.QWidget):
         if self.video_output:
             self.video_output.deleteLater()
             self.video_output = None
-        if self.audio_thread:
-            self.audio_thread.quit()
+        if self.audio_output:
+            self.audio_output.quit()
         self.main_window.session_stop()
