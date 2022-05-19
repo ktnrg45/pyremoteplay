@@ -1,96 +1,21 @@
 # pylint: disable=c-extension-no-member,invalid-name
 """Main Window for pyremoteplay GUI."""
-import asyncio
 import logging
-import sys
-import time
 
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 
 from pyremoteplay.__version__ import VERSION
-from pyremoteplay.device import RPDevice
-from pyremoteplay.protocol import async_create_ddp_endpoint
-from pyremoteplay.ddp import async_get_status
 
 from .device_grid import DeviceGridWidget
 from .options import OptionsWidget
 from .controls import ControlsWidget
-from .stream_window import RPWorker, StreamWindow
+from .stream_window import StreamWindow
 from .toolbar import ToolbarWidget
 from .util import message
+from .workers import AsyncHandler
 
 _LOGGER = logging.getLogger(__name__)
-
-
-class AsyncHandler(QtCore.QObject):
-    """Handler for async methods."""
-
-    status_updated = QtCore.Signal()
-    manual_search_done = QtCore.Signal(str, dict)
-
-    def __init__(self):
-        super().__init__()
-        self.loop = None
-        self.protocol = None
-        self.rp_worker = RPWorker()
-        self.__task = None
-        self._thread = QtCore.QThread()
-        self.moveToThread(self._thread)
-        self.rp_worker.moveToThread(self._thread)
-        self._thread.started.connect(self.start)
-        self._thread.start()
-
-    def start(self):
-        """Start and run polling."""
-        if sys.platform == "win32":
-            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        self.loop = asyncio.new_event_loop()
-        self.rp_worker.setLoop(self.loop)
-        self.__task = self.loop.create_task(self.run())
-        self.loop.run_until_complete(self.__task)
-        self.loop.run_forever()
-
-    def poll(self):
-        """Start polling."""
-        self.protocol.start()
-
-    def stop_poll(self):
-        """Stop Polling."""
-        self.protocol.stop()
-
-    def shutdown(self):
-        """Shutdown handler."""
-        self.stop_poll()
-        self.protocol.shutdown()
-        if self.__task is not None:
-            self.__task.cancel()
-        _LOGGER.debug("Shutting down async event loop")
-        self.loop.stop()
-        start = time.time()
-        while self.loop.is_running():
-            if time.time() - start > 5:
-                break
-        self._thread.quit()
-
-    async def run(self):
-        """Start poll service."""
-        self.protocol = await async_create_ddp_endpoint(self.status_updated.emit)
-        await self.protocol.run()
-
-    async def manual_search(self, host: str):
-        """Search for device."""
-        status = await async_get_status(host)
-        self.manual_search_done.emit(host, status)
-
-    def run_coro(self, coro, *args, **kwargs):
-        """Run coroutine."""
-        asyncio.run_coroutine_threadsafe(coro(*args, **kwargs), self.loop)
-
-    async def standby_host(self, device: RPDevice, user, profile):
-        """Place Host in standby"""
-        await device.standby(user, profile)
-        self.async_handler.rp_worker.standby_done.emit(device.session.error)
 
 
 class MainWindow(QtWidgets.QMainWindow):

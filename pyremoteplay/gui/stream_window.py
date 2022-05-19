@@ -1,8 +1,9 @@
 # pylint: disable=c-extension-no-member,invalid-name
 """Stream Window for GUI."""
+from __future__ import annotations
 import time
 import logging
-import asyncio
+from typing import TYPE_CHECKING
 
 import av
 from PySide6 import QtCore, QtWidgets
@@ -18,6 +19,9 @@ from .util import label, message
 from .video import VideoWidget, YUVGLWidget
 from .widgets import FadeOutLabel
 from .audio import QtAudioWorker, SoundDeviceAudioWorker
+
+if TYPE_CHECKING:
+    from .main_window import MainWindow
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,120 +49,6 @@ class QtReceiver(AVReceiver):
         self.audio_signal = audio_signal
 
 
-class RPWorker(QtCore.QObject):
-    """Worker to interface with RP Session."""
-
-    finished = QtCore.Signal()
-    started = QtCore.Signal()
-    standby_done = QtCore.Signal(str)
-
-    def __init__(self):
-        super().__init__()
-        self._loop = None
-        self.device = None
-        self.error = ""
-
-    def setLoop(self, loop: asyncio.AbstractEventLoop):
-        """Set Loop."""
-        self._loop = loop
-
-    def run(self, standby=False):
-        """Run Session."""
-        if not self.device:
-            _LOGGER.warning("No Device")
-            self.stop()
-            return
-        if not self.device.session:
-            _LOGGER.warning("No Session")
-            self.stop()
-            return
-
-        self.device.session.events.on("stop", self.stop)
-        self._loop.create_task(self.start(standby))
-
-    def stop(self, standby=False):
-        """Stop session."""
-        if self.device and self.device.session:
-            self.error = self.device.session.error
-            _LOGGER.info("Stopping Session @ %s", self.device.host)
-            self.device.disconnect()
-            if standby:
-                self.standby_done.emit(self.error)
-        self.device = None
-        self.finished.emit()
-
-    def setup(
-        self,
-        device: RPDevice,
-        user: str,
-        options: dict,
-        receiver: QtReceiver,
-    ):
-        """Setup session."""
-        self.device = device
-        codec = options.get("codec")
-        if not options.get("use_hw"):
-            codec = codec.split("_")[0]
-        hdr = options.get("hdr")
-        if hdr and codec == "hevc":
-            codec = "hevc_hdr"
-
-        self.device.create_session(
-            user,
-            resolution=options.get("resolution"),
-            fps=options.get("fps"),
-            receiver=receiver,
-            codec=codec,
-            quality=options.get("quality"),
-            loop=self._loop,
-        )
-
-    async def start(self, standby=False):
-        """Start Session."""
-        _LOGGER.debug("Session Start")
-        if standby:
-            self.device.session.receiver = None
-        started = await self.device.connect()
-
-        if not started:
-            _LOGGER.warning("Session Failed to Start")
-            self.stop()
-            return
-
-        if standby:
-            result = await self.device.standby()
-            _LOGGER.info("Standby Success: %s", result)
-            self.stop(standby=True)
-            return
-
-        self.device.controller.start()
-        self.started.emit()
-
-        if self.device.session.stop_event:
-            await self.device.session.stop_event.wait()
-            _LOGGER.info("Session Finished")
-
-    def stick_state(
-        self, stick: str, direction: str = None, value: float = None, point=None
-    ):
-        """Send stick state"""
-        if point is not None:
-            self.device.controller.stick(stick, point=point)
-            return
-
-        if direction in ("LEFT", "RIGHT"):
-            axis = "X"
-        else:
-            axis = "Y"
-        if direction in ("UP", "LEFT") and value != 0.0:
-            value *= -1.0
-        self.device.controller.stick(stick, axis, value)
-
-    def send_button(self, button, action):
-        """Send button."""
-        self.device.controller.button(button, action)
-
-
 class StreamWindow(QtWidgets.QWidget):
     """Window for stream."""
 
@@ -166,7 +56,7 @@ class StreamWindow(QtWidgets.QWidget):
     video_frame = QtCore.Signal(object)
     audio_frame = QtCore.Signal(object)
 
-    def __init__(self, main_window):
+    def __init__(self, main_window: MainWindow):
         self.mapping = None
         self.fps = None
         self.fullscreen = False
