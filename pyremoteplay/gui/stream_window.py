@@ -53,6 +53,7 @@ class StreamWindow(QtWidgets.QWidget):
     """Window for stream."""
 
     started = QtCore.Signal()
+    stopped = QtCore.Signal()
     video_frame = QtCore.Signal(object)
     audio_frame = QtCore.Signal(object)
 
@@ -300,4 +301,4 @@ class StreamWindow(QtWidgets.QWidget):
             self.video_output = None
         if self.audio_output:
             self.audio_output.quit()
-        self.main_window.session_stop()
+        self.stopped.emit()

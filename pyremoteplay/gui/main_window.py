@@ -21,8 +21,6 @@ _LOGGER = logging.getLogger(__name__)
 class MainWindow(QtWidgets.QMainWindow):
     """Main Window."""
 
-    session_finished = QtCore.Signal()
-
     def __init__(self):
         super().__init__()
         self.idle = True
@@ -35,7 +33,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._init_window()
         self.async_handler.rp_worker.standby_done.connect(self.standby_callback)
         self.async_handler.status_updated.connect(self.event_status_updated)
-        self.session_finished.connect(self.check_error_finish)
+        self.toolbar.buttonClicked.connect(self._toolbar_button_clicked)
 
     def _init_window(self):
         self.setWindowTitle("PyRemotePlay")
@@ -61,9 +59,21 @@ class MainWindow(QtWidgets.QMainWindow):
         widget.addWidget(self.controls)
         self.setCentralWidget(widget)
         self._set_style()
-        self.toolbar.refresh.setChecked(True)
         self.device_grid.start_update()
         QtCore.QTimer.singleShot(7000, self._startup_check_grid)
+
+    def _toolbar_button_clicked(self, button):
+        if button == self.toolbar.home:
+            self.centralWidget().setCurrentWidget(self.main_frame)
+        elif button == self.toolbar.options:
+            self.centralWidget().setCurrentWidget(self.options)
+        elif button == self.toolbar.controls:
+            self.centralWidget().setCurrentWidget(self.controls)
+        elif button == self.toolbar.refresh:
+            if button.isChecked():
+                self.device_grid.start_update()
+            else:
+                self.device_grid.stop_update()
 
     def _startup_check_grid(self):
         if not self.device_grid.widgets:
@@ -172,6 +182,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.device_grid.stop_update()
         audio_device = self.options.get_audio_device()
         self._stream_window = StreamWindow(self)
+        self._stream_window.stopped.connect(self.session_stop)
         self._stream_window.start(
             device,
             user,
@@ -195,7 +206,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._stream_window:
             self._stream_window.hide()
             self._stream_window = None
-            self.session_finished.emit()
+        self.check_error_finish()
 
     def add_devices(self, devices):
         """Add devices to grid."""
