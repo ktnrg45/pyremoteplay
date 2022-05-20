@@ -93,9 +93,8 @@ class ControlsWidget(QtWidgets.QWidget):
         "Key_0": "TOUCHPAD",
     }
 
-    def __init__(self, main_window):
-        super().__init__(main_window)
-        self.main_window = main_window
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.mapping = None
         self.options = {}
         self.selected_map = ""

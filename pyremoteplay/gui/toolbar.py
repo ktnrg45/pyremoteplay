@@ -10,18 +10,18 @@ class ToolbarWidget(QtWidgets.QToolBar):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.refresh = QtWidgets.QPushButton("Auto Refresh")
-        self.controls = QtWidgets.QPushButton("Controls")
-        self.options = QtWidgets.QPushButton("Options")
-        self.home = QtWidgets.QPushButton("Home")
+        self._refresh = QtWidgets.QPushButton("Auto Refresh")
+        self._controls = QtWidgets.QPushButton("Controls")
+        self._options = QtWidgets.QPushButton("Options")
+        self._home = QtWidgets.QPushButton("Home")
 
         spacer = QtWidgets.QWidget()
         spacer.setSizePolicy(
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred
         )
-        self.widgets = [self.refresh, spacer, self.home, self.controls, self.options]
+        widgets = [self._refresh, spacer, self._home, self._controls, self._options]
 
-        for widget in self.widgets:
+        for widget in widgets:
             self.addWidget(widget)
             if not isinstance(widget, QtWidgets.QPushButton):
                 continue
@@ -29,13 +29,30 @@ class ToolbarWidget(QtWidgets.QToolBar):
             widget.setCheckable(True)
             widget.clicked.connect(self._button_click)
         self._button_group = QtWidgets.QButtonGroup()
-        self._button_group.addButton(self.controls)
-        self._button_group.addButton(self.options)
-        self._button_group.addButton(self.home)
+        self._button_group.addButton(self._controls)
+        self._button_group.addButton(self._options)
+        self._button_group.addButton(self._home)
         self._button_group.setExclusive(True)
-        self.home.setChecked(True)
-        self.refresh.setChecked(True)
+        self._home.setChecked(True)
+        self._refresh.setChecked(True)
 
+    @QtCore.Slot()
     def _button_click(self):
         button = self.sender()
         self.buttonClicked.emit(button)
+
+    def home(self) -> QtWidgets.QPushButton:
+        """Return Home Button."""
+        return self._home
+
+    def refresh(self) -> QtWidgets.QPushButton:
+        """Return Refresh Button."""
+        return self._refresh
+
+    def controls(self) -> QtWidgets.QPushButton:
+        """Return Controls Button."""
+        return self._controls
+
+    def options(self) -> QtWidgets.QPushButton:
+        """Return Options Button."""
+        return self._options

@@ -1,10 +1,11 @@
 # pylint: disable=c-extension-no-member,invalid-name
 """Device Grid Widget."""
+from __future__ import annotations
 import logging
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from pyremoteplay.const import DEFAULT_STANDBY_DELAY
-from pyremoteplay.device import STATUS_OK
+from pyremoteplay.device import STATUS_OK, RPDevice
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -17,37 +18,30 @@ class DeviceButton(QtWidgets.QPushButton):
     COLOR_LIGHT = "#FFFFFF"
     COLOR_BG = "#E9ECEF"
 
-    def __init__(self, main_window, device):
+    power_toggled = QtCore.Signal(RPDevice)
+    connect_requested = QtCore.Signal(RPDevice)
+
+    def __init__(self, device: RPDevice):
         super().__init__()
         self.info = ""
-        self.main_window = main_window
         self.device = device
         self.status = device.status
-        self.info_show = False
-        self.menu = QtWidgets.QMenu(self)
-        self.clicked.connect(self._on_click)
+        self._info_show = False
         self.text_color = self.COLOR_DARK
         self.bg_color = self.COLOR_BG
         self.border_color = ("#A3A3A3", "#A3A3A3")
 
-        self._init_actions()
         self._get_info()
         self._get_text()
         self._set_image()
         self._set_style()
 
+        self.clicked.connect(self._on_click)
+
     def _on_click(self):
         self.setEnabled(False)
         self.setToolTip("Device unavailable.\nWaiting for session to close...")
-        self.main_window.connect_host(self.device)
-
-    def _init_actions(self):
-        self.action_info = QtGui.QAction(self)
-        self.action_info.triggered.connect(self._toggle_info)
-        self.menu.addAction(self.action_info)
-        self.action_power = QtGui.QAction(self)
-        self.menu.addAction(self.action_power)
-        self.action_power.triggered.connect(self._toggle_power)
+        self.connect_requested.emit(self.device)
 
     def _set_style(self):
         if self.device.is_on:
@@ -128,7 +122,7 @@ class DeviceButton(QtWidgets.QPushButton):
         if not app:
             app = "Idle" if self.device.is_on else "Standby"
         self.main_text = f"{self.device.host_name}\n" f"{device_type}\n\n" f"{app}"
-        if not self.info_show:
+        if not self._info_show:
             self.setText(self.main_text)
 
     def _get_info(self):
@@ -142,15 +136,12 @@ class DeviceButton(QtWidgets.QPushButton):
         )
 
     def _toggle_info(self):
-        text = self.info if not self.info_show else self.main_text
+        text = self.info if not self._info_show else self.main_text
         self.setText(text)
-        self.info_show = not self.info_show
+        self._info_show = not self._info_show
 
-    def _toggle_power(self):
-        if self.device.is_on:
-            self.main_window.standby_host(self.device)
-        else:
-            self.main_window.wakeup_host(self.device)
+    def _power_toggle(self):
+        self.power_toggled.emit(self.device)
 
     def _enable_toggle_power(self):
         self.action_power.setDisabled(False)
@@ -177,13 +168,15 @@ class DeviceButton(QtWidgets.QPushButton):
 
     def contextMenuEvent(self, event):  # pylint: disable=unused-argument
         """Context Menu Event."""
-        text = "View Info" if not self.info_show else "Hide Info"
-        self.action_info.setText(text)
-        if self.device.is_on:
-            self.action_power.setText("Standby")
-        else:
-            self.action_power.setText("Wakeup")
-        self.menu.popup(QtGui.QCursor.pos())
+        info_text = "View Info" if not self._info_show else "Hide Info"
+        power_text = "Standby" if self.device.is_on else "Wakeup"
+        menu = QtWidgets.QMenu(self)
+        action_info = QtGui.QAction(info_text, menu)
+        action_power = QtGui.QAction(power_text, menu)
+        action_info.triggered.connect(self._toggle_info)
+        action_power.triggered.connect(self._power_toggle)
+        menu.addActions([action_info, action_power])
+        menu.popup(QtGui.QCursor.pos())
 
 
 class DeviceGridWidget(QtWidgets.QWidget):
@@ -191,26 +184,38 @@ class DeviceGridWidget(QtWidgets.QWidget):
 
     MAX_COLS = 3
 
-    def __init__(self, parent):
-        super().__init__(parent)
+    power_toggled = QtCore.Signal(RPDevice)
+    connect_requested = QtCore.Signal(RPDevice)
+    devices_available = QtCore.Signal()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.setStyleSheet("QPushButton {padding: 50px 25px;}")
         self.setLayout(QtWidgets.QGridLayout())
         self.layout().setColumnMinimumWidth(0, 100)
-        self.widgets = set()
+        self._buttons = set()
+
+    @QtCore.Slot(RPDevice)
+    def _power_toggle(self, device: RPDevice):
+        self.power_toggled.emit(device)
+
+    @QtCore.Slot(RPDevice)
+    def _connect_request(self, device: RPDevice):
+        self.connect_requested.emit(device)
 
     def add(self, button, row, col):
         """Add button to grid."""
         self.layout().addWidget(button, row, col, Qt.AlignCenter)
-        self.widgets.add(button)
+        self._buttons.add(button)
 
     def create_grid(self, devices: dict):
         """Create Button Grid."""
-        for widget in self.widgets:
+        for widget in self._buttons:
             widget.update_state()
             if widget.device.ip_address in devices:
                 devices.pop(widget.device.ip_address)
-        if self.widgets or devices:
-            count = len(self.widgets)
+        if self._buttons or devices:
+            count = len(self._buttons)
             for index, device in enumerate(devices.values()):
                 if not device.status:
                     count -= 1
@@ -218,31 +223,18 @@ class DeviceGridWidget(QtWidgets.QWidget):
                 cur_index = index + count
                 col = cur_index % self.MAX_COLS
                 row = cur_index // self.MAX_COLS
-                button = DeviceButton(self.window(), device)
+                button = DeviceButton(device)
                 self.add(button, row, col)
-            self.show()
-            self.window().center_text.hide()
-        else:
-            self.hide()
-            self.window().center_text.show()
-
-    def session_stop(self):
-        """Handle session stopped."""
-        if self.window().toolbar.refresh.isChecked():
-            self.start_update()
-        self.setDisabled(False)
-        QtCore.QTimer.singleShot(10000, self.enable_buttons)
+                button.power_toggled.connect(self._power_toggle)
+                button.connect_requested.connect(self._connect_request)
+            self.devices_available.emit()
 
     def enable_buttons(self):
         """Enable all buttons."""
-        for button in self.widgets:
+        for button in self._buttons:
             button.setDisabled(False)
             button.setToolTip("")
 
-    def start_update(self):
-        """Start update service."""
-        self.window().async_handler.poll()
-
-    def stop_update(self):
-        """Stop Updata Service."""
-        self.window().async_handler.stop_poll()
+    def buttons(self) -> list[DeviceButton]:
+        """Return buttons."""
+        return list(self._buttons)

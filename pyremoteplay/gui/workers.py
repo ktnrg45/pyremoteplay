@@ -132,6 +132,11 @@ class RPWorker(QtCore.QObject):
         """Send button."""
         self.device.controller.button(button, action)
 
+    async def standby(self, device: RPDevice, user: str):
+        """Place Device in standby."""
+        await device.standby(user)
+        self.standby_done.emit(device.session.error)
+
 
 class AsyncHandler(QtCore.QObject):
     """Handler for async methods."""
@@ -197,7 +202,6 @@ class AsyncHandler(QtCore.QObject):
         """Run coroutine."""
         asyncio.run_coroutine_threadsafe(coro(*args, **kwargs), self.loop)
 
-    async def standby_host(self, device: RPDevice, user, profile):
-        """Place Host in standby"""
-        await device.standby(user, profile)
-        self.async_handler.rp_worker.standby_done.emit(device.session.error)
+    def standby(self, device: RPDevice, user: str):
+        """Place host in standby."""
+        self.run_coro(self.rp_worker.standby, device, user)
