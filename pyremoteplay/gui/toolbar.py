@@ -34,7 +34,6 @@ class ToolbarWidget(QtWidgets.QToolBar):
         self._button_group.addButton(self._home)
         self._button_group.setExclusive(True)
         self._home.setChecked(True)
-        self._refresh.setChecked(True)
 
     @QtCore.Slot()
     def _button_click(self):

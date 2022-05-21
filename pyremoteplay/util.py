@@ -28,7 +28,7 @@ def check_file(path: pathlib.Path):
             json.dump({}, _file)
 
 
-def get_mapping(path=None) -> dict:
+def get_mapping(path: str = None) -> dict:
     """Return dict of key mapping."""
     data = {}
     if not path:
@@ -42,7 +42,7 @@ def get_mapping(path=None) -> dict:
     return data
 
 
-def write_mapping(mapping: dict, path=None):
+def write_mapping(mapping: dict, path: str = None):
     """Write mapping."""
     if not path:
         path = pathlib.Path.home() / PROFILE_DIR / CONTROLS_FILE
@@ -52,7 +52,7 @@ def write_mapping(mapping: dict, path=None):
         json.dump(mapping, _file)
 
 
-def get_options(path=None) -> dict:
+def get_options(path: str = None) -> dict:
     """Return dict of options."""
     data = {}
     if not path:
@@ -66,7 +66,7 @@ def get_options(path=None) -> dict:
     return data
 
 
-def write_options(options: dict, path=None):
+def write_options(options: dict, path: str = None):
     """Write options."""
     if not path:
         path = pathlib.Path.home() / PROFILE_DIR / OPTIONS_FILE
@@ -76,7 +76,7 @@ def write_options(options: dict, path=None):
         json.dump(options, _file)
 
 
-def get_profiles(path=None) -> list:
+def get_profiles(path: str = None) -> dict:
     """Return Profiles."""
     data = []
     if not path:
@@ -90,7 +90,7 @@ def get_profiles(path=None) -> list:
     return data
 
 
-def write_profiles(profiles: dict, path=None):
+def write_profiles(profiles: dict, path: str = None):
     """Write profile data."""
     if not path:
         path = pathlib.Path.home() / PROFILE_DIR / PROFILE_FILE
@@ -117,7 +117,7 @@ def add_profile(profiles: dict, user_data: dict) -> dict:
     return profiles
 
 
-def get_users(device_id, profiles=None, path=None):
+def get_users(device_id: str, profiles: dict = None, path: str = None):
     """Return users for device."""
     users = []
     if not profiles:
@@ -131,10 +131,10 @@ def get_users(device_id, profiles=None, path=None):
     return users
 
 
-def add_regist_data(profile: dict, host: dict, data: dict) -> dict:
+def add_regist_data(profile: dict, host_status: dict, data: dict) -> dict:
     """Add regist data to profile and return profile."""
-    mac_address = host["host-id"]
-    host_type = host["host-type"]
+    mac_address = host_status["host-id"]
+    host_type = host_status["host-type"]
     for key in list(data.keys()):
         if key.startswith(host_type):
             value = data.pop(key)
@@ -152,7 +152,7 @@ def format_regist_key(regist_key: str) -> bytes:
     return regist_key
 
 
-def get_devices(path=None) -> dict:
+def get_devices(path: str = None) -> dict:
     """Return dict of devices from profiles."""
     devices = {}
     profiles = get_profiles(path)

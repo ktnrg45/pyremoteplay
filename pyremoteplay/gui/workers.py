@@ -151,6 +151,7 @@ class AsyncHandler(QtCore.QObject):
         self.rp_worker = RPWorker()
         self.__task = None
         self._thread = QtCore.QThread()
+
         self.moveToThread(self._thread)
         self.rp_worker.moveToThread(self._thread)
         self._thread.started.connect(self.start)
@@ -168,11 +169,13 @@ class AsyncHandler(QtCore.QObject):
 
     def poll(self):
         """Start polling."""
-        self.protocol.start()
+        if self.protocol:
+            self.protocol.start()
 
     def stop_poll(self):
         """Stop Polling."""
-        self.protocol.stop()
+        if self.protocol:
+            self.protocol.stop()
 
     def shutdown(self):
         """Shutdown handler."""
@@ -193,10 +196,15 @@ class AsyncHandler(QtCore.QObject):
         self.protocol = await async_create_ddp_endpoint(self.status_updated.emit)
         await self.protocol.run()
 
-    async def manual_search(self, host: str):
+    async def _manual_search(self, host: str):
         """Search for device."""
+        _LOGGER.info("Manual Search: %s", host)
         status = await async_get_status(host)
         self.manual_search_done.emit(host, status)
+
+    def manual_search(self, host: str):
+        """Search for device."""
+        self.run_coro(self._manual_search, host)
 
     def run_coro(self, coro, *args, **kwargs):
         """Run coroutine."""

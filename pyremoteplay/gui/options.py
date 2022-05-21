@@ -1,11 +1,12 @@
 # pylint: disable=c-extension-no-member,invalid-name
 """Options Widget."""
+from __future__ import annotations
 import socket
 from dataclasses import dataclass, asdict, field
 
 import sounddevice
 
-from PySide6 import QtWidgets
+from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import Qt, QTimer  # pylint: disable=no-name-in-module
 from PySide6.QtMultimedia import QMediaDevices  # pylint: disable=no-name-in-module
 
@@ -51,16 +52,21 @@ class Options:
 class OptionsWidget(QtWidgets.QWidget):
     """Widget for Options."""
 
-    def __init__(self, main_window):
-        self.profiles = {}
+    search_requested = QtCore.Signal(str)
+    device_added = QtCore.Signal()
+    device_removed = QtCore.Signal(str)
+    register_finished = QtCore.Signal()
+
+    def __init__(self, *args, **kwargs):
+        self._profiles = {}
         self._devices = []
         self.audio_output = None
         self.audio_devices = {}
         self._device_search_timer = None
+        self._search_dialog = None
 
-        super().__init__(main_window)
-        self.main_window = main_window
-        self.layout = QtWidgets.QGridLayout(self, alignment=Qt.AlignTop)
+        super().__init__(*args, **kwargs)
+        self.setLayout(QtWidgets.QGridLayout(self, alignment=Qt.AlignTop))
 
         self._media_devices = QMediaDevices()
         self.quality = QtWidgets.QComboBox(self)
@@ -75,12 +81,11 @@ class OptionsWidget(QtWidgets.QWidget):
         self.audio_output = QtWidgets.QComboBox(self)
         self.decoder = QtWidgets.QComboBox(self)
         self.codec = QtWidgets.QComboBox(self)
-        self.devices = QtWidgets.QTreeWidget()
+        self.device_tree = QtWidgets.QTreeWidget()
         self.use_qt_audio = AnimatedToggle("Use QT Audio", self)
 
         self._init_options()
         self.get_audio_devices()
-        self.main_window.add_devices(self._devices)
 
     def _init_options(self):
         set_account = QtWidgets.QPushButton("Select Account")
@@ -91,7 +96,6 @@ class OptionsWidget(QtWidgets.QWidget):
         del_device.setDisabled(True)
         add_device.clicked.connect(self.new_device)
         del_device.clicked.connect(self.delete_device)
-        del_device.clicked.connect(lambda: del_device.setDisabled(True))
         set_account.clicked.connect(self.set_profiles)
         add_account.clicked.connect(self.new_profile)
         del_account.clicked.connect(self.delete_profile)
@@ -130,12 +134,12 @@ class OptionsWidget(QtWidgets.QWidget):
         self.codec.currentTextChanged.connect(self._change_options)
         self.hdr.stateChanged.connect(self._change_options)
         self.accounts.itemDoubleClicked.connect(self.set_profiles)
-        self.devices.itemSelectionChanged.connect(lambda: del_device.setDisabled(False))
+        self.device_tree.itemSelectionChanged.connect(
+            lambda: del_device.setDisabled(False)
+        )
         self.use_qt_audio.stateChanged.connect(self._qt_audio_changed)
 
         self._media_devices.audioOutputsChanged.connect(self.get_audio_devices)
-
-        self.main_window.async_handler.manual_search_done.connect(self.search_complete)
 
         widgets = (
             ("Quality", self.quality, self.use_opengl),
@@ -151,30 +155,32 @@ class OptionsWidget(QtWidgets.QWidget):
             for col_index, item in enumerate(_row):
                 if isinstance(item, str):
                     item = QtWidgets.QLabel(f"{item}:")
-                self.layout.addWidget(item, row_index, col_index + 1, 1, 3 // len(_row))
+                self.layout().addWidget(
+                    item, row_index, col_index + 1, 1, 3 // len(_row)
+                )
 
         row = len(widgets)
-        self.layout.addWidget(devices_label, row - 2, 5, 2, 2)
-        self.layout.addItem(spacer(), row, 0)
+        self.layout().addWidget(devices_label, row - 2, 5, 2, 2)
+        self.layout().addItem(spacer(), row, 0)
 
         row += 1
         account_layout = QtWidgets.QHBoxLayout()
         account_layout.addWidget(set_account)
         account_layout.addWidget(add_account)
         account_layout.addWidget(del_account)
-        self.layout.addLayout(account_layout, row, 1, 1, 3)
+        self.layout().addLayout(account_layout, row, 1, 1, 3)
         device_layout = QtWidgets.QHBoxLayout()
         device_layout.addWidget(add_device)
         device_layout.addWidget(del_device)
-        self.layout.addLayout(device_layout, row, 5, 1, 2)
+        self.layout().addLayout(device_layout, row, 5, 1, 2)
 
-        self.layout.addItem(spacer(), row, 4)
-        self.layout.setColumnStretch(4, 1)
+        self.layout().addItem(spacer(), row, 4)
+        self.layout().setColumnStretch(4, 1)
         row += 1
 
-        self.layout.addWidget(self.accounts, row, 1, 2, 3)
-        self.layout.addWidget(self.devices, row, 5, 2, 2)
-        self.layout.setRowStretch(row + 1, 1)
+        self.layout().addWidget(self.accounts, row, 1, 2, 3)
+        self.layout().addWidget(self.device_tree, row, 5, 2, 2)
+        self.layout().setRowStretch(row + 1, 1)
 
     def get_decoder(self) -> list:
         """Return HW decoder or CPU if not found."""
@@ -277,16 +283,16 @@ class OptionsWidget(QtWidgets.QWidget):
 
     def set_devices(self):
         """Set devices."""
-        self.devices.clear()
-        self.devices.setHeaderLabels(["Devices"])
+        self.device_tree.clear()
+        self.device_tree.setHeaderLabels(["Devices"])
         for host in self._devices:
-            item = QtWidgets.QTreeWidgetItem(self.devices)
+            item = QtWidgets.QTreeWidgetItem(self.device_tree)
             item.setText(0, host)
 
     def set_profiles(self):
         """Set Profiles."""
         profile_name = self.selected_profile
-        self.profiles = get_profiles()
+        self._profiles = get_profiles()
         self.accounts.clear()
         self.accounts.setHeaderLabels(["PSN ID", "Active", "Is Registered", "Devices"])
         if not self.profiles:
@@ -349,39 +355,62 @@ class OptionsWidget(QtWidgets.QWidget):
             return
         if host in self._devices:
             text = "Device is already added."
-            message(self.main_window, "Device Already Added", text, "warning")
+            message(self.window(), "Device Already Added", text, "warning")
             return
         self._device_search_timer = QTimer()
         self._device_search_timer.setSingleShot(True)
         self._device_search_timer.timeout.connect(lambda: self._search_failed(host))
-        self.main_window.async_handler.run_coro(
-            self.main_window.async_handler.manual_search, host
-        )
+        self.search_requested.emit(host)
         self._device_search_timer.start(5000)
+        self._search_dialog = QtWidgets.QMessageBox(
+            QtWidgets.QMessageBox.Information,
+            "Searching",
+            f"Searching for host: {host}",
+            QtWidgets.QMessageBox.Cancel,
+            self.window(),
+        )
+        self._search_dialog.buttonClicked.connect(self._search_aborted)
+        self._search_dialog.exec()
 
     def search_complete(self, host, status):
         """Callback for search complete."""
+        if self._search_dialog:
+            self._search_dialog.close()
+            self._search_dialog = None
         if self._device_search_timer:
             self._device_search_timer.stop()
             self._device_search_timer = None
+        else:
+            return
         if status:
             ip_address = status["host-ip"]
             self._devices.append(ip_address)
             self.set_devices()
             self._change_options()
-            self.main_window.add_devices(self._devices)
-            message(self.main_window, "Device found", f"Found Device at {host}", "info")
+            self.device_added.emit()
+            message(self.window(), "Device found", f"Found Device at {host}", "info")
         else:
             self._search_failed(host)
 
     def _search_failed(self, host):
         self._device_search_timer = None
         text = f"Could not find device at: {host}."
-        message(self.main_window, "Device not found", text, "warning")
+        message(self.window(), "Device not found", text, "warning")
+
+    def _search_aborted(self):
+        if self._search_dialog:
+            self._search_dialog.close()
+            self._search_dialog = None
+        if self._device_search_timer:
+            self._device_search_timer.stop()
+        self._device_search_timer = None
 
     def delete_device(self):
         """Delete Device."""
-        items = self.devices.selectedItems()
+        button = self.sender()
+        if button:
+            button.setDisabled(True)
+        items = self.device_tree.selectedItems()
         if not items:
             return
         item = items[0]
@@ -389,7 +418,7 @@ class OptionsWidget(QtWidgets.QWidget):
         self._devices.remove(host)
         self.set_devices()
         self._change_options()
-        self.main_window.remove_device(host)
+        self.device_removed.emit(host)
 
     def delete_profile(self):
         """Delete profile."""
@@ -399,7 +428,7 @@ class OptionsWidget(QtWidgets.QWidget):
         name = item.text(0)
         text = f"Are you sure you want to delete account: {name}"
         message(
-            self,
+            self.window(),
             "Delete Account",
             text,
             "warning",
@@ -409,7 +438,7 @@ class OptionsWidget(QtWidgets.QWidget):
 
     def remove_profile(self, name):
         """Remove profile from config."""
-        self.profiles.pop(name)
+        self._profiles.pop(name)
         write_profiles(self.profiles)
         profile_name = list(self.profiles.keys())[0] if self.profiles else ""
         self.set_profiles()
@@ -421,10 +450,7 @@ class OptionsWidget(QtWidgets.QWidget):
         """Run new profile flow."""
         title = "Add PSN Account"
         text = "To Add a New PSN Account you will have to sign in to your PSN Account. Continue?"
-        new_message = message(
-            self.main_window, title, text, "info", self.new_account, escape=True
-        )
-        new_message.hide()
+        message(self.window(), title, text, "info", self.new_account, escape=True)
 
     def new_account(self):
         """Run prompts to add PSN Account."""
@@ -476,7 +502,7 @@ class OptionsWidget(QtWidgets.QWidget):
             self.set_profiles()
             text = f"Successfully added PSN account: {user_id}"
             level = "info"
-        message(self, title, text, level)
+        message(self.window(), title, text, level)
 
     def register(self, host, name):
         """Register profile with RP Host."""
@@ -511,7 +537,7 @@ class OptionsWidget(QtWidgets.QWidget):
             else:
                 profile = self.profiles[name]
                 profile = add_regist_data(profile, host, data)
-                self.profiles[name] = profile
+                self._profiles[name] = profile
                 write_profiles(self.profiles)
                 self.set_profiles()
                 title = "Registration Successful"
@@ -521,8 +547,8 @@ class OptionsWidget(QtWidgets.QWidget):
                 )
                 level = "info"
 
-        message(self, title, text, level)
-        self.main_window.session_stop()
+        message(self.window(), title, text, level)
+        self.register_finished.emit()
 
     @property
     def selected_profile(self):
@@ -563,3 +589,13 @@ class OptionsWidget(QtWidgets.QWidget):
     def options(self) -> dict:
         """Return Options as dict."""
         return asdict(self.options_data)
+
+    @property
+    def devices(self) -> list[str]:
+        """Return devices."""
+        return list(self._devices)
+
+    @property
+    def profiles(self) -> dict:
+        """Return profiles."""
+        return dict(self._profiles)

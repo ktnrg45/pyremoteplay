@@ -4,8 +4,7 @@ from __future__ import annotations
 import logging
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
-from pyremoteplay.const import DEFAULT_STANDBY_DELAY
-from pyremoteplay.device import STATUS_OK, RPDevice
+from pyremoteplay.device import RPDevice
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,6 +36,10 @@ class DeviceButton(QtWidgets.QPushButton):
         self._set_style()
 
         self.clicked.connect(self._on_click)
+
+    def sizeHint(self) -> QtCore.QSize:
+        """Return Size Hint."""
+        return QtCore.QSize(275, 250)
 
     def _on_click(self):
         self.setEnabled(False)
@@ -117,10 +120,10 @@ class DeviceButton(QtWidgets.QPushButton):
         elif self.device.host_type == "PS5":
             device_type = "PlayStation 5"
         else:
-            device_type = ""
+            device_type = "Unknown"
         app = self.device.app_name
         if not app:
-            app = "Idle" if self.device.is_on else "Standby"
+            app = "On" if self.device.is_on else "Standby"
         self.main_text = f"{self.device.host_name}\n" f"{device_type}\n\n" f"{app}"
         if not self._info_show:
             self.setText(self.main_text)
@@ -143,27 +146,16 @@ class DeviceButton(QtWidgets.QPushButton):
     def _power_toggle(self):
         self.power_toggled.emit(self.device)
 
-    def _enable_toggle_power(self):
-        self.action_power.setDisabled(False)
-
     def update_state(self):
         """Callback for when state is updated."""
         state = self.device.status
         cur_id = self.status.get("running-app-titleid")
         new_id = state.get("running-app-titleid")
-        cur_status = self.status.get("status-code")
-        new_status = state.get("status-code")
         self.status = state
         self._get_info()
         self._get_text()
         if cur_id != new_id:
             self._set_image()
-        if cur_status == STATUS_OK and new_status != cur_status:
-            # Disable Wakeup since device won't do anything right away.
-            self.action_power.setDisabled(True)
-            QtCore.QTimer.singleShot(
-                DEFAULT_STANDBY_DELAY * 1000, self._enable_toggle_power
-            )
         self._set_style()
 
     def contextMenuEvent(self, event):  # pylint: disable=unused-argument
@@ -193,7 +185,6 @@ class DeviceGridWidget(QtWidgets.QWidget):
         self.setStyleSheet("QPushButton {padding: 50px 25px;}")
         self.setLayout(QtWidgets.QGridLayout())
         self.layout().setColumnMinimumWidth(0, 100)
-        self._buttons = set()
 
     @QtCore.Slot(RPDevice)
     def _power_toggle(self, device: RPDevice):
@@ -206,19 +197,17 @@ class DeviceGridWidget(QtWidgets.QWidget):
     def add(self, button, row, col):
         """Add button to grid."""
         self.layout().addWidget(button, row, col, Qt.AlignCenter)
-        self._buttons.add(button)
 
     def create_grid(self, devices: dict):
         """Create Button Grid."""
-        for widget in self._buttons:
+        for widget in self.buttons():
             widget.update_state()
             if widget.device.ip_address in devices:
                 devices.pop(widget.device.ip_address)
-        if self._buttons or devices:
-            count = len(self._buttons)
+        if devices:
+            count = self.layout().count()
             for index, device in enumerate(devices.values()):
                 if not device.status:
-                    count -= 1
                     continue
                 cur_index = index + count
                 col = cur_index % self.MAX_COLS
@@ -227,14 +216,17 @@ class DeviceGridWidget(QtWidgets.QWidget):
                 self.add(button, row, col)
                 button.power_toggled.connect(self._power_toggle)
                 button.connect_requested.connect(self._connect_request)
+
+        if self.buttons():
             self.devices_available.emit()
 
     def enable_buttons(self):
         """Enable all buttons."""
-        for button in self._buttons:
+        for button in self.buttons():
             button.setDisabled(False)
             button.setToolTip("")
 
     def buttons(self) -> list[DeviceButton]:
         """Return buttons."""
-        return list(self._buttons)
+        count = self.layout().count()
+        return [self.layout().itemAt(index).widget() for index in range(0, count)]

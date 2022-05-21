@@ -249,7 +249,7 @@ class StreamWindow(QtWidgets.QWidget):
             return
         if button == "STANDBY":
             message(
-                self.main_window,
+                self,
                 "Standby",
                 "Set host to standby?",
                 level="info",

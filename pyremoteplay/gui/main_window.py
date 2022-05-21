@@ -1,5 +1,6 @@
 # pylint: disable=c-extension-no-member,invalid-name
 """Main Window for pyremoteplay GUI."""
+from __future__ import annotations
 import logging
 
 from PySide6 import QtCore, QtWidgets
@@ -60,11 +61,19 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.async_handler.rp_worker.standby_done.connect(self._standby_callback)
         self.async_handler.status_updated.connect(self._event_status_updated)
+        self.async_handler.manual_search_done.connect(self._options.search_complete)
         self._toolbar.buttonClicked.connect(self._toolbar_button_clicked)
         self._device_grid.power_toggled.connect(self._power_toggle)
         self._device_grid.connect_requested.connect(self.connect_host)
         self._device_grid.devices_available.connect(self._devices_available)
+        self._options.search_requested.connect(self._manual_search)
+        self._options.device_added.connect(self.add_devices)
+        self._options.device_removed.connect(self.remove_device)
+        self._options.register_finished.connect(self.session_stop)
 
+        self.add_devices()
+
+        self._toolbar.refresh().setChecked(True)
         self._start_update()
         QtCore.QTimer.singleShot(7000, self._startup_check_grid)
 
@@ -134,13 +143,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self._stream_window = None
         self._check_error_finish()
 
-    def add_devices(self, devices):
+    @QtCore.Slot()
+    def add_devices(self):
         """Add devices to grid."""
-        for host in devices:
+        for host in self._options.devices:
             if host not in self.async_handler.protocol.devices:
                 self.async_handler.protocol.add_device(host)
 
-    def remove_device(self, host):
+    @QtCore.Slot(str)
+    def remove_device(self, host: str):
         """Remove Device from grid."""
         self.async_handler.protocol.remove_device(host)
         self._event_status_updated()
@@ -256,3 +267,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _stop_update(self):
         """Stop Updatw Service."""
         self.async_handler.stop_poll()
+
+    @QtCore.Slot(str)
+    def _manual_search(self, host: str):
+        self.async_handler.manual_search(host)
