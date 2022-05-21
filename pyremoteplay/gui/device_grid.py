@@ -17,21 +17,21 @@ class DeviceButton(QtWidgets.QPushButton):
     COLOR_LIGHT = "#FFFFFF"
     COLOR_BG = "#E9ECEF"
 
+    BORDER_COLOR_ON = ("#6EA8FE", "#0D6EFD")
+    BORDER_COLOR_OFF = ("#FEB272", "#FFC107")
+
     power_toggled = QtCore.Signal(RPDevice)
     connect_requested = QtCore.Signal(RPDevice)
 
     def __init__(self, device: RPDevice):
         super().__init__()
-        self.info = ""
-        self.device = device
-        self.status = device.status
+        self._device = device
+        self._status = device.status
         self._info_show = False
-        self.text_color = self.COLOR_DARK
-        self.bg_color = self.COLOR_BG
-        self.border_color = ("#A3A3A3", "#A3A3A3")
+        self._text_color = self.COLOR_DARK
+        self._bg_color = self.COLOR_BG
 
-        self._get_info()
-        self._get_text()
+        self._update_text()
         self._set_image()
         self._set_style()
 
@@ -41,52 +41,75 @@ class DeviceButton(QtWidgets.QPushButton):
         """Return Size Hint."""
         return QtCore.QSize(275, 250)
 
+    def contextMenuEvent(self, event):  # pylint: disable=unused-argument
+        """Context Menu Event."""
+        info_text = "View Info" if not self._info_show else "Hide Info"
+        power_text = "Standby" if self._device.is_on else "Wakeup"
+        menu = QtWidgets.QMenu(self)
+        action_info = QtGui.QAction(info_text, menu)
+        action_power = QtGui.QAction(power_text, menu)
+        action_info.triggered.connect(self._toggle_info)
+        action_power.triggered.connect(self._power_toggle)
+        menu.addActions([action_info, action_power])
+        menu.popup(QtGui.QCursor.pos())
+
+    def update_state(self):
+        """Callback for when state is updated."""
+        state = self._device.status
+        cur_id = self._status.get("running-app-titleid")
+        new_id = state.get("running-app-titleid")
+        self._status = state
+        self._update_text()
+        if cur_id != new_id:
+            self._set_image()
+        self._set_style()
+
     def _on_click(self):
         self.setEnabled(False)
         self.setToolTip("Device unavailable.\nWaiting for session to close...")
-        self.connect_requested.emit(self.device)
+        self.connect_requested.emit(self._device)
 
     def _set_style(self):
-        if self.device.is_on:
-            self.border_color = ("#6EA8FE", "#0D6EFD")
+        if self._device.is_on:
+            border_color = DeviceButton.BORDER_COLOR_ON
         else:
-            self.border_color = ("#FEB272", "#FFC107")
+            border_color = DeviceButton.BORDER_COLOR_OFF
         self.setStyleSheet(
             "".join(
                 [
                     "QPushButton {border-radius:25%;",
-                    f"border: 5px solid {self.border_color[0]};",
-                    f"color: {self.text_color};",
-                    f"background-color: {self.bg_color};",
+                    f"border: 5px solid {border_color[0]};",
+                    f"color: {self._text_color};",
+                    f"background-color: {self._bg_color};",
                     "}",
                     "QPushButton:hover {",
-                    f"border: 5px solid {self.border_color[1]};",
-                    f"color: {self.text_color};",
+                    f"border: 5px solid {border_color[1]};",
+                    f"color: {self._text_color};",
                     "}",
                 ]
             )
         )
 
     def _set_image(self):
-        self.bg_color = self.COLOR_BG
-        title_id = self.device.app_id
+        self._bg_color = self.COLOR_BG
+        title_id = self._device.app_id
         if title_id:
-            image = self.device.image
+            image = self._device.image
             if image is not None:
                 pix = QtGui.QPixmap()
                 pix.loadFromData(image)
                 self.setIcon(pix)
                 self.setIconSize(QtCore.QSize(100, 100))
                 img = pix.toImage()
-                self.bg_color = img.pixelColor(25, 25).name()
-                contrast = self._calc_contrast(self.bg_color)
+                self._bg_color = img.pixelColor(25, 25).name()
+                contrast = self._calc_contrast(self._bg_color)
                 if contrast >= 1 / 4.5:
-                    self.text_color = self.COLOR_LIGHT
+                    self._text_color = self.COLOR_LIGHT
                 else:
-                    self.text_color = self.COLOR_DARK
+                    self._text_color = self.COLOR_DARK
         else:
             self.setIcon(QtGui.QIcon())
-            self.text_color = self.COLOR_DARK
+            self._text_color = self.COLOR_DARK
 
     def _calc_contrast(self, hex_color):
         colors = (self.COLOR_DARK, hex_color)
@@ -114,61 +137,48 @@ class DeviceButton(QtWidgets.QPushButton):
         luminance = (0.2126 * color[0]) + (0.7152 * color[1]) + (0.0722 * color[2])
         return luminance
 
-    def _get_text(self):
-        if self.device.host_type == "PS4":
+    def _update_text(self):
+        text = ""
+        if self._info_show:
+            text = self._get_info_text()
+        else:
+            text = self._get_main_text()
+        self.setText(text)
+
+    def _get_main_text(self) -> str:
+        if self._device.host_type == "PS4":
             device_type = "PlayStation 4"
-        elif self.device.host_type == "PS5":
+        elif self._device.host_type == "PS5":
             device_type = "PlayStation 5"
         else:
             device_type = "Unknown"
-        app = self.device.app_name
+        app = self._device.app_name
         if not app:
-            app = "On" if self.device.is_on else "Standby"
-        self.main_text = f"{self.device.host_name}\n" f"{device_type}\n\n" f"{app}"
-        if not self._info_show:
-            self.setText(self.main_text)
+            app = "On" if self._device.is_on else "Standby"
+        return f"{self._device.host_name}\n" f"{device_type}\n\n" f"{app}"
 
-    def _get_info(self):
-        self.info = (
-            f"Type: {self.device.host_type}\n"
-            f"Name: {self.device.host_name}\n"
-            f"IP Address: {self.device.host}\n"
-            f"Mac Address: {self.device.mac_address}\n\n"
-            f"Status: {self.device.status_name}\n"
-            f"Playing: {self.device.app_name}"
+    def _get_info_text(self) -> str:
+        text = (
+            f"Type: {self._device.host_type}\n"
+            f"Name: {self._device.host_name}\n"
+            f"IP Address: {self._device.host}\n"
+            f"Mac Address: {self._device.mac_address}\n\n"
+            f"Status: {self._device.status_name}\n"
+            f"Playing: {self._device.app_name}"
         )
+        return text
 
     def _toggle_info(self):
-        text = self.info if not self._info_show else self.main_text
-        self.setText(text)
         self._info_show = not self._info_show
+        self._update_text()
 
     def _power_toggle(self):
-        self.power_toggled.emit(self.device)
+        self.power_toggled.emit(self._device)
 
-    def update_state(self):
-        """Callback for when state is updated."""
-        state = self.device.status
-        cur_id = self.status.get("running-app-titleid")
-        new_id = state.get("running-app-titleid")
-        self.status = state
-        self._get_info()
-        self._get_text()
-        if cur_id != new_id:
-            self._set_image()
-        self._set_style()
-
-    def contextMenuEvent(self, event):  # pylint: disable=unused-argument
-        """Context Menu Event."""
-        info_text = "View Info" if not self._info_show else "Hide Info"
-        power_text = "Standby" if self.device.is_on else "Wakeup"
-        menu = QtWidgets.QMenu(self)
-        action_info = QtGui.QAction(info_text, menu)
-        action_power = QtGui.QAction(power_text, menu)
-        action_info.triggered.connect(self._toggle_info)
-        action_power.triggered.connect(self._power_toggle)
-        menu.addActions([action_info, action_power])
-        menu.popup(QtGui.QCursor.pos())
+    @property
+    def device(self) -> RPDevice:
+        """Return Device."""
+        return self._device
 
 
 class DeviceGridWidget(QtWidgets.QWidget):
