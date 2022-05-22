@@ -1,7 +1,7 @@
 # pylint: disable=c-extension-no-member,invalid-name
 """Controls Widget."""
 
-from PySide6 import QtWidgets
+from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from pyremoteplay.util import get_mapping, write_mapping
 
@@ -95,57 +95,83 @@ class ControlsWidget(QtWidgets.QWidget):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.mapping = None
-        self.options = {}
-        self.selected_map = ""
-        self.layout = QtWidgets.QGridLayout(self, alignment=Qt.AlignTop)
-        self.layout.setColumnMinimumWidth(0, 30)
-        self.layout.setRowStretch(4, 1)
-        self.table = ControlsTable(self)
-        self.input = None
+        self._mapping = {}
+        self._options = {}
+        self._selected_map = ""
+        self._input = None
 
-        self.left_joystick = AnimatedToggle("Show Left Joystick", self)
-        self.right_joystick = AnimatedToggle("Show Right Joystick", self)
-        self.reset = QtWidgets.QPushButton("Reset to Default")
-        self.clear = QtWidgets.QPushButton("Clear")
-        self.cancel = QtWidgets.QPushButton("Cancel")
+        self._table = ControlsTable(self)
+
+        self._left_joystick = AnimatedToggle("Show Left Joystick", self)
+        self._right_joystick = AnimatedToggle("Show Right Joystick", self)
+        self._reset = QtWidgets.QPushButton("Reset to Default")
+        self._clear = QtWidgets.QPushButton("Clear")
+        self._cancel = QtWidgets.QPushButton("Cancel")
+        self._cancel.hide()
+        self._clear.hide()
         self._init_controls()
-        self._set_instructions()
-        self.layout.addWidget(self.left_joystick, 0, 0, 1, 2)
-        self.layout.addWidget(self.right_joystick, 1, 0, 1, 2)
-        self.layout.addWidget(self.reset, 2, 0)
-        self.layout.addWidget(self.clear, 2, 1)
-        self.layout.addWidget(self.cancel, 2, 2)
-        self.layout.addWidget(self.table, 3, 0, 2, 3)
-        self.layout.addWidget(self.label, 3, 3, 2, 1)
-        self.cancel.hide()
-        self.clear.hide()
-        self.left_joystick.clicked.connect(lambda: self._click_joystick("left"))
-        self.right_joystick.clicked.connect(lambda: self._click_joystick("right"))
-        self.cancel.clicked.connect(self._click_cancel)
-        self.reset.clicked.connect(self._click_reset)
-        self.clear.clicked.connect(self._click_clear)
-        self.table.clicked.connect(self._click_table)
+
+        self.setLayout(QtWidgets.QGridLayout(alignment=Qt.AlignTop))
+        self.layout().setColumnMinimumWidth(0, 30)
+        self.layout().setRowStretch(4, 1)
+        self.layout().addWidget(self._left_joystick, 0, 0, 1, 2)
+        self.layout().addWidget(self._right_joystick, 1, 0, 1, 2)
+        self.layout().addWidget(self._reset, 2, 0)
+        self.layout().addWidget(self._clear, 2, 1)
+        self.layout().addWidget(self._cancel, 2, 2)
+        self.layout().addWidget(self._table, 3, 0, 2, 3)
+        self.layout().addWidget(self._instructions(), 3, 3, 2, 1)
+
+        self._left_joystick.clicked.connect(self._click_joystick)
+        self._right_joystick.clicked.connect(self._click_joystick)
+        self._cancel.clicked.connect(self._click_cancel)
+        self._reset.clicked.connect(self._click_reset)
+        self._clear.clicked.connect(self._click_clear)
+        self._table.clicked.connect(self._click_table)
+
+    def keyPressEvent(self, event):
+        """Key Press Event."""
+        if self._input is not None:
+            key = Qt.Key(event.key()).name.decode()
+            self.set_control(key)
 
     def hide(self):
         """Hide widget."""
         self._click_cancel()
         super().hide()
 
+    def set_control(self, key):
+        """Set RP Control to Qt Key."""
+        if self._input is not None:
+            item = self._table.item(self._input, 0)
+            rp_key = self._table.item(self._input, 1).text()
+            current = self._get_current_map_key(rp_key)
+            _map = self.get_map()
+
+            # Delete the current key
+            if current is not None:
+                assert _map.get(current) == rp_key
+                _map.pop(current)
+
+            _map[key] = rp_key
+            item.setText(key.replace("Key_", ""))
+            self._set_map(_map)
+            self._set_table()
+
     def get_map(self):
         """Return Controller Map."""
-        return self.mapping["maps"][self.selected_map]["map"]
+        return self._mapping["maps"][self._selected_map]["map"]
 
     def get_options(self):
         """Return options."""
-        return self.mapping["maps"][self.selected_map]["options"]
+        return self._mapping["maps"][self._selected_map]["options"]
 
-    def default_mapping(self):
+    def _default_mapping(self):
         """Return Default map."""
-        if not self.options:
+        if not self._options:
             options = {"joysticks": {"left": False, "right": False}}
-        self.mapping = {}
-        self.mapping.update(
+        self._mapping = {}
+        self._mapping.update(
             {
                 "selected": "keyboard",
                 "maps": {
@@ -156,42 +182,42 @@ class ControlsWidget(QtWidgets.QWidget):
                 },
             }
         )
-        write_mapping(self.mapping)
+        write_mapping(self._mapping)
         self._set_map(self.get_map())
         self._set_table()
 
     def _init_controls(self):
-        self.mapping = get_mapping()
-        if not self.mapping:
-            self.default_mapping()
-        self.selected_map = self.mapping["selected"]
+        self._mapping = get_mapping()
+        if not self._mapping:
+            self._default_mapping()
+        self._selected_map = self._mapping["selected"]
         self._set_map(self.get_map())
         self._set_options(self.get_options())
         self._set_table()
         self._set_joysticks()
 
     def _set_table(self):
-        self.table.clearContents()
+        self._table.clearContents()
         self._click_cancel()
-        if self.selected_map == "keyboard":
+        if self._selected_map == "keyboard":
             self._set_keyboard()
 
     def _set_joysticks(self):
         options = self.get_options()
         joysticks = options["joysticks"]
         if joysticks["left"]:
-            self.left_joystick.setChecked(True)
+            self._left_joystick.setChecked(True)
         if joysticks["right"]:
-            self.right_joystick.setChecked(True)
+            self._right_joystick.setChecked(True)
 
     def _set_options(self, options):
-        self.mapping["maps"][self.selected_map]["options"] = options
-        write_mapping(self.mapping)
+        self._mapping["maps"][self._selected_map]["options"] = options
+        write_mapping(self._mapping)
 
     def _set_map(self, _map):
-        self.input = None
-        self.mapping["maps"][self.selected_map]["map"] = _map
-        write_mapping(self.mapping)
+        self._input = None
+        self._mapping["maps"][self._selected_map]["map"] = _map
+        write_mapping(self._mapping)
 
     def _set_keyboard(self):
         remove_keys = []
@@ -202,8 +228,8 @@ class ControlsWidget(QtWidgets.QWidget):
             item.setFlags(Qt.ItemIsEnabled)
             blank = QtWidgets.QTableWidgetItem()
             blank.setFlags(Qt.ItemIsEnabled)
-            self.table.setItem(index, 1, item)
-            self.table.setItem(index, 0, blank)
+            self._table.setItem(index, 1, item)
+            self._table.setItem(index, 0, blank)
         for key, rp_key in _map.items():
             if rp_key not in ControlsWidget.KEYS:
                 remove_keys.append(key)
@@ -212,41 +238,52 @@ class ControlsWidget(QtWidgets.QWidget):
                 key.replace("Key_", "").replace("Button", " Click")
             )
             item.setFlags(Qt.ItemIsEnabled)
-            self.table.setItem(ControlsWidget.KEYS.index(rp_key), 0, item)
+            self._table.setItem(ControlsWidget.KEYS.index(rp_key), 0, item)
         if remove_keys:
             for key in remove_keys:
                 _map.pop(key)
         self._set_map(_map)
 
-    def _set_instructions(self):
+    def _instructions(self) -> QtWidgets.QLabel:
         text = (
             "To set a Control, click on the corresponding row "
             "and then press the key that you would like to map "
             "to the Remote Play Control."
         )
-        self.label = QtWidgets.QLabel(text)
-        self.label.setWordWrap(True)
+        label = QtWidgets.QLabel(text)
+        label.setWordWrap(True)
+        return label
 
-    def _click_joystick(self, stick):
+    @QtCore.Slot()
+    def _click_joystick(self):
+        button = self.sender()
+        stick = ""
+        if button == self._left_joystick:
+            stick = "left"
+        elif button == self._right_joystick:
+            stick = "right"
+
+        if not stick or stick not in ("left", "right"):
+            raise ValueError("Invalid stick")
         options = self.get_options()
         value = not options["joysticks"][stick]
         options["joysticks"][stick] = value
         self._set_options(options)
 
     def _click_table(self, item):
-        self.input = item.row()
-        self.cancel.show()
-        self.clear.show()
+        self._input = item.row()
+        self._cancel.show()
+        self._clear.show()
 
     def _click_cancel(self):
-        self.input = None
-        self.cancel.hide()
-        self.clear.hide()
+        self._input = None
+        self._cancel.hide()
+        self._clear.hide()
 
     def _click_clear(self):
-        if self.input is None:
+        if self._input is None:
             return
-        item = self.table.item(self.input, 0).text()
+        item = self._table.item(self._input, 0).text()
         if "Click" in item:
             key = item.replace(" Click", "Button")
         else:
@@ -260,7 +297,7 @@ class ControlsWidget(QtWidgets.QWidget):
     def _click_reset(self):
         text = "Reset input mapping to default?"
         message(
-            self, "Reset Mapping", text, "warning", self.default_mapping, escape=True
+            self, "Reset Mapping", text, "warning", self._default_mapping, escape=True
         )
 
     def _get_current_map_key(self, rp_key):
@@ -271,27 +308,3 @@ class ControlsWidget(QtWidgets.QWidget):
         index = rp_keys.index(rp_key)
         key = list(_map.keys())[index]
         return key
-
-    def keyPressEvent(self, event):
-        """Key Press Event."""
-        if self.input is not None:
-            key = Qt.Key(event.key()).name.decode()
-            self.set_control(key)
-
-    def set_control(self, key):
-        """Set RP Control to Qt Key."""
-        if self.input is not None:
-            item = self.table.item(self.input, 0)
-            rp_key = self.table.item(self.input, 1).text()
-            current = self._get_current_map_key(rp_key)
-            _map = self.get_map()
-
-            # Delete the current key
-            if current is not None:
-                assert _map.get(current) == rp_key
-                _map.pop(current)
-
-            _map[key] = rp_key
-            item.setText(key.replace("Key_", ""))
-            self._set_map(_map)
-            self._set_table()
