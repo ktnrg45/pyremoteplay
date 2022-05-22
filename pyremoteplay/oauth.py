@@ -33,7 +33,6 @@ __TOKEN_BODY = (
 )
 __HEADERS = {"Content-Type": "application/x-www-form-urlencoded"}
 
-logging.basicConfig(level=logging.INFO)
 _LOGGER = logging.getLogger(__name__)
 
 

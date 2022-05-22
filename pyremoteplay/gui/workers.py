@@ -1,7 +1,7 @@
 # pylint: disable=c-extension-no-member,invalid-name
 """Workers for GUI."""
 from __future__ import annotations
-from typing import TYPE_CHECKING
+
 import asyncio
 import logging
 import sys
@@ -12,9 +12,6 @@ from PySide6 import QtCore
 from pyremoteplay.device import RPDevice
 from pyremoteplay.protocol import async_create_ddp_endpoint
 from pyremoteplay.ddp import async_get_status
-
-if TYPE_CHECKING:
-    from .stream_window import StreamWindow
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,7 +71,7 @@ class RPWorker(QtCore.QObject):
             await device.session.stop_event.wait()
             _LOGGER.info("Session Finished")
 
-    def stick_state(
+    def send_stick(
         self,
         device: RPDevice,
         stick: str,

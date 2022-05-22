@@ -184,7 +184,7 @@ class StreamWindow(QtWidgets.QWidget):
 
     def move_stick(self, stick: str, point: QtCore.QPointF):
         """Move Stick."""
-        self._rp_worker.stick_state(self.device, stick, point=(point.x(), point.y()))
+        self._rp_worker.send_stick(self.device, stick, point=(point.x(), point.y()))
 
     def mousePressEvent(self, event):
         """Mouse Press Event."""
@@ -286,7 +286,7 @@ class StreamWindow(QtWidgets.QWidget):
             button = button.split("_")
             stick = button[1]
             direction = button[2]
-            self._rp_worker.stick_state(self.device, stick, direction, 1.0)
+            self._rp_worker.send_stick(self.device, stick, direction, 1.0)
         else:
             self._rp_worker.send_button(self.device, button, "press")
 
@@ -301,7 +301,7 @@ class StreamWindow(QtWidgets.QWidget):
             button = button.split("_")
             stick = button[1]
             direction = button[2]
-            self._rp_worker.stick_state(self.device, stick, direction, 0.0)
+            self._rp_worker.send_stick(self.device, stick, direction, 0.0)
         else:
             self._rp_worker.send_button(self.device, button, "release")
 
@@ -322,6 +322,7 @@ class StreamWindow(QtWidgets.QWidget):
         error = ""
         if self.device and self.device.session:
             error = self.device.session.error
+            self.device.disconnect()
         self.stopped.emit(error)
 
     @property
