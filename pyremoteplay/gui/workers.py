@@ -26,16 +26,10 @@ class RPWorker(QtCore.QObject):
     def __init__(self):
         super().__init__()
         self._loop = None
-        self._device = None
-        self.error = ""
 
     def setLoop(self, loop: asyncio.AbstractEventLoop):
         """Set Loop."""
         self._loop = loop
-
-    def setDevice(self, device: RPDevice):
-        """Set Device."""
-        self._device = device
 
     def run(self, device: RPDevice):
         """Run Session."""

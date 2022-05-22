@@ -154,7 +154,12 @@ class DeviceButton(QtWidgets.QPushButton):
             device_type = "Unknown"
         app = self._device.app_name
         if not app:
-            app = "On" if self._device.is_on else "Standby"
+            if self._device.is_on:
+                app = "Idle"
+            elif self._device.status_name:
+                app = "Standby"
+            else:
+                app = "Unknown"
         return f"{self._device.host_name}\n" f"{device_type}\n\n" f"{app}"
 
     def _get_info_text(self) -> str:
