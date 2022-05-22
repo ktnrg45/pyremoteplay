@@ -14,7 +14,7 @@ from pyremoteplay.protocol import async_create_ddp_endpoint
 from pyremoteplay.ddp import async_get_status
 
 if TYPE_CHECKING:
-    from .stream_window import QtReceiver
+    from .stream_window import StreamWindow
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,95 +29,64 @@ class RPWorker(QtCore.QObject):
     def __init__(self):
         super().__init__()
         self._loop = None
-        self.device = None
+        self._device = None
         self.error = ""
 
     def setLoop(self, loop: asyncio.AbstractEventLoop):
         """Set Loop."""
         self._loop = loop
 
-    def run(self, standby=False):
+    def setDevice(self, device: RPDevice):
+        """Set Device."""
+        self._device = device
+
+    def run(self, device: RPDevice):
         """Run Session."""
-        if not self.device:
+        if not device:
             _LOGGER.warning("No Device")
             self.stop()
             return
-        if not self.device.session:
+        if not device.session:
             _LOGGER.warning("No Session")
             self.stop()
             return
+        device.session.events.on("stop", self.stop)
+        self._loop.create_task(self.start(device))
 
-        self.device.session.events.on("stop", self.stop)
-        self._loop.create_task(self.start(standby))
-
-    def stop(self, standby=False):
+    def stop(self):
         """Stop session."""
-        if self.device and self.device.session:
-            self.error = self.device.session.error
-            _LOGGER.info("Stopping Session @ %s", self.device.host)
-            self.device.disconnect()
-            if standby:
-                self.standby_done.emit(self.error)
-        self.device = None
         self.finished.emit()
 
-    def setup(
-        self,
-        device: RPDevice,
-        user: str,
-        options: dict,
-        receiver: QtReceiver,
-    ):
-        """Setup session."""
-        self.device = device
-        codec = options.get("codec")
-        if not options.get("use_hw"):
-            codec = codec.split("_")[0]
-        hdr = options.get("hdr")
-        if hdr and codec == "hevc":
-            codec = "hevc_hdr"
-
-        self.device.create_session(
-            user,
-            resolution=options.get("resolution"),
-            fps=options.get("fps"),
-            receiver=receiver,
-            codec=codec,
-            quality=options.get("quality"),
-            loop=self._loop,
-        )
-
-    async def start(self, standby=False):
+    async def start(self, device: RPDevice):
         """Start Session."""
         _LOGGER.debug("Session Start")
-        if standby:
-            self.device.session.receiver = None
-        started = await self.device.connect()
+        started = await device.connect()
 
         if not started:
             _LOGGER.warning("Session Failed to Start")
             self.stop()
             return
 
-        if standby:
-            result = await self.device.standby()
-            _LOGGER.info("Standby Success: %s", result)
-            self.stop(standby=True)
-            return
-
-        self.device.controller.start()
+        device.controller.start()
         self.started.emit()
 
-        if self.device.session.stop_event:
-            await self.device.session.stop_event.wait()
+        if device.session.stop_event:
+            await device.session.stop_event.wait()
             _LOGGER.info("Session Finished")
 
     def stick_state(
-        self, stick: str, direction: str = None, value: float = None, point=None
+        self,
+        device: RPDevice,
+        stick: str,
+        direction: str = None,
+        value: float = None,
+        point=None,
     ):
         """Send stick state"""
+        if not device or not device.controller:
+            return
         if point is not None:
-            self.device.controller.stick(stick, point=point)
+            device.controller.stick(stick, point=point)
             return
 
         if direction in ("LEFT", "RIGHT"):
@@ -126,16 +95,23 @@ class RPWorker(QtCore.QObject):
             axis = "Y"
         if direction in ("UP", "LEFT") and value != 0.0:
             value *= -1.0
-        self.device.controller.stick(stick, axis, value)
+        device.controller.stick(stick, axis, value)
 
-    def send_button(self, button, action):
+    def send_button(self, device: RPDevice, button, action):
         """Send button."""
-        self.device.controller.button(button, action)
+        if not device or not device.controller:
+            return
+        device.controller.button(button, action)
 
     async def standby(self, device: RPDevice, user: str):
         """Place Device in standby."""
         await device.standby(user)
         self.standby_done.emit(device.session.error)
+
+    @property
+    def loop(self) -> asyncio.AbstractEventLoop:
+        """Return Loop."""
+        return self._loop
 
 
 class AsyncHandler(QtCore.QObject):

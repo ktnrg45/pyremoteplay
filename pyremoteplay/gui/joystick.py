@@ -13,12 +13,12 @@ if TYPE_CHECKING:
 class JoystickWidget(QtWidgets.QFrame):
     """Container Widget for joysticks."""
 
-    def __init__(self, parent: StreamWindow, left=False, right=False):
+    def __init__(self, parent: StreamWindow):
         super().__init__(parent)
         self._last_pos = None
         self._grab_outside = False
-        self._left = Joystick(self, "left") if left else None
-        self._right = Joystick(self, "right") if right else None
+        self._left = Joystick(self, "left")
+        self._right = Joystick(self, "right")
         self.setLayout(QtWidgets.QHBoxLayout())
         self.layout().setAlignment(Qt.AlignCenter)
         self.layout().setContentsMargins(0, 0, 0, 0)
@@ -55,7 +55,7 @@ class JoystickWidget(QtWidgets.QFrame):
 
     def default_pos(self):
         """Move widget to default position."""
-        if self.window().fullscreen:
+        if self.window().options().fullscreen:
             width = self.screen().virtualSize().width()
             height = self.screen().virtualSize().height()
         else:
@@ -68,15 +68,18 @@ class JoystickWidget(QtWidgets.QFrame):
 
     def mousePressEvent(self, event):
         """Mouse Press Event"""
+        event.accept()
         self._grab_outside = True
         self._last_pos = event.globalPos()
 
     def mouseReleaseEvent(self, event):  # pylint: disable=unused-argument
         """Mouse Release Event."""
+        event.accept()
         self._grab_outside = False
 
     def mouseMoveEvent(self, event):
         """Mouse Move Event."""
+        event.accept()
         if event.buttons() == QtCore.Qt.NoButton:
             return
         if self._grab_outside:
@@ -84,7 +87,7 @@ class JoystickWidget(QtWidgets.QFrame):
             global_pos = event.globalPos()
             diff = global_pos - self._last_pos
             new_pos = self.mapFromGlobal(cur_pos + diff)
-            if self.window().fullscreen:
+            if self.window().options().fullscreen:
                 max_x = self.screen().virtualSize().width()
                 max_y = self.screen().virtualSize().height()
             else:
@@ -101,7 +104,7 @@ class Joystick(QtWidgets.QLabel):
     """Draggable Joystick Widget."""
 
     SIZE = 180
-    MAX_DISTANCE = 50
+    RADIUS = 50
 
     class Direction(Enum):
         """Enums for directions."""
@@ -126,6 +129,11 @@ class Joystick(QtWidgets.QLabel):
         """Return Parent."""
         return super().parent()
 
+    # pylint: disable=useless-super-delegation
+    def window(self) -> StreamWindow:
+        """Return Window."""
+        return super().window()
+
     def _set_cursor(self, shape=Qt.SizeAllCursor):
         cursor = QtGui.QCursor()
         cursor.setShape(shape)
@@ -136,10 +144,10 @@ class Joystick(QtWidgets.QLabel):
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
         bounds = QtCore.QRectF(
-            -Joystick.MAX_DISTANCE,
-            -Joystick.MAX_DISTANCE,
-            Joystick.MAX_DISTANCE * 2,
-            Joystick.MAX_DISTANCE * 2,
+            -Joystick.RADIUS,
+            -Joystick.RADIUS,
+            Joystick.RADIUS * 2,
+            Joystick.RADIUS * 2,
         ).translated(self.center)
         painter.setBrush(QtGui.QColor(75, 75, 75, 150))
         painter.drawEllipse(bounds)
@@ -153,51 +161,46 @@ class Joystick(QtWidgets.QLabel):
 
     def _limit_bounds(self, point):
         limit_line = QtCore.QLineF(self.center, point)
-        if limit_line.length() > Joystick.MAX_DISTANCE:
-            limit_line.setLength(Joystick.MAX_DISTANCE)
+        if limit_line.length() > Joystick.RADIUS:
+            limit_line.setLength(Joystick.RADIUS)
         return limit_line.p2()
 
     def mousePressEvent(self, event):
         """Mouse Press Event."""
-        is_center = self._center_ellipse().contains(event.pos())
-        if is_center:
+        if self._center_ellipse().contains(event.pos()):
+            event.accept()
             self._grabbed = True
-            self._moving_offset = self._limit_bounds(event.pos())
-            point = self.joystick_position
-            self.parent().window().rp_worker.stick_state(self._stick, point=point)
-            self.update()
-        if not self._grabbed:
-            self.parent().mousePressEvent(event)
-        else:
             self._set_cursor(Qt.ClosedHandCursor)
+            self._moving_offset = self._limit_bounds(event.pos())
+            self.window().move_stick(self._stick, self.joystick_position)
+            self.update()
+        else:
+            event.ignore()
+            self.parent().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
         """Mouse Release Event."""
         if self._grabbed:
+            event.accept()
             self._grabbed = False
             self._moving_offset = QtCore.QPointF(0, 0)
-            point = self.joystick_position
-            self.parent().window().rp_worker.stick_state(self._stick, point=point)
+            self.window().move_stick(self._stick, self.joystick_position)
             self._set_cursor(Qt.OpenHandCursor)
             self.update()
         else:
+            event.ignore()
             self.parent().mouseReleaseEvent(event)
 
     def mouseMoveEvent(self, event):
         """Mouse Move Event."""
         if self._grabbed:
+            event.accept()
             self._set_cursor(Qt.ClosedHandCursor)
             self._moving_offset = self._limit_bounds(event.pos())
-            point = self.joystick_position
-            self.parent().window().rp_worker.stick_state(self._stick, point=point)
+            self.window().move_stick(self._stick, self.joystick_position)
             self.update()
         else:
-            is_center = self._center_ellipse().contains(event.pos())
-            if is_center:
-                self._set_cursor(Qt.OpenHandCursor)
-            else:
-                self._set_cursor()
-            self.parent().mouseMoveEvent(event)
+            event.ignore()
 
     @property
     def center(self) -> QtCore.QPointF:
@@ -205,12 +208,10 @@ class Joystick(QtWidgets.QLabel):
         return QtCore.QPointF(self.width() / 2, self.height() / 2)
 
     @property
-    def joystick_position(self) -> tuple:
+    def joystick_position(self) -> QtCore.QPointF:
         """Return Joystick Position."""
         if not self._grabbed:
-            return (0.0, 0.0)
+            return QtCore.QPointF(0.0, 0.0)
         vector = QtCore.QLineF(self.center, self._moving_offset)
         point = vector.p2()
-        point_x = (point.x() - self.center.x()) / Joystick.MAX_DISTANCE
-        point_y = (point.y() - self.center.y()) / Joystick.MAX_DISTANCE
-        return (point_x, point_y)
+        return (point - self.center) / Joystick.RADIUS

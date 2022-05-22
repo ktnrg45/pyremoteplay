@@ -102,31 +102,32 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def connect_host(self, device: RPDevice):
         """Connect to Host."""
-        options = self._options.options
-        user = options.get("profile")
+        options = self._options.options_data
+        user = options.profile
         profile = self.check_profile(user, device)
         if not profile:
             return
         self._device_grid.setEnabled(False)
         self._stop_update()
         audio_device = self._options.get_audio_device()
-        self._stream_window = StreamWindow(self)
-        self._stream_window.stopped.connect(self.session_stop)
-        self._stream_window.start(
+        self._stream_window = StreamWindow(
+            self.rp_worker,
             device,
-            user,
             options,
-            audio_device=audio_device,
-            input_map=self._controls.get_map(),
-            input_options=self._controls.get_options(),
+            audio_device,
+            self._controls.get_map(),
+            self._controls.get_options(),
         )
+        self._stream_window.started.connect(self.session_start)
+        self._stream_window.stopped.connect(self.session_stop)
+        self._stream_window.start()
         QtWidgets.QApplication.instance().setActiveWindow(self._stream_window)
 
-    def session_start(self):
+    def session_start(self, device: RPDevice):
         """Start Session."""
-        self.rp_worker.run()
+        self.rp_worker.run(device)
 
-    def session_stop(self):
+    def session_stop(self, error: str = ""):
         """Callback for stopping session."""
         _LOGGER.debug("Detected Session Stop")
         self.rp_worker.stop()
@@ -141,7 +142,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._stream_window:
             self._stream_window.hide()
             self._stream_window = None
-        self._check_error_finish()
+        if error:
+            message(self, "Error", error)
 
     @QtCore.Slot()
     def add_devices(self):
@@ -247,12 +249,6 @@ class MainWindow(QtWidgets.QMainWindow):
             message(self, "Standby Error", error)
         else:
             message(self, "Standby Success", "Set device to Standby", "info")
-
-    def _check_error_finish(self):
-        """Display error message if session finished with error."""
-        if self.rp_worker.error:
-            message(self, "Error", self.rp_worker.error)
-        self.rp_worker.error = ""
 
     def _power_toggle(self, device: RPDevice):
         if device.is_on:
