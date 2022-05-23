@@ -19,6 +19,7 @@ class DeviceButton(QtWidgets.QPushButton):
 
     BORDER_COLOR_ON = ("#6EA8FE", "#0D6EFD")
     BORDER_COLOR_OFF = ("#FEB272", "#FFC107")
+    BORDER_COLOR_UNKNOWN = ("#A3A3A3", "#A3A3A3")
 
     power_toggled = QtCore.Signal(RPDevice)
     connect_requested = QtCore.Signal(RPDevice)
@@ -51,6 +52,8 @@ class DeviceButton(QtWidgets.QPushButton):
         action_info.triggered.connect(self._toggle_info)
         action_power.triggered.connect(self._power_toggle)
         menu.addActions([action_info, action_power])
+        if self.state_unknown():
+            action_power.setDisabled(True)
         menu.popup(QtGui.QCursor.pos())
 
     def update_state(self):
@@ -64,16 +67,25 @@ class DeviceButton(QtWidgets.QPushButton):
             self._set_image()
         self._set_style()
 
+    def state_unknown(self) -> bool:
+        """Return True if state unknown."""
+        return not self._device.status_name
+
     def _on_click(self):
+        if self.state_unknown():
+            return
         self.setEnabled(False)
         self.setToolTip("Device unavailable.\nWaiting for session to close...")
         self.connect_requested.emit(self._device)
 
     def _set_style(self):
-        if self._device.is_on:
-            border_color = DeviceButton.BORDER_COLOR_ON
+        if self.state_unknown():
+            border_color = DeviceButton.BORDER_COLOR_UNKNOWN
         else:
-            border_color = DeviceButton.BORDER_COLOR_OFF
+            if self._device.is_on:
+                border_color = DeviceButton.BORDER_COLOR_ON
+            else:
+                border_color = DeviceButton.BORDER_COLOR_OFF
         self.setStyleSheet(
             "".join(
                 [
@@ -154,12 +166,14 @@ class DeviceButton(QtWidgets.QPushButton):
             device_type = "Unknown"
         app = self._device.app_name
         if not app:
-            if self._device.is_on:
-                app = "Idle"
-            elif self._device.status_name:
-                app = "Standby"
-            else:
+            if self.state_unknown():
                 app = "Unknown"
+            else:
+                if self._device.is_on:
+                    app = "Idle"
+                else:
+                    app = "Standby"
+
         return f"{self._device.host_name}\n" f"{device_type}\n\n" f"{app}"
 
     def _get_info_text(self) -> str:
