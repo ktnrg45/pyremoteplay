@@ -66,7 +66,7 @@ class FPSLabel(QtWidgets.QLabel):
                 now = time.time()
                 delta = now - last_time
                 last_time = now
-                self.setText(f"FPS: {int(fps/delta)}")
+                self.setText(f"FPS: {samples/delta:.2f}")
                 samples = 0
             yield
 
