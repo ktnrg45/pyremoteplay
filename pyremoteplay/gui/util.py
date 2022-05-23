@@ -4,6 +4,11 @@
 from PySide6 import QtWidgets
 
 
+def format_qt_key(key: str) -> str:
+    """Return formatted Qt Key name."""
+    return key.replace("Key_", "").replace("Button", " Click")
+
+
 def spacer():
     """Return Spacer."""
     return QtWidgets.QSpacerItem(20, 40)

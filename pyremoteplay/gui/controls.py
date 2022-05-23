@@ -3,11 +3,11 @@
 from __future__ import annotations
 import logging
 from typing import Union
-from PySide6 import QtWidgets, QtCore
+from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from pyremoteplay.util import get_mapping, write_mapping
 
-from .util import message
+from .util import message, format_qt_key
 from .widgets import AnimatedToggle
 
 _LOGGER = logging.getLogger(__name__)
@@ -74,6 +74,8 @@ class ControlsTable(QtWidgets.QTableWidget):
         "Key_0": "TOUCHPAD",
     }
 
+    BG_WARNING = QtGui.QBrush("#EA868F")
+
     keyChanged = QtCore.Signal(dict)
 
     def __init__(self, *args, **kwargs):
@@ -134,6 +136,16 @@ class ControlsTable(QtWidgets.QTableWidget):
         self.clearSelection()
         self.keyChanged.emit(self._get_map())
 
+    def quit_selected(self) -> bool:
+        """Return True if quit selected."""
+        items = self.selectedItems()
+        if len(items) < 2:
+            return False
+        quit_row = ControlsTable.RP_KEYS.index("QUIT")
+        if items[1].row() == quit_row:
+            return True
+        return False
+
     def _get_saved_map(self) -> dict:
         """Return saved map."""
         return self.parent().get_map()
@@ -159,20 +171,43 @@ class ControlsTable(QtWidgets.QTableWidget):
             return
 
         old_key = items[0].data(Qt.UserRole)
+        rp_key = items[1].text()
 
         # Swap keys if set
         old_rp_key = self._get_current_rp_key(key)
         if old_rp_key:
+            if rp_key == old_rp_key:
+                self.clearSelection()
+                return
+            # Don't allow QUIT to be None
+            if old_rp_key == "QUIT":
+                self._set_item_warning("QUIT", True)
+                self._set_item_warning(rp_key, True)
+                self.clearSelection()
+                return
             index = ControlsTable.RP_KEYS.index(old_rp_key)
             self._set_key_item(self.item(index, 0), old_key)
         self._set_key_item(items[0], key)
+
+        for _rp_key in ControlsTable.RP_KEYS:
+            self._set_item_warning(_rp_key, False)
+
         self.clearSelection()
         self.keyChanged.emit(self._get_map())
+
+    def _set_item_warning(self, rp_key: str, warning: bool):
+        row = ControlsTable.RP_KEYS.index(rp_key)
+        items = [self.item(row, 0), self.item(row, 1)]
+        brush = ControlsTable.BG_WARNING if warning else QtGui.QBrush()
+        tooltip = "'QUIT' Remote Play Control must be set" if warning else ""
+        for item in items:
+            item.setBackground(brush)
+            item.setToolTip(tooltip)
 
     def _set_key_item(self, item: QtWidgets.QTableWidgetItem, key: str):
         if key is None:
             key = ""
-        item.setText(key.replace("Key_", "").replace("Button", " Click"))
+        item.setText(format_qt_key(key))
         item.setData(Qt.UserRole, key)
 
     def _get_current_key(self, rp_key: str) -> str:
@@ -297,7 +332,8 @@ class ControlsWidget(QtWidgets.QWidget):
     def _item_selection_changed(self):
         if self._table.selectedItems():
             self._cancel.show()
-            self._clear.show()
+            if not self._table.quit_selected():
+                self._clear.show()
         else:
             self._cancel.hide()
             self._clear.hide()

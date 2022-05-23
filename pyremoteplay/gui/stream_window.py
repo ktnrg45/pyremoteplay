@@ -14,7 +14,7 @@ from pyremoteplay.const import Resolution
 
 from .joystick import JoystickWidget
 from .controls import ControlsWidget
-from .util import message
+from .util import message, format_qt_key
 from .video import VideoWidget, YUVGLWidget
 from .widgets import FadeOutLabel
 from .audio import QtAudioWorker, SoundDeviceAudioWorker
@@ -242,7 +242,7 @@ class StreamWindow(QtWidgets.QWidget):
         key_name = ""
         for key, button in self._input_map.items():
             if button == "QUIT":
-                key_name = key.replace("Key_", "")
+                key_name = format_qt_key(key)
                 break
         self._center_text.hide()
         self._center_text.move(0, 0)
