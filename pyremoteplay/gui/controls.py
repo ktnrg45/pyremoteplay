@@ -1,6 +1,8 @@
 # pylint: disable=c-extension-no-member,invalid-name
 """Controls Widget."""
-
+from __future__ import annotations
+import logging
+from typing import Union
 from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from pyremoteplay.util import get_mapping, write_mapping
@@ -8,34 +10,13 @@ from pyremoteplay.util import get_mapping, write_mapping
 from .util import message
 from .widgets import AnimatedToggle
 
+_LOGGER = logging.getLogger(__name__)
+
 
 class ControlsTable(QtWidgets.QTableWidget):
     """Table for controls."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.setRowCount(len(ControlsWidget.KEYS))
-        self.setColumnCount(2)
-        self.setHorizontalHeaderLabels(["Control", "Remote Play Control"])
-        header = self.horizontalHeader()
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-
-    def mousePressEvent(self, event):
-        """Mouse Press Event."""
-        super().mousePressEvent(event)
-        button = event.button().name.decode()
-        self.parent().set_control(button)
-
-    def keyPressEvent(self, event):
-        """Key Press Event."""
-        self.parent().keyPressEvent(event)
-
-
-class ControlsWidget(QtWidgets.QWidget):
-    """Widget for controls options."""
-
-    KEYS = (
+    RP_KEYS = (
         "STANDBY",
         "QUIT",
         "STICK_RIGHT_UP",
@@ -93,6 +74,127 @@ class ControlsWidget(QtWidgets.QWidget):
         "Key_0": "TOUCHPAD",
     }
 
+    keyChanged = QtCore.Signal(dict)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setRowCount(len(ControlsTable.RP_KEYS))
+        self.setColumnCount(2)
+        self.setHorizontalHeaderLabels(["Control", "Remote Play Control"])
+        header = self.horizontalHeader()
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+
+        self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+
+    # pylint: disable=useless-super-delegation
+    def parent(self) -> ControlsWidget:
+        """Return Parent."""
+        return super().parent()
+
+    def mousePressEvent(self, event):
+        """Mouse Press Event."""
+        if self.selectedItems():
+            self._set_control(event.button())
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def keyPressEvent(self, event):
+        """Key Press Event."""
+        event.accept()
+        self._set_control(Qt.Key(event.key()))
+
+    def set_mapping(self):
+        """Set mapping in table."""
+        self.clearContents()
+        mapping = self._get_saved_map()
+
+        for index, rp_key in enumerate(ControlsTable.RP_KEYS):
+            flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+            blank = QtWidgets.QTableWidgetItem()
+            item = QtWidgets.QTableWidgetItem(rp_key)
+            blank.setFlags(flags)
+            item.setFlags(flags)
+            self.setItem(index, 0, blank)
+            self.setItem(index, 1, item)
+
+        for key, rp_key in mapping.items():
+            item = self.item(ControlsTable.RP_KEYS.index(rp_key), 0)
+            self._set_key_item(item, key)
+        assert self._get_saved_map() == self._get_map()
+
+    def clear_control(self):
+        """Clear Control."""
+        items = self.selectedItems()
+        if not items:
+            return
+        self._set_key_item(items[0], "")
+        self.clearSelection()
+        self.keyChanged.emit(self._get_map())
+
+    def _get_saved_map(self) -> dict:
+        """Return saved map."""
+        return self.parent().get_map()
+
+    def _get_map(self) -> dict:
+        """Return map from table."""
+        mapping = {}
+        for row in range(0, self.rowCount()):
+            key = self.item(row, 0).data(Qt.UserRole)
+            rp_key = self.item(row, 1).text()
+            if key:
+                mapping[key] = rp_key
+        return mapping
+
+    def _set_control(self, key: Union[Qt.Key, Qt.MouseButton]):
+        """Set RP Control to Qt Key."""
+        key = key.name.decode()
+        items = self.selectedItems()
+        if not items:
+            return
+        if len(items) < 2:
+            _LOGGER.warning("Incomplete row selected")
+            return
+
+        old_key = items[0].data(Qt.UserRole)
+
+        # Swap keys if set
+        old_rp_key = self._get_current_rp_key(key)
+        if old_rp_key:
+            index = ControlsTable.RP_KEYS.index(old_rp_key)
+            self._set_key_item(self.item(index, 0), old_key)
+        self._set_key_item(items[0], key)
+        self.clearSelection()
+        self.keyChanged.emit(self._get_map())
+
+    def _set_key_item(self, item: QtWidgets.QTableWidgetItem, key: str):
+        if key is None:
+            key = ""
+        item.setText(key.replace("Key_", "").replace("Button", " Click"))
+        item.setData(Qt.UserRole, key)
+
+    def _get_current_key(self, rp_key: str) -> str:
+        """Return Qt Key name from rp_key."""
+        _map = self._get_map()
+        rp_keys = list(_map.values())
+        if rp_key not in rp_keys:
+            return None
+        index = rp_keys.index(rp_key)
+        key = list(_map.keys())[index]
+        return key
+
+    def _get_current_rp_key(self, key: str) -> str:
+        """Return RP key from Qt key."""
+        _map = self._get_map()
+        rp_key = _map.get(key)
+        return rp_key
+
+
+class ControlsWidget(QtWidgets.QWidget):
+    """Widget for controls options."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._mapping = {}
@@ -127,36 +229,13 @@ class ControlsWidget(QtWidgets.QWidget):
         self._cancel.clicked.connect(self._click_cancel)
         self._reset.clicked.connect(self._click_reset)
         self._clear.clicked.connect(self._click_clear)
-        self._table.clicked.connect(self._click_table)
-
-    def keyPressEvent(self, event):
-        """Key Press Event."""
-        if self._input is not None:
-            key = Qt.Key(event.key()).name.decode()
-            self.set_control(key)
+        self._table.keyChanged.connect(self._set_map)
+        self._table.itemSelectionChanged.connect(self._item_selection_changed)
 
     def hide(self):
         """Hide widget."""
         self._click_cancel()
         super().hide()
-
-    def set_control(self, key):
-        """Set RP Control to Qt Key."""
-        if self._input is not None:
-            item = self._table.item(self._input, 0)
-            rp_key = self._table.item(self._input, 1).text()
-            current = self._get_current_map_key(rp_key)
-            _map = self.get_map()
-
-            # Delete the current key
-            if current is not None:
-                assert _map.get(current) == rp_key
-                _map.pop(current)
-
-            _map[key] = rp_key
-            item.setText(key.replace("Key_", ""))
-            self._set_map(_map)
-            self._set_table()
 
     def get_map(self):
         """Return Controller Map."""
@@ -170,21 +249,20 @@ class ControlsWidget(QtWidgets.QWidget):
         """Return Default map."""
         if not self._options:
             options = {"joysticks": {"left": False, "right": False}}
-        self._mapping = {}
-        self._mapping.update(
-            {
-                "selected": "keyboard",
-                "maps": {
-                    "keyboard": {
-                        "map": ControlsWidget.DEFAULT_MAPPING.copy(),
-                        "options": options,
-                    }
-                },
-            }
-        )
+
+        self._mapping = {
+            "selected": "keyboard",
+            "maps": {
+                "keyboard": {
+                    "map": ControlsTable.DEFAULT_MAPPING.copy(),
+                    "options": options,
+                }
+            },
+        }
         write_mapping(self._mapping)
         self._set_map(self.get_map())
         self._set_table()
+        self._set_joysticks()
 
     def _init_controls(self):
         self._mapping = get_mapping()
@@ -197,52 +275,32 @@ class ControlsWidget(QtWidgets.QWidget):
         self._set_joysticks()
 
     def _set_table(self):
-        self._table.clearContents()
         self._click_cancel()
         if self._selected_map == "keyboard":
-            self._set_keyboard()
+            self._table.set_mapping()
 
     def _set_joysticks(self):
         options = self.get_options()
         joysticks = options["joysticks"]
-        if joysticks["left"]:
-            self._left_joystick.setChecked(True)
-        if joysticks["right"]:
-            self._right_joystick.setChecked(True)
+
+        self._left_joystick.setChecked(joysticks["left"])
+        self._right_joystick.setChecked(joysticks["right"])
 
     def _set_options(self, options):
         self._mapping["maps"][self._selected_map]["options"] = options
         write_mapping(self._mapping)
 
     def _set_map(self, _map):
-        self._input = None
         self._mapping["maps"][self._selected_map]["map"] = _map
         write_mapping(self._mapping)
 
-    def _set_keyboard(self):
-        remove_keys = []
-        _map = self.get_map()
-
-        for index, rp_key in enumerate(ControlsWidget.KEYS):
-            item = QtWidgets.QTableWidgetItem(rp_key)
-            item.setFlags(Qt.ItemIsEnabled)
-            blank = QtWidgets.QTableWidgetItem()
-            blank.setFlags(Qt.ItemIsEnabled)
-            self._table.setItem(index, 1, item)
-            self._table.setItem(index, 0, blank)
-        for key, rp_key in _map.items():
-            if rp_key not in ControlsWidget.KEYS:
-                remove_keys.append(key)
-                continue
-            item = QtWidgets.QTableWidgetItem(
-                key.replace("Key_", "").replace("Button", " Click")
-            )
-            item.setFlags(Qt.ItemIsEnabled)
-            self._table.setItem(ControlsWidget.KEYS.index(rp_key), 0, item)
-        if remove_keys:
-            for key in remove_keys:
-                _map.pop(key)
-        self._set_map(_map)
+    def _item_selection_changed(self):
+        if self._table.selectedItems():
+            self._cancel.show()
+            self._clear.show()
+        else:
+            self._cancel.hide()
+            self._clear.hide()
 
     def _instructions(self) -> QtWidgets.QLabel:
         text = (
@@ -270,41 +328,16 @@ class ControlsWidget(QtWidgets.QWidget):
         options["joysticks"][stick] = value
         self._set_options(options)
 
-    def _click_table(self, item):
-        self._input = item.row()
-        self._cancel.show()
-        self._clear.show()
-
     def _click_cancel(self):
-        self._input = None
+        self._table.clearSelection()
         self._cancel.hide()
         self._clear.hide()
 
     def _click_clear(self):
-        if self._input is None:
-            return
-        item = self._table.item(self._input, 0).text()
-        if "Click" in item:
-            key = item.replace(" Click", "Button")
-        else:
-            key = f"Key_{item}"
-        _map = self.get_map()
-        if key in _map:
-            _map.pop(key)
-        self._set_map(_map)
-        self._set_table()
+        self._table.clear_control()
 
     def _click_reset(self):
         text = "Reset input mapping to default?"
         message(
             self, "Reset Mapping", text, "warning", self._default_mapping, escape=True
         )
-
-    def _get_current_map_key(self, rp_key):
-        _map = self.get_map()
-        rp_keys = list(_map.values())
-        if rp_key not in rp_keys:
-            return None
-        index = rp_keys.index(rp_key)
-        key = list(_map.keys())[index]
-        return key
