@@ -184,7 +184,7 @@ class StreamWindow(QtWidgets.QWidget):
 
     def move_stick(self, stick: str, point: QtCore.QPointF):
         """Move Stick."""
-        self._rp_worker.send_stick(self.device, stick, point=(point.x(), point.y()))
+        self._rp_worker.send_stick(self.device, stick, point)
 
     def mousePressEvent(self, event):
         """Mouse Press Event."""
@@ -265,6 +265,23 @@ class StreamWindow(QtWidgets.QWidget):
             self._audio_device, self.device.session.receiver.audio_config
         )
 
+    def _point_from_stick_button(
+        self, stick_button: str, pressed: bool
+    ) -> tuple[str, QtCore.QPointF]:
+        stick_button = stick_button.split("_")
+        stick = stick_button[1]
+        direction = stick_button[2]
+        value = 1.0 if pressed else 0.0
+        point = QtCore.QPointF(0.0, 0.0)
+        if direction in ("UP", "LEFT") and value != 0.0:
+            value *= -1.0
+
+        if direction in ("LEFT", "RIGHT"):
+            point.setX(value)
+        else:
+            point.setY(value)
+        return stick, point
+
     def _handle_press(self, key):
         button = self._input_map.get(key)
         if button is None:
@@ -283,10 +300,8 @@ class StreamWindow(QtWidgets.QWidget):
             )
             return
         if "STICK" in button:
-            button = button.split("_")
-            stick = button[1]
-            direction = button[2]
-            self._rp_worker.send_stick(self.device, stick, direction, 1.0)
+            stick, point = self._point_from_stick_button(button, True)
+            self._rp_worker.send_stick(self.device, stick, point)
         else:
             self._rp_worker.send_button(self.device, button, "press")
 
@@ -298,10 +313,8 @@ class StreamWindow(QtWidgets.QWidget):
         if button in ["QUIT", "STANDBY"]:
             return
         if "STICK" in button:
-            button = button.split("_")
-            stick = button[1]
-            direction = button[2]
-            self._rp_worker.send_stick(self.device, stick, direction, 0.0)
+            stick, point = self._point_from_stick_button(button, False)
+            self._rp_worker.send_stick(self.device, stick, point)
         else:
             self._rp_worker.send_button(self.device, button, "release")
 

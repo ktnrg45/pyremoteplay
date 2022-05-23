@@ -69,24 +69,12 @@ class RPWorker(QtCore.QObject):
         self,
         device: RPDevice,
         stick: str,
-        direction: str = None,
-        value: float = None,
-        point=None,
+        point: QtCore.QPointF,
     ):
         """Send stick state"""
         if not device or not device.controller:
             return
-        if point is not None:
-            device.controller.stick(stick, point=point)
-            return
-
-        if direction in ("LEFT", "RIGHT"):
-            axis = "X"
-        else:
-            axis = "Y"
-        if direction in ("UP", "LEFT") and value != 0.0:
-            value *= -1.0
-        device.controller.stick(stick, axis, value)
+        device.controller.stick(stick, point=(point.x(), point.y()))
 
     def send_button(self, device: RPDevice, button, action):
         """Send button."""
