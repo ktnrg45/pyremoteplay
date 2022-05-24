@@ -1,6 +1,7 @@
 # pylint: disable=c-extension-no-member
 """Toolbar Widget."""
 from PySide6 import QtWidgets, QtCore
+from PySide6.QtCore import Qt
 
 
 class ToolbarWidget(QtWidgets.QToolBar):
@@ -10,6 +11,8 @@ class ToolbarWidget(QtWidgets.QToolBar):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.toggleViewAction().setEnabled(False)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
         self._refresh = QtWidgets.QPushButton("Auto Refresh")
         self._controls = QtWidgets.QPushButton("Controls")
         self._options = QtWidgets.QPushButton("Options")
