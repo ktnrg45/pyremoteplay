@@ -2,6 +2,7 @@
 """Controls Widget."""
 from __future__ import annotations
 import logging
+from enum import IntEnum, auto
 from typing import Union
 from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
@@ -13,74 +14,85 @@ from .widgets import AnimatedToggle
 _LOGGER = logging.getLogger(__name__)
 
 
+class RPKeys(IntEnum):
+    """RP Keys Enum."""
+
+    STANDBY = 0
+    QUIT = auto()
+    STICK_RIGHT_UP = auto()
+    STICK_RIGHT_DOWN = auto()
+    STICK_RIGHT_LEFT = auto()
+    STICK_RIGHT_RIGHT = auto()
+    STICK_LEFT_UP = auto()
+    STICK_LEFT_DOWN = auto()
+    STICK_LEFT_LEFT = auto()
+    STICK_LEFT_RIGHT = auto()
+    UP = auto()
+    DOWN = auto()
+    LEFT = auto()
+    RIGHT = auto()
+    L1 = auto()
+    L2 = auto()
+    L3 = auto()
+    R1 = auto()
+    R2 = auto()
+    R3 = auto()
+    CROSS = auto()
+    CIRCLE = auto()
+    SQUARE = auto()
+    TRIANGLE = auto()
+    OPTIONS = auto()
+    SHARE = auto()
+    PS = auto()
+    TOUCHPAD = auto()
+
+
 class ControlsTable(QtWidgets.QTableWidget):
     """Table for controls."""
 
-    RP_KEYS = (
-        "STANDBY",
-        "QUIT",
-        "STICK_RIGHT_UP",
-        "STICK_RIGHT_DOWN",
-        "STICK_RIGHT_LEFT",
-        "STICK_RIGHT_RIGHT",
-        "STICK_LEFT_UP",
-        "STICK_LEFT_DOWN",
-        "STICK_LEFT_LEFT",
-        "STICK_LEFT_RIGHT",
-        "UP",
-        "DOWN",
-        "LEFT",
-        "RIGHT",
-        "L1",
-        "L2",
-        "L3",
-        "R1",
-        "R2",
-        "R3",
-        "CROSS",
-        "CIRCLE",
-        "SQUARE",
-        "TRIANGLE",
-        "OPTIONS",
-        "SHARE",
-        "PS",
-        "TOUCHPAD",
+    DEFAULT_KEYS = (
+        "Key_Escape",
+        "Key_Q",
+        "Key_Up",
+        "Key_Down",
+        "Key_Left",
+        "Key_Right",
+        "Key_W",
+        "Key_S",
+        "Key_A",
+        "Key_D",
+        "Key_1",
+        "Key_2",
+        "Key_3",
+        "Key_4",
+        "Key_5",
+        "Key_6",
+        "Key_Return",
+        "Key_C",
+        "Key_R",
+        "Key_T",
+        "Key_Backspace",
+        "Key_Equal",
+        "Key_P",
+        "Key_0",
     )
-
-    DEFAULT_MAPPING = {
-        "Key_Escape": "STANDBY",
-        "Key_Q": "QUIT",
-        "Key_Up": "STICK_RIGHT_UP",
-        "Key_Down": "STICK_RIGHT_DOWN",
-        "Key_Left": "STICK_RIGHT_LEFT",
-        "Key_Right": "STICK_RIGHT_RIGHT",
-        "Key_W": "STICK_LEFT_UP",
-        "Key_S": "STICK_LEFT_DOWN",
-        "Key_A": "STICK_LEFT_LEFT",
-        "Key_D": "STICK_LEFT_RIGHT",
-        "Key_1": "L1",
-        "Key_2": "L2",
-        "Key_3": "L3",
-        "Key_4": "R1",
-        "Key_5": "R2",
-        "Key_6": "R3",
-        "Key_Return": "CROSS",
-        "Key_C": "CIRCLE",
-        "Key_R": "SQUARE",
-        "Key_T": "TRIANGLE",
-        "Key_Backspace": "OPTIONS",
-        "Key_Equal": "SHARE",
-        "Key_P": "PS",
-        "Key_0": "TOUCHPAD",
-    }
 
     BG_WARNING = QtGui.QBrush("#EA868F")
 
     keyChanged = QtCore.Signal(dict)
 
+    @staticmethod
+    def get_default_mapping():
+        """Return Default mapping."""
+        skip = [RPKeys.UP, RPKeys.DOWN, RPKeys.LEFT, RPKeys.RIGHT]
+        rp_keys = [key for key in RPKeys if key not in skip]
+        return {
+            key: rp_key.name for key, rp_key in zip(ControlsTable.DEFAULT_KEYS, rp_keys)
+        }
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setRowCount(len(ControlsTable.RP_KEYS))
+        self.setRowCount(len(list(RPKeys)))
         self.setColumnCount(2)
         self.setHorizontalHeaderLabels(["Control", "Remote Play Control"])
         header = self.horizontalHeader()
@@ -113,17 +125,18 @@ class ControlsTable(QtWidgets.QTableWidget):
         self.clearContents()
         mapping = self._get_saved_map()
 
-        for index, rp_key in enumerate(ControlsTable.RP_KEYS):
+        for rp_key in RPKeys:
             flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable
             blank = QtWidgets.QTableWidgetItem()
-            item = QtWidgets.QTableWidgetItem(rp_key)
+            blank.setData(Qt.UserRole, "")
+            item = QtWidgets.QTableWidgetItem(rp_key.name)
             blank.setFlags(flags)
             item.setFlags(flags)
-            self.setItem(index, 0, blank)
-            self.setItem(index, 1, item)
+            self.setItem(rp_key, 0, blank)
+            self.setItem(rp_key, 1, item)
 
         for key, rp_key in mapping.items():
-            item = self.item(ControlsTable.RP_KEYS.index(rp_key), 0)
+            item = self.item(RPKeys[rp_key], 0)
             self._set_key_item(item, key)
         assert self._get_saved_map() == self._get_map()
 
@@ -141,7 +154,7 @@ class ControlsTable(QtWidgets.QTableWidget):
         items = self.selectedItems()
         if len(items) < 2:
             return False
-        quit_row = ControlsTable.RP_KEYS.index("QUIT")
+        quit_row = RPKeys.QUIT
         if items[1].row() == quit_row:
             return True
         return False
@@ -162,6 +175,9 @@ class ControlsTable(QtWidgets.QTableWidget):
 
     def _set_control(self, key: Union[Qt.Key, Qt.MouseButton]):
         """Set RP Control to Qt Key."""
+        for _rp_key in RPKeys:
+            self._set_item_warning(_rp_key, False)
+
         key = key.name.decode()
         items = self.selectedItems()
         if not items:
@@ -170,33 +186,28 @@ class ControlsTable(QtWidgets.QTableWidget):
             _LOGGER.warning("Incomplete row selected")
             return
 
-        old_key = items[0].data(Qt.UserRole)
-        rp_key = items[1].text()
+        current_key = items[0].data(Qt.UserRole)
+        rp_key = RPKeys(items[1].row())
 
         # Swap keys if set
-        old_rp_key = self._get_current_rp_key(key)
-        if old_rp_key:
-            if rp_key == old_rp_key:
+        current_rp_key = self._get_current_rp_key(key)
+        if current_rp_key:
+            if rp_key == current_rp_key:
                 self.clearSelection()
                 return
             # Don't allow QUIT to be None
-            if old_rp_key == "QUIT":
-                self._set_item_warning("QUIT", True)
+            if current_rp_key == RPKeys.QUIT and current_key == "":
+                self._set_item_warning(RPKeys.QUIT, True)
                 self._set_item_warning(rp_key, True)
                 self.clearSelection()
                 return
-            index = ControlsTable.RP_KEYS.index(old_rp_key)
-            self._set_key_item(self.item(index, 0), old_key)
+            self._set_key_item(self.item(current_rp_key, 0), current_key)
         self._set_key_item(items[0], key)
-
-        for _rp_key in ControlsTable.RP_KEYS:
-            self._set_item_warning(_rp_key, False)
 
         self.clearSelection()
         self.keyChanged.emit(self._get_map())
 
-    def _set_item_warning(self, rp_key: str, warning: bool):
-        row = ControlsTable.RP_KEYS.index(rp_key)
+    def _set_item_warning(self, row: RPKeys, warning: bool):
         items = [self.item(row, 0), self.item(row, 1)]
         brush = ControlsTable.BG_WARNING if warning else QtGui.QBrush()
         tooltip = "'QUIT' Remote Play Control must be set" if warning else ""
@@ -210,20 +221,12 @@ class ControlsTable(QtWidgets.QTableWidget):
         item.setText(format_qt_key(key))
         item.setData(Qt.UserRole, key)
 
-    def _get_current_key(self, rp_key: str) -> str:
-        """Return Qt Key name from rp_key."""
-        _map = self._get_map()
-        rp_keys = list(_map.values())
-        if rp_key not in rp_keys:
-            return None
-        index = rp_keys.index(rp_key)
-        key = list(_map.keys())[index]
-        return key
-
-    def _get_current_rp_key(self, key: str) -> str:
+    def _get_current_rp_key(self, key: str) -> RPKeys:
         """Return RP key from Qt key."""
         _map = self._get_map()
         rp_key = _map.get(key)
+        if rp_key is not None:
+            rp_key = RPKeys[rp_key]
         return rp_key
 
 
@@ -284,12 +287,12 @@ class ControlsWidget(QtWidgets.QWidget):
         """Return Default map."""
         if not self._options:
             options = {"joysticks": {"left": False, "right": False}}
-
+        self._selected_map = "keyboard"
         self._mapping = {
-            "selected": "keyboard",
+            "selected": self._selected_map,
             "maps": {
-                "keyboard": {
-                    "map": ControlsTable.DEFAULT_MAPPING.copy(),
+                self._selected_map: {
+                    "map": ControlsTable.get_default_mapping(),
                     "options": options,
                 }
             },
