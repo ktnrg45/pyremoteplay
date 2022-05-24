@@ -11,6 +11,7 @@ class ToolbarWidget(QtWidgets.QToolBar):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.setMovable(False)
         self.toggleViewAction().setEnabled(False)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self._refresh = QtWidgets.QPushButton("Auto Refresh")
