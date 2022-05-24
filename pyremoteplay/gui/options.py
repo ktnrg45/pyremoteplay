@@ -326,6 +326,7 @@ class OptionsWidget(QtWidgets.QWidget):
 
     # pylint: disable=unused-argument
     def _change_options(self, *args):
+        self.use_hw.setDisabled(self.decoder.currentText() == "CPU")
         self.hdr.setDisabled(self.codec.currentText() == StreamType.H264.name.lower())
         self.options_data.save()
 
