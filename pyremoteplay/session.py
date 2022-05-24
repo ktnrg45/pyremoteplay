@@ -284,6 +284,7 @@ class Session:
         self.fps = FPS.parse(fps)
         self.resolution = Resolution.parse(resolution)
         self._stream_type = StreamType.parse(codec)
+        self._codec = codec
 
         self.set_receiver(receiver)
 
@@ -703,6 +704,11 @@ class Session:
     def video_format(self) -> str:
         """Return video format"""
         return StreamType.preset(self.stream_type)
+
+    @property
+    def codec(self) -> str:
+        """Return video codec."""
+        return self._codec
 
     @property
     def hdr(self) -> bool:

@@ -169,7 +169,7 @@ class AVReceiver(abc.ABC):
 
     def get_video_codec(self):
         """Get Codec Context."""
-        codec_name = self._session.video_format
+        codec_name = self._session.codec
         self.video_decoder = AVReceiver.video_codec(codec_name)
         try:
             self.video_decoder.open()

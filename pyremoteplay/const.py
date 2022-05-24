@@ -50,7 +50,10 @@ class StreamType(IntEnum):
         if isinstance(value, StreamType):
             return value
         if isinstance(value, str):
-            _enum = StreamType.__members__.get(value.upper())
+            str_value = value.upper()
+            if not str_value.endswith("HDR"):
+                str_value = str_value.split("_")[0]
+            _enum = StreamType.__members__.get(str_value)
             if _enum is not None:
                 return _enum
         return StreamType(value)
