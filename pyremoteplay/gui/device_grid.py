@@ -40,7 +40,7 @@ class DeviceButton(QtWidgets.QPushButton):
 
     def sizeHint(self) -> QtCore.QSize:
         """Return Size Hint."""
-        return QtCore.QSize(275, 250)
+        return QtCore.QSize(275, 275)
 
     def contextMenuEvent(self, event):  # pylint: disable=unused-argument
         """Context Menu Event."""
