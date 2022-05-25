@@ -16,7 +16,6 @@ from .const import (
     DDP_PORTS,
     Quality,
     Resolution,
-    StreamType,
     FPS,
 )
 from .ddp import async_get_status, get_status, wakeup
@@ -169,7 +168,6 @@ class RPDevice:
         quality: Union[Quality, str, int] = "very_low",
         codec: str = "h264",
         hdr: bool = "",
-        **kwargs,
     ) -> Union[Session, None]:
         """Return initialized session if session created else return None.
         Also connects a controller.
@@ -198,7 +196,6 @@ class RPDevice:
             quality=quality,
             codec=codec,
             hdr=hdr,
-            **kwargs,
         )
         self.controller = Controller(self.session)
         return self._session
@@ -242,7 +239,7 @@ class RPDevice:
                 _LOGGER.error("Error connecting")
                 return False
             try:
-                await asyncio.wait_for(self.session.stream_ready.wait(), 5)
+                await asyncio.wait_for(self.session.stream_ready_event.wait(), 5)
             except asyncio.TimeoutError:
                 _LOGGER.error("Timed out waiting for stream to start")
                 return False

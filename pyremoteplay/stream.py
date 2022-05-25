@@ -10,6 +10,7 @@ from struct import pack_into
 from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
 
+from .av import AVHandler
 from .crypt import StreamECDH
 from .protobuf import ProtoHandler
 from .stream_packets import (
@@ -82,6 +83,7 @@ class RPStream:
         self._host = session.host
         self._port = STREAM_PORT if not is_test else TEST_STREAM_PORT
         self._session = session
+        self._av_handler = AVHandler(self._session)
         self._is_test = is_test
         self._test = StreamTest(self) if is_test else None
         self._state = None
@@ -98,7 +100,6 @@ class RPStream:
         self._verify_gmac = False
         self.cipher = None
         self.proto = ProtoHandler(self)
-        self.av_handler = session.av_handler
         self.rtt = rtt if rtt is not None else DEFAULT_RTT
         self.mtu = mtu if mtu is not None else DEFAULT_MTU
         self.stream_info = None
@@ -127,11 +128,19 @@ class RPStream:
         )
         self._send_init()
 
+    def run_av(self):
+        """Run AV Handler."""
+        self._av_handler.worker()
+
+    def add_receiver(self, receiver):
+        """Add Receiver."""
+        self._av_handler.add_receiver(receiver)
+
     def ready(self):
         """Notify Session that stream is ready."""
         _LOGGER.debug("Stream Ready")
         self._state = RPStream.STATE_READY
-        self._session.stream_ready.set()
+        self._session.stream_ready_event.set()
 
     def advance_sequence(self):
         """Advance SCTP sequence number."""
@@ -207,19 +216,20 @@ class RPStream:
         """Handle received packets."""
         av_type = Packet.is_av(msg[:1])
         if av_type:
-            if self.av_handler.has_receiver and not self._is_test:
-                self.av_handler.add_packet(msg)
+            if self._av_handler.has_receiver and not self._is_test:
+                self._av_handler.add_packet(msg)
             elif self._is_test and self._test:
                 if av_type == Header.Type.AUDIO:
                     self._test.recv_rtt()
                 else:
                     self._test.recv_mtu(msg)
         else:
-            if not self.av_handler.has_receiver:
+            if not self._av_handler.has_receiver:
                 self._handle_later(msg)
             else:
                 # Run in Executor if processing av.
-                self._session.sync_run_io(self._handle_later, msg)
+                # pylint: disable=protected-access
+                self._session._sync_run_io(self._handle_later, msg)
 
     def _handle_later(self, msg):
         packet = Packet.parse(msg)
@@ -316,7 +326,8 @@ class RPStream:
             return launch_spec
 
         launch_spec_enc = bytearray(len(launch_spec))
-        launch_spec_enc = self._session.encrypt(launch_spec_enc, counter=0)
+        # pylint: disable=protected-access
+        launch_spec_enc = self._session._encrypt(launch_spec_enc, counter=0)
 
         if format_type == "encrypted":
             return launch_spec_enc
@@ -333,8 +344,8 @@ class RPStream:
             self._stop_event.set()
         self.cipher = self._ecdh.init_ciphers()
         self.ready()
-        if self.av_handler.has_receiver:
-            self.av_handler.set_cipher(self.cipher)
+        if self._av_handler.has_receiver:
+            self._av_handler.set_cipher(self.cipher)
 
     def _disconnect(self):
         """Disconnect Stream."""
@@ -357,7 +368,7 @@ class RPStream:
     def recv_stream_info(self, info: dict):
         """Receive stream info."""
         self.stream_info = info
-        self.av_handler.set_headers(info["video_header"], info["audio_header"])
+        self._av_handler.set_headers(info["video_header"], info["audio_header"])
 
     def recv_bang(self, accepted: bool, ecdh_pub_key: bytes, ecdh_sig: bytes):
         """Receive Bang Payload."""

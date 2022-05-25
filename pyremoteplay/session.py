@@ -16,7 +16,6 @@ from Cryptodome.Random import get_random_bytes
 from pyee import ExecutorEventEmitter
 
 from pyremoteplay.receiver import AVReceiver
-from .av import AVHandler
 from .const import (
     FPS,
     OS_TYPE,
@@ -209,22 +208,28 @@ class Session:
     class Protocol(asyncio.Protocol):
         """Protocol for session."""
 
-        def __init__(self, session):
-            self.transport = None
-            self.session = session
+        def __init__(self, session: Session):
+            self._transport = None
+            self._session = session
 
-        def connection_made(self, transport):
+        def connection_made(self, transport: asyncio.BaseTransport):
             """Callback for connection made."""
             _LOGGER.debug("Connected")
-            self.transport = transport
+            self._transport = transport
 
-        def data_received(self, data):
+        def data_received(self, data: bytes):
             """Callback for data received."""
-            self.session.handle(data)
+            # pylint: disable=protected-access
+            self._session._handle(data)
 
         def close(self):
             """Close Transport."""
-            self.transport.close()
+            self._transport.close()
+
+        @property
+        def transport(self) -> asyncio.BaseTransport:
+            """Return Transport."""
+            return self._transport
 
     def __repr__(self):
         return (
@@ -247,17 +252,14 @@ class Session:
         quality: Union[Quality, str, int] = "very_low",
         codec: str = "h264",
         hdr: bool = False,
-        **kwargs,
     ):
+        self.error = ""
         self._host = host
         self._profile = profile
         self._regist_data = {}
         self._session_id = b""
         self._server_type = None
         self._type = ""
-        self._mac_address = ""
-        self._name = ""
-        self._creds = ""
         self._regist_key = None
         self._rp_key = None
         self._sock = None
@@ -265,14 +267,9 @@ class Session:
         self._cipher = None
         self._state = Session.STATE_INIT
         self._stream = None
-        self._worker = None
-        self._kwargs = kwargs
-        self.max_width = self.max_height = None
-        self.error = ""
         self._receiver = None
-        self.av_handler = AVHandler(self)
-        self.events = ExecutorEventEmitter()
-        self.loop = loop
+        self._events = ExecutorEventEmitter()
+        self._loop = loop
         self._protocol = None
         self._transport = None
         self._tasks = []
@@ -280,12 +277,11 @@ class Session:
 
         self._ready_event = None
         self._stop_event = None
-        self.receiver_started = None
-        self.stream_ready = None
+        self._stream_ready_event = None
 
-        self.quality = Quality.parse(quality)
-        self.fps = FPS.parse(fps)
-        self.resolution = Resolution.parse(resolution)
+        self._quality = Quality.parse(quality)
+        self._fps = FPS.parse(fps)
+        self._resolution = Resolution.parse(resolution)
 
         if not codec:
             codec = "h264"
@@ -302,32 +298,14 @@ class Session:
             )
         self.set_receiver(receiver)
 
-    def _init_profile_kwargs(self, device: dict) -> bool:
-        """Return True if can init profile from kwargs."""
-        if not self._kwargs:
-            return False
-        self._regist_key = self._kwargs.get("regist_key")
-        try:
-            self._rp_key = bytes.fromhex(self._kwargs.get("rp_key"))
-        except ValueError:
-            _LOGGER.error("Invalid RP Key")
-            return False
-        if not self._regist_key or not self._rp_key:
-            return False
-        self._type = device.get("host-type")
-        self._mac_address = device.get("host-id")
-        self._name = device.get("host-name")
-        return True
-
-    def _init_profile(self, device: dict) -> bool:
+    def _init_profile(self, status: dict) -> bool:
         """Return True if Init profile."""
-        self._mac_address = device.get("host-id")
-        regist_data = self._profile["hosts"].get(self._mac_address)
+        mac_address = status.get("host-id")
+        regist_data = self._profile["hosts"].get(mac_address)
         if not regist_data:
             return False
         self._regist_data = regist_data["data"]
-        self._type = device.get("host-type")
-        self._name = device.get("host-name")
+        self._type = status.get("host-type")
         self._regist_key = self._regist_data["RegistKey"]
         self._rp_key = bytes.fromhex(self._regist_data["RP-Key"])
         return True
@@ -420,7 +398,7 @@ class Session:
         )
         return True
 
-    def handle(self, data: bytes):
+    def _handle(self, data: bytes):
         """Handle Data."""
 
         def invalid_session_id(session_id: bytes) -> bytes:
@@ -486,75 +464,24 @@ class Session:
         msg = self._build_msg(
             Session.MessageType.HEARTBEAT_RESPONSE, HEARTBEAT_RESPONSE
         )
-        self.send(msg)
+        self._send(msg)
 
     def _send_hb_request(self):
         msg = self._build_msg(Session.MessageType.HEARTBEAT_REQUEST)
-        self.send(msg)
+        self._send(msg)
 
-    def encrypt(self, data: bytes, counter: int = None):
+    def _encrypt(self, data: bytes, counter: int = None):
         """Return Encypted Data."""
         if not self._cipher:
             raise RemotePlayError("Session cipher not created")
         return self._cipher.encrypt(data, counter=counter)
 
-    def standby(self):
-        """Set host to standby."""
-
-        msg = self._build_msg(Session.MessageType.STANDBY)
-        self.send(msg)
-        _LOGGER.info("Sending Standby")
-        self.stop()
-
-    def send(self, data: bytes):
+    def _send(self, data: bytes):
         """Send Data."""
         self._protocol.transport.write(data)
         # log_bytes("Session Send", data)
 
-    async def wakeup(self):
-        """Wakeup Host."""
-        regist_key = format_regist_key(self._regist_key)
-        await async_wakeup(self.host, regist_key, host_type=self.type)
-
-    async def start(self, wakeup=True, autostart=True) -> bool:
-        """Start Session/RP Session."""
-        _LOGGER.info("Session Started")
-        self._ready_event = asyncio.Event()
-        self._stop_event = asyncio.Event()
-        self.receiver_started = asyncio.Event()
-        self.stream_ready = asyncio.Event()
-        _LOGGER.debug("Running Async")
-
-        if not self.loop:
-            self.loop = asyncio.get_running_loop()
-        status = await self._check_host()
-        if not status[0]:
-            self.error = f"Host @ {self._host} is not reachable."
-            return False
-        if not self._init_profile(status[2]):
-            self.error = "Profile is not registered with host"
-            return False
-        if not status[1]:
-            if wakeup:
-                await self.wakeup()
-                self.error = "Host is in Standby. Attempting to wakeup."
-            return False
-        if not await self.run_io(self.connect):
-            _LOGGER.error("Session Auth Failed")
-            if not self.error:
-                self.error = "Auth Failed."
-            return False
-        _LOGGER.info("Session Auth Success")
-        self._state = Session.STATE_READY
-        _, self._protocol = await self.loop.connect_accepted_socket(
-            lambda: Session.Protocol(self), self._sock
-        )
-        await self._ready_event.wait()
-        if autostart:
-            self.start_stream()
-        return True
-
-    def connect(self) -> bool:
+    def _connect(self) -> bool:
         """Connect to Host."""
         headers = _get_headers(self.type, self.host, self._regist_key)
         response = self._send_auth_request("init", headers, stream=False)
@@ -572,27 +499,25 @@ class Session:
         rtt = self._stream.rtt
         _LOGGER.info("Using MTU: %s; RTT: %sms", mtu, rtt * 1000)
         self._stream = None
-        self.start_stream(test=False, mtu=mtu, rtt=rtt)
+        self._start_stream(test=False, mtu=mtu, rtt=rtt)
 
-    def start_stream(self, test=True, mtu=None, rtt=None):
+    def _start_stream(self, test=True, mtu=None, rtt=None):
         """Start Stream."""
         if not self.session_id:
             _LOGGER.error("Session ID not received")
             return
         stop_event = self._stop_event if not test else asyncio.Event()
         cb_stop = self._cb_stop_test if test else None
-        if not test and self.receiver:
-            self.av_handler.add_receiver(self.receiver)
-            _LOGGER.info("Waiting for Receiver...")
-            self.loop.create_task(self.receiver_started.wait())
         self._stream = RPStream(
             self, stop_event, is_test=test, cb_stop=cb_stop, mtu=mtu, rtt=rtt
         )
+        if not test and self.receiver:
+            self._stream.add_receiver(self.receiver)
         self.loop.create_task(self._stream.async_connect())
         if test:
-            self.loop.create_task(self.wait_for_test(stop_event))
+            self.loop.create_task(self._wait_for_test(stop_event))
 
-    async def wait_for_test(self, stop_event):
+    async def _wait_for_test(self, stop_event):
         """Wait for network test to complete. Uses defaults if timed out."""
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=3.0)
@@ -600,9 +525,74 @@ class Session:
             _LOGGER.warning("Network Test timed out. Using Default MTU and RTT")
             self._stream.stop()
 
-    def init_av_handler(self):
+    def _init_av_handler(self):
         """Run AV Handler."""
-        self._tasks.append(self.loop.create_task(self.run_io(self.av_handler.worker)))
+        self._tasks.append(self.loop.create_task(self._run_io(self._stream.run_av)))
+
+    def _sync_run_io(self, func, *args, **kwargs):
+        """Run blocking function in executor. Called from sync method."""
+        asyncio.ensure_future(self._run_io(func, *args, **kwargs))
+
+    async def _run_io(self, func, *args, **kwargs):
+        """Run blocking function in executor."""
+        if not self._thread_executor:
+            if not self.is_stopped:
+                _LOGGER.warning("No Executor and session is not stopped")
+            return None
+        return await self.loop.run_in_executor(
+            self._thread_executor, partial(func, *args, **kwargs)
+        )
+
+    def standby(self):
+        """Set host to standby."""
+
+        msg = self._build_msg(Session.MessageType.STANDBY)
+        self._send(msg)
+        _LOGGER.info("Sending Standby")
+        self.stop()
+
+    async def wakeup(self):
+        """Wakeup Host."""
+        regist_key = format_regist_key(self._regist_key)
+        await async_wakeup(self.host, regist_key, host_type=self.type)
+
+    async def start(self, wakeup=True, autostart=True) -> bool:
+        """Start Session/RP Session."""
+        _LOGGER.info("Session Started")
+        self._ready_event = asyncio.Event()
+        self._stop_event = asyncio.Event()
+        self._stream_ready_event = asyncio.Event()
+
+        self.events.on("av_ready", self._init_av_handler)
+
+        if not self.loop:
+            self._loop = asyncio.get_running_loop()
+        status = await self._check_host()
+        if not status[0]:
+            self.error = f"Host @ {self._host} is not reachable."
+            return False
+        if not self._init_profile(status[2]):
+            self.error = "Profile is not registered with host"
+            return False
+        if not status[1]:
+            if wakeup:
+                await self.wakeup()
+                self.error = "Host is in Standby. Attempting to wakeup."
+            return False
+        if not await self._run_io(self._connect):
+            _LOGGER.error("Session Auth Failed")
+            if not self.error:
+                self.error = "Auth Failed."
+            return False
+        _LOGGER.info("Session Auth Success")
+        self._state = Session.STATE_READY
+        _, self._protocol = await self.loop.connect_accepted_socket(
+            lambda: Session.Protocol(self), self._sock
+        )
+        await self._ready_event.wait()
+        if autostart:
+            self._start_stream()
+        return True
 
     def stop(self):
         """Stop Session."""
@@ -629,22 +619,7 @@ class Session:
         self._stream = None
         self._thread_executor = None
         self._protocol = None
-        self.av_handler = None
-        self.events = None
-
-    async def run_io(self, func, *args, **kwargs):
-        """Run blocking function in executor."""
-        if not self._thread_executor:
-            if not self.is_stopped:
-                _LOGGER.warning("No Executor and session is not stopped")
-            return None
-        return await self.loop.run_in_executor(
-            self._thread_executor, partial(func, *args, **kwargs)
-        )
-
-    def sync_run_io(self, func, *args, **kwargs):
-        """Run blocking function in executor. Called from sync method."""
-        asyncio.ensure_future(self.run_io(func, *args, **kwargs))
+        self._events = None
 
     def set_receiver(self, receiver: AVReceiver):
         """Set AV Receiver. Should be set before starting session."""
@@ -669,16 +644,6 @@ class Session:
     def type(self) -> str:
         """Return host type."""
         return self._type
-
-    @property
-    def name(self) -> str:
-        """Return host name."""
-        return self._name
-
-    @property
-    def mac_address(self) -> str:
-        """Return host MAC Adddress."""
-        return self._mac_address
 
     @property
     def state(self) -> str:
@@ -715,6 +680,26 @@ class Session:
         return self._stop_event
 
     @property
+    def stream_ready_event(self) -> asyncio.Event:
+        """Return Stream Ready Event."""
+        return self._stream_ready_event
+
+    @property
+    def resolution(self) -> Resolution:
+        """Return resolution."""
+        return self._resolution
+
+    @property
+    def quality(self) -> Quality:
+        """Return Quality."""
+        return self._quality
+
+    @property
+    def fps(self) -> FPS:
+        """Return FPS."""
+        return self._fps
+
+    @property
     def codec(self) -> str:
         """Return video codec."""
         return self._codec
@@ -735,3 +720,13 @@ class Session:
     def receiver(self) -> AVReceiver:
         """Return AV Receiver."""
         return self._receiver
+
+    @property
+    def events(self) -> ExecutorEventEmitter:
+        """Return Event Emitter."""
+        return self._events
+
+    @property
+    def loop(self) -> asyncio.AbstractEventLoop:
+        """Return loop."""
+        return self._loop

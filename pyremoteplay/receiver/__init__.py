@@ -186,14 +186,6 @@ class AVReceiver(abc.ABC):
         """Set Session."""
         self._session = session
 
-    def notify_started(self):
-        """Notify session that receiver has started."""
-        self._session.receiver_started.set()
-
-    def start(self):
-        """Start receiver."""
-        self.notify_started()
-
     def decode_video_frame(self, buf: bytes) -> av.VideoFrame:
         """Return decoded Video Frame."""
         if not self.video_decoder:

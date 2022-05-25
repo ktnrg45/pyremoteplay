@@ -35,12 +35,11 @@ class AVHandler:
             self._receiver = receiver
             self._receiver.set_session(self._session)
             self._receiver.get_video_codec()
-            self._receiver.start()
 
     def set_cipher(self, cipher):
         """Set cipher. Schedules handler to run."""
         self._cipher = cipher
-        self._session.init_av_handler()
+        self._session.events.emit("av_ready")
 
     def set_headers(self, v_header, a_header):
         """Set headers."""
