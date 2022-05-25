@@ -167,7 +167,8 @@ class RPDevice:
         resolution: Union[Resolution, str, int] = "360p",
         fps: Union[FPS, str, int] = "low",
         quality: Union[Quality, str, int] = "very_low",
-        codec: Union[StreamType, str, int] = "h264",
+        codec: str = "h264",
+        hdr: bool = "",
         **kwargs,
     ) -> Union[Session, None]:
         """Return initialized session if session created else return None.
@@ -190,12 +191,13 @@ class RPDevice:
         self._session = Session(
             self.host,
             profile,
-            receiver,
-            loop,
-            resolution,
-            fps,
-            quality,
-            codec,
+            receiver=receiver,
+            loop=loop,
+            resolution=resolution,
+            fps=fps,
+            quality=quality,
+            codec=codec,
+            hdr=hdr,
             **kwargs,
         )
         self.controller = Controller(self.session)

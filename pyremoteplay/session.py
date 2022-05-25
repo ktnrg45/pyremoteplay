@@ -179,7 +179,9 @@ class Session:
     :param fps: Frames per second for video stream.
         Name of or value of or `FPS` enum
     :param quality: Quality of video stream. Name of or value of or `Quality` enum
-    :param codec: Video Codec to use. Name of or value of or `StreamType` enum
+    :param codec: Name of FFMPEG video codec to use. i.e. 'h264', 'h264_cuvid'.
+        Video codec should be 'h264' or 'hevc'. PS4 hosts will always use h264.
+    :param hdr: Uses HDR if True. Has no effect if codec is 'h264'
     """
 
     STATE_INIT = "init"
@@ -243,7 +245,8 @@ class Session:
         resolution: Union[Resolution, str, int] = "360p",
         fps: Union[FPS, str, int] = "low",
         quality: Union[Quality, str, int] = "very_low",
-        codec: Union[StreamType, str, int] = "h264",
+        codec: str = "h264",
+        hdr: bool = False,
         **kwargs,
     ):
         self._host = host
@@ -283,9 +286,20 @@ class Session:
         self.quality = Quality.parse(quality)
         self.fps = FPS.parse(fps)
         self.resolution = Resolution.parse(resolution)
-        self._stream_type = StreamType.parse(codec)
-        self._codec = codec
 
+        if not codec:
+            codec = "h264"
+        self._codec = codec.lower()
+
+        stream_type = codec.split("_")[0]
+        if hdr and not codec.startswith("h264"):
+            stream_type = f"{stream_type}_hdr"
+        self._stream_type = StreamType.parse(stream_type)
+
+        if self._codec.split("_")[0].upper() not in self._stream_type.name:
+            raise ValueError(
+                f"Codec: {self._codec} does not seem to match stream type: {self._stream_type.name}"
+            )
         self.set_receiver(receiver)
 
     def _init_profile_kwargs(self, device: dict) -> bool:
@@ -699,11 +713,6 @@ class Session:
     def stop_event(self):
         """Return Stop Event."""
         return self._stop_event
-
-    @property
-    def video_format(self) -> str:
-        """Return video format"""
-        return StreamType.preset(self.stream_type)
 
     @property
     def codec(self) -> str:

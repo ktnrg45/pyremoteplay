@@ -154,17 +154,16 @@ class StreamWindow(QtWidgets.QWidget):
         if not self.options().use_hw:
             codec = codec.split("_")[0]
         hdr = self.options().hdr
-        if hdr and codec == "hevc":
-            codec = "hevc_hdr"
         user = self.options().profile
         self.device.create_session(
             user,
+            receiver=receiver,
+            loop=self._rp_worker.loop,
             resolution=self.options().resolution,
             fps=self.options().fps,
-            receiver=receiver,
-            codec=codec,
             quality=self.options().quality,
-            loop=self._rp_worker.loop,
+            codec=codec,
+            hdr=hdr,
         )
         self.device.session.events.on("audio_config", self._init_audio)
         self._video_output.hide()
