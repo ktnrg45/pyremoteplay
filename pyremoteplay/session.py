@@ -171,8 +171,8 @@ class Session:
 
     :param host: IP Address of Remote Play Host
     :param profile: Profile data to connect with. From registering
-    :param receiver: A receiver for handling video and audio frames
     :param loop: A running asyncio event loop
+    :param receiver: A receiver for handling video and audio frames
     :param resolution: The resolution of video stream.
         Name of or value of or `Resolution` enum
     :param fps: Frames per second for video stream.
@@ -245,8 +245,8 @@ class Session:
         self,
         host: str,
         profile: dict,
-        receiver: AVReceiver = None,
         loop: asyncio.AbstractEventLoop = None,
+        receiver: AVReceiver = None,
         resolution: Union[Resolution, str, int] = "360p",
         fps: Union[FPS, str, int] = "low",
         quality: Union[Quality, str, int] = "very_low",

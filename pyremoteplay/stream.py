@@ -1,4 +1,5 @@
 """Stream for pyremoteplay."""
+from __future__ import annotations
 import asyncio
 import base64
 import logging
@@ -6,6 +7,7 @@ import socket
 import threading
 import time
 from struct import pack_into
+from typing import TYPE_CHECKING
 
 from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
@@ -22,6 +24,9 @@ from .stream_packets import (
     get_launch_spec,
 )
 from .util import listener
+
+if TYPE_CHECKING:
+    from .session import Session
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,7 +83,13 @@ class RPStream:
             return self.transport.get_extra_info("socket")
 
     def __init__(
-        self, session, stop_event, rtt=None, mtu=None, is_test=False, cb_stop=None
+        self,
+        session: Session,
+        stop_event: asyncio.Event,
+        rtt=None,
+        mtu=None,
+        is_test=False,
+        cb_stop=None,
     ):
         self._host = session.host
         self._port = STREAM_PORT if not is_test else TEST_STREAM_PORT
@@ -98,12 +109,11 @@ class RPStream:
         self._cb_ack_tsn = 0
         self._ecdh = None
         self._verify_gmac = False
-        self.cipher = None
-        self.proto = ProtoHandler(self)
+        self._cipher = None
+        self._proto = ProtoHandler(self)
+        self._stream_info = None
         self.rtt = rtt if rtt is not None else DEFAULT_RTT
         self.mtu = mtu if mtu is not None else DEFAULT_MTU
-        self.stream_info = None
-        self.controller = None
 
     def connect(self):
         """Connect socket to Host."""
@@ -169,7 +179,7 @@ class RPStream:
     def send_data(self, data: bytes, flag: int, channel: int, proto=False):
         """Send Data Packet."""
         advance_by = 0
-        if self.cipher:
+        if self._cipher:
             self.advance_sequence()
             if proto:
                 advance_by = len(data)
@@ -183,7 +193,7 @@ class RPStream:
             channel=channel,
             data=data,
         )
-        self.send(msg.bytes(self.cipher, False, advance_by))
+        self.send(msg.bytes(self._cipher, False, advance_by))
 
     def _send_data_ack(self, ack_tsn: int):
         """Send Data Packet."""
@@ -194,18 +204,18 @@ class RPStream:
             tag=self._tag_local,
             tsn=ack_tsn,
         )
-        self.send(msg.bytes(self.cipher, False, DATA_ACK_LENGTH))
+        self.send(msg.bytes(self._cipher, False, DATA_ACK_LENGTH))
 
     def send_feedback(self, feedback_type: int, sequence: int, data=b"", state=None):
         """Send feedback packet."""
         msg = FeedbackPacket(feedback_type, sequence=sequence, data=data, state=state)
-        self.send(msg.bytes(self.cipher, True))
+        self.send(msg.bytes(self._cipher, True))
 
     def send_congestion(self, received: int, lost: int):
         """Send congestion Packet."""
         msg = CongestionPacket(received=received, lost=lost)
         _LOGGER.info(msg)
-        self.send(msg.bytes(self.cipher))
+        self.send(msg.bytes(self._cipher))
 
     def send(self, msg: bytes):
         """Send Message."""
@@ -228,20 +238,21 @@ class RPStream:
                 self._handle_later(msg)
             else:
                 # Run in Executor if processing av.
-                # pylint: disable=protected-access
-                self._session._sync_run_io(self._handle_later, msg)
+                self._session._sync_run_io(  # pylint: disable=protected-access
+                    self._handle_later, msg
+                )
 
     def _handle_later(self, msg):
         packet = Packet.parse(msg)
         _LOGGER.debug(packet)
         # log_bytes("Stream RECV", msg)
-        if self.cipher:
+        if self._cipher:
             gmac = packet.header.gmac
             _gmac = int.to_bytes(gmac, 4, "big")
             key_pos = packet.header.key_pos
             packet.header.gmac = packet.header.key_pos = 0
             if self._verify_gmac:
-                gmac = self.cipher.verify_gmac(packet.bytes(), key_pos, _gmac)
+                gmac = self._cipher.verify_gmac(packet.bytes(), key_pos, _gmac)
 
         if packet.chunk.type == Chunk.Type.INIT_ACK:
             self._recv_init(packet)
@@ -266,7 +277,7 @@ class RPStream:
         """Handle Data."""
         params = packet.params
         self._send_data_ack(params["tsn"])
-        self.proto.handle(params["data"])
+        self._proto.handle(params["data"])
 
     def _recv_data_ack(self, packet):
         """Handle data ack."""
@@ -342,10 +353,10 @@ class RPStream:
         """Set Ciphers."""
         if not self._ecdh.set_secret(ecdh_pub_key, ecdh_sig):
             self._stop_event.set()
-        self.cipher = self._ecdh.init_ciphers()
+        self._cipher = self._ecdh.init_ciphers()
         self.ready()
         if self._av_handler.has_receiver:
-            self._av_handler.set_cipher(self.cipher)
+            self._av_handler.set_cipher(self._cipher)
 
     def _disconnect(self):
         """Disconnect Stream."""
@@ -367,7 +378,7 @@ class RPStream:
 
     def recv_stream_info(self, info: dict):
         """Receive stream info."""
-        self.stream_info = info
+        self._stream_info = info
         self._av_handler.set_headers(info["video_header"], info["audio_header"])
 
     def recv_bang(self, accepted: bool, ecdh_pub_key: bytes, ecdh_sig: bytes):

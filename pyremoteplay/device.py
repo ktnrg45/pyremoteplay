@@ -161,13 +161,13 @@ class RPDevice:
         user: str,
         profiles: dict = None,
         profile_path="",
-        receiver: AVReceiver = None,
         loop: asyncio.AbstractEventLoop = None,
+        receiver: AVReceiver = None,
         resolution: Union[Resolution, str, int] = "360p",
         fps: Union[FPS, str, int] = "low",
         quality: Union[Quality, str, int] = "very_low",
         codec: str = "h264",
-        hdr: bool = "",
+        hdr: bool = False,
     ) -> Union[Session, None]:
         """Return initialized session if session created else return None.
         Also connects a controller.
@@ -189,8 +189,8 @@ class RPDevice:
         self._session = Session(
             self.host,
             profile,
-            receiver=receiver,
             loop=loop,
+            receiver=receiver,
             resolution=resolution,
             fps=fps,
             quality=quality,
