@@ -171,7 +171,7 @@ class Session:
 
     :param host: IP Address of Remote Play Host
     :param profile: Profile data to connect with. From registering
-    :param loop: A running asyncio event loop
+    :param loop: A running asyncio event loop. If None, loop will be the current running loop
     :param receiver: A receiver for handling video and audio frames
     :param resolution: The resolution of video stream.
         Name of or value of or `Resolution` enum

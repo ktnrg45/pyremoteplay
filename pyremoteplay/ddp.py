@@ -78,6 +78,11 @@ def parse_ddp_response(rsp: Union[str, bytes]):
             data["status"] = re_status.match(line).group("status")
         else:
             values = line.split(":")
+            if len(values) != 2:
+                _LOGGER.debug(
+                    "Line: %s; does not contain key, value. Response: %s", line, rsp
+                )
+                continue
             data[values[0]] = values[1]
     if app_name is not None:
         data["running-app-name"] = app_name
