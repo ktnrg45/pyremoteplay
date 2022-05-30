@@ -8,7 +8,7 @@ from typing import Union
 import atexit
 
 from pyremoteplay.controller import Controller
-from .mappings import AxisType, DEFAULT_DEADZONE, DEFAULT_MAPS, DUALSHOCK4_MAP
+from .mappings import AxisType, HatType, default_maps, dualshock4_map
 
 try:
     import pygame
@@ -30,6 +30,8 @@ except ModuleNotFoundError:
 
 _LOGGER = logging.getLogger(__name__)
 
+DEFAULT_DEADZONE = 0.1
+
 
 class Gamepad:
     """Gamepad. PyGame interface to Controller."""
@@ -46,6 +48,30 @@ class Gamepad:
             for index in range(pygame.joystick.get_count())
         ]
         return joysticks
+
+    @staticmethod
+    def check_map(mapping: dict) -> bool:
+        """Check map. Return True if valid."""
+        is_valid = True
+        valid_buttons = Controller.buttons()
+        buttons = mapping["button"]
+        for button in buttons.values():
+            button = button.upper()
+            if button not in valid_buttons:
+                _LOGGER.error("Invalid button: %s", button)
+                is_valid = False
+
+        valid_axes = [item.name for item in AxisType]
+        axes = list(mapping["axis"].values())
+        axes.extend(list(mapping["hat"].values()))
+        for axis in axes:
+            axis = axis.upper()
+            if axis in valid_buttons:
+                continue
+            if axis not in valid_axes:
+                _LOGGER.error("Invalid axis: %s", axis)
+                is_valid = False
+        return is_valid
 
     @classmethod
     def start(cls):
@@ -119,6 +145,7 @@ class Gamepad:
         self._controller = None
         self._deadzone = deadzone
         self.__last_button = ()
+        self.__last_hat = {}
 
         if isinstance(joystick, int):
             joystick = pygame.joystick.Joystick(joystick)
@@ -136,10 +163,11 @@ class Gamepad:
                 ) from error
 
         if not mapping:
-            mapping = DEFAULT_MAPS.get(joystick.get_name())
-            mapping = mapping or DUALSHOCK4_MAP
+            mapping = default_maps().get(joystick.get_name())
+            mapping = mapping or dualshock4_map()
         self._mapping = mapping
-        self._check_map()
+        if not Gamepad.check_map(self._mapping):
+            raise ValueError("Invalid Mapping")
 
         self._joystick = joystick
         self.controller = controller
@@ -152,24 +180,6 @@ class Gamepad:
             self.joystick.quit()
         self._joystick = None
         Gamepad.__del_ref(self)
-
-    def _check_map(self):
-        valid_buttons = Controller.buttons()
-        buttons = self._mapping["button"]
-        for button in buttons.values():
-            button = button.upper()
-            if button not in valid_buttons:
-                raise ValueError(f"Invalid button: {button}")
-
-        valid_axes = [item.name for item in AxisType]
-        axes = list(self._mapping["axis"].values())
-        axes.extend(list(self._mapping["hat"].values()))
-        for axis in axes:
-            axis = axis.upper()
-            if axis in valid_buttons:
-                continue
-            if axis not in valid_axes:
-                raise ValueError(f"Invalid axis: {axis}")
 
     def _send_button(self, button: str, action: controller.ButtonAction):
         current = (button, action)
@@ -219,8 +229,9 @@ class Gamepad:
         if event.type == pygame.JOYAXISMOTION:
             name = self._mapping["axis"].get(event.axis)
         elif event.type == pygame.JOYHATMOTION:
-            name = self._mapping["hat"].get(event.hat)
-            return  # TODO: Implement
+            self._handle_hat(event)
+            return
+
         if not name:
             return
 
@@ -250,6 +261,38 @@ class Gamepad:
         if abs(event.value) < self.deadzone:
             value = 0.0
         self._send_stick(stick, axis, value)
+
+    def _handle_hat(self, event: pygame.event.Event):
+        assert event.type == pygame.JOYHATMOTION
+        hat_map = self._mapping["hat"].get(event.hat)
+        if not hat_map:
+            return
+        values = tuple(event.value)
+        action = Controller.ButtonAction.PRESS
+        hat_type = None
+        name = None
+
+        # We're assuming that only one hat direction can be active at a time
+        if values == (-1, 0):
+            hat_type = HatType.LEFT
+        elif values == (1, 0):
+            hat_type = HatType.RIGHT
+        elif values == (0, -1):
+            hat_type = HatType.DOWN
+        elif values == (0, 1):
+            hat_type = HatType.UP
+        else:
+            # (0, 0)
+            hat_type = self.__last_hat.get(event.hat)
+            action = Controller.ButtonAction.RELEASE
+
+        if hat_type is None:
+            return
+        name = hat_map.get(hat_type.name)
+        if name is None:
+            return
+        self.__last_hat[event.hat] = hat_type
+        self._send_button(name, action)
 
     @property
     def controller(self) -> Controller:
