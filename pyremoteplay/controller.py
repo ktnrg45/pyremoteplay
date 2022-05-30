@@ -2,7 +2,7 @@
 from __future__ import annotations
 import logging
 import threading
-from typing import Iterable, TYPE_CHECKING
+from typing import Iterable, TYPE_CHECKING, Union
 from collections import deque
 from enum import IntEnum, auto
 import time
@@ -56,7 +56,7 @@ class Controller:
     def __worker(self):
         """Worker for sending feedback packets. Run in thread."""
         self._should_send.acquire(timeout=1)
-        while not self._session.is_stopped and not self._stop_event.is_set():
+        while self.running:
             self._should_send.acquire(timeout=Controller.STATE_INTERVAL_MAX_MS)
             self.update_sticks()
         self._session = None
@@ -134,36 +134,48 @@ class Controller:
         event.pack(buf)
         self._event_buf.appendleft(buf)
 
-    def button(self, name: str, action="tap", delay=0.1):
+    def button(
+        self,
+        name: Union[str, FeedbackEvent.Type],
+        action: Union[str, ButtonAction] = "tap",
+        delay=0.1,
+    ):
         """Emulate pressing or releasing button.
 
         If action is `tap` this method will block by delay.
 
         :param name: The name of button. Use buttons() to show valid buttons.
-        :param action: One of press, release, tap
+        :param action: One of `press`, `release`, `tap`, or `Controller.ButtonAction`.
         :param delay: Delay between press and release. Only used when action is `tap`.
         """
-        try:
-            _action = self.ButtonAction[action.upper()]
-        except KeyError:
-            _LOGGER.error("Invalid Action: %s", action)
-            return
-        try:
-            button = int(FeedbackEvent.Type[name.upper()])
-        except KeyError:
-            _LOGGER.error("Invalid button: %s", name)
+        if isinstance(self.ButtonAction, action):
+            _action = action
         else:
-            if _action == self.ButtonAction.PRESS:
-                self._add_event_buffer(FeedbackEvent(button, is_active=True))
-            elif _action == self.ButtonAction.RELEASE:
-                self._add_event_buffer(FeedbackEvent(button, is_active=False))
-            elif _action == self.ButtonAction.TAP:
-                self._add_event_buffer(FeedbackEvent(button, is_active=True))
-                self._send_event()
-                time.sleep(delay)
-                self.button(name, "release")
+            try:
+                _action = self.ButtonAction[action.upper()]
+            except KeyError:
+                _LOGGER.error("Invalid Action: %s", action)
                 return
+        if isinstance(FeedbackEvent.Type, name):
+            button = int(name)
+        else:
+            try:
+                button = int(FeedbackEvent.Type[name.upper()])
+            except KeyError:
+                _LOGGER.error("Invalid button: %s", name)
+                return
+
+        if _action == self.ButtonAction.PRESS:
+            self._add_event_buffer(FeedbackEvent(button, is_active=True))
+        elif _action == self.ButtonAction.RELEASE:
+            self._add_event_buffer(FeedbackEvent(button, is_active=False))
+        elif _action == self.ButtonAction.TAP:
+            self._add_event_buffer(FeedbackEvent(button, is_active=True))
             self._send_event()
+            time.sleep(delay)
+            self.button(name, self.ButtonAction.RELEASE)
+            return
+        self._send_event()
 
     def stick(
         self,
@@ -237,3 +249,10 @@ class Controller:
     def stick_state(self) -> ControllerState:
         """Return stick state."""
         return self._stick_state
+
+    @property
+    def running(self) -> bool:
+        """Return True if running."""
+        if not self._session:
+            return False
+        return not self._session.is_stopped and not self._stop_event.is_set()
