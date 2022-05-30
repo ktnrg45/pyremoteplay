@@ -43,7 +43,6 @@ class Gamepad:
     :param controller: Instance of `Controller`.
     :param mapping: Dict which maps pygame Joystick to Remote Play keys. See default maps in `mappings` module.
     :param deadzone: The deadzone for analog axes. Absolute Axis Values less than this are considered to be 0.0.
-    :param auto_close: If True, `close` will be called automatically when `Session` ends.
     """
 
     __thread: threading.Thread = None
@@ -96,22 +95,19 @@ class Gamepad:
         cls.__stop_event.clear()
         cls.__thread = threading.Thread(target=cls.__worker, daemon=True)
         cls.__thread.start()
-        atexit.register(cls.stop_all)
+        atexit.register(cls.stop)
 
     @classmethod
     def stop(cls):
-        """Stop Gamepad loop. Called when all instances have called `quit` or when all instances are deleted."""
+        """Stop Gamepad loop.
+        Called automatically when all instances have called `quit` or when all instances are deleted.
+        Any running instances will have quit called.
+        """
+        for instance in list(cls.__instances):
+            instance.close()
         cls.__stop_event.set()
         cls.__thread = None
         _LOGGER.debug("Stopped Gamepad loop")
-
-    @classmethod
-    def stop_all(cls):
-        """Stop all instances. Stop Event loop."""
-        _LOGGER.debug("Stopping all")
-        for instance in list(cls.__instances):
-            instance.close()
-        cls.stop()
 
     @classmethod
     def running(cls) -> bool:
@@ -152,14 +148,12 @@ class Gamepad:
         controller: Controller = None,
         mapping: dict = None,
         deadzone: float = DEFAULT_DEADZONE,
-        auto_close: bool = True,
     ):
         self._thread = None
         self._stop_event = threading.Event()
         self._joystick = None
         self._controller = None
         self._deadzone = deadzone
-        self._auto_close = False
         self.__last_button = ()
         self.__last_hat = {}
 
@@ -323,15 +317,6 @@ class Gamepad:
             raise TypeError(
                 f"Expected instance of {Controller}; Got type {type(controller)}"
             )
-        if controller is not None:
-            if self.controller is not None:
-                _LOGGER.error("Cannot change controller once set")
-            else:
-                if controller.session and self._auto_close:
-                    controller.session.events.on("stop", self.close)
-        else:
-            if self.controller and self._auto_close:
-                self.close()
         self._controller = controller
 
     @property
