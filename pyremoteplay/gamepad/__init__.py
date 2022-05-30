@@ -4,7 +4,7 @@ from __future__ import annotations
 import threading
 import logging
 import warnings
-from typing import Union
+from typing import Any, Union, Callable
 import atexit
 
 from pyremoteplay.controller import Controller
@@ -43,6 +43,8 @@ class Gamepad:
     :param controller: Instance of `Controller`.
     :param mapping: Dict which maps pygame Joystick to Remote Play keys. See default maps in `mappings` module.
     :param deadzone: The deadzone for analog axes. Absolute Axis Values less than this are considered to be 0.0.
+    :param callback_button: Callback to be called for button event. Only used if controller is None.
+    :param callback_stick: Callback to be called for stick event. Only used if controller is None.
     """
 
     __thread: threading.Thread = None
@@ -123,7 +125,6 @@ class Gamepad:
             for instance in cls.__instances:
                 if instance.instance_id == event.instance_id:
                     instance._handle_event(event)  # pylint: disable=protected-access
-                    break
 
     @classmethod
     def __add_ref(cls, instance: Gamepad):
@@ -148,14 +149,22 @@ class Gamepad:
         controller: Controller = None,
         mapping: dict = None,
         deadzone: float = DEFAULT_DEADZONE,
+        callback_button: Callable = None,
+        callback_stick: Callable = None,
     ):
         self._thread = None
         self._stop_event = threading.Event()
         self._joystick = None
         self._controller = None
-        self._deadzone = deadzone
+        self._deadzone = DEFAULT_DEADZONE
+        self._callback_button = None
+        self._callback_stick = None
         self.__last_button = ()
         self.__last_hat = {}
+
+        self.deadzone = deadzone
+        self.callback_button = callback_button
+        self.callback_stick = callback_stick
 
         if isinstance(joystick, int):
             joystick = pygame.joystick.Joystick(joystick)
@@ -192,7 +201,7 @@ class Gamepad:
         self._joystick = None
         Gamepad.__del_ref(self)
 
-    def _send_button(self, button: str, action: controller.ButtonAction):
+    def _send_button(self, button: str, action: Controller.ButtonAction):
         current = (button, action)
         if self.__last_button == current:
             return
@@ -200,16 +209,18 @@ class Gamepad:
         _LOGGER.debug("Button: %s, Action: %s", button, action)
         if self.controller:
             self.controller.button(button, action)
+        elif isinstance(self.callback_button, Callable):
+            self.callback_button(button, action)  # pylint: disable=not-callable
 
     def _send_stick(self, stick: str, axis: str, value: float):
         if self.controller:
             self.controller.stick(stick, axis=axis, value=value)
+        elif isinstance(self.callback_stick, Callable):
+            self.callback_stick(stick, axis, value)  # pylint: disable=not-callable
 
     def _handle_event(self, event: pygame.event.Event):
         """Handle event."""
         if not self.controller:
-            return
-        if not self.controller.session:
             return
         if event.type in (pygame.JOYBUTTONDOWN, pygame.JOYBUTTONUP):
             self._handle_button_event(event)
@@ -250,16 +261,13 @@ class Gamepad:
         value = min(max(event.value, -1.0), 1.0)
 
         if name in Controller.buttons():
-            if event.type == pygame.JOYAXISMOTION:
-                action = (
-                    Controller.ButtonAction.PRESS
-                    if value > -1.0 + self.deadzone
-                    else Controller.ButtonAction.RELEASE
-                )
-            elif event.type == pygame.JOYHATMOTION:
-                return  # TODO: Implement
-            else:
-                return
+            # Handle Analog Trigger
+            # TODO: This will be weird if analog stick is mapped to this
+            action = (
+                Controller.ButtonAction.PRESS
+                if value > -1.0 + self.deadzone
+                else Controller.ButtonAction.RELEASE
+            )
             self._send_button(name, action)
             return
 
@@ -331,6 +339,30 @@ class Gamepad:
         if deadzone >= 1.0:
             raise ValueError("Deadzone must be less than 1.0")
         self._deadzone = deadzone
+
+    @property
+    def callback_button(self) -> Callable[[str, Controller.ButtonAction], Any]:
+        """Return Button Callback."""
+        return self._callback_button
+
+    @callback_button.setter
+    def callback_button(self, callback: Callable[[str, Controller.ButtonAction], Any]):
+        """Set Button Callback."""
+        if callback is not None and not isinstance(callback, Callable):
+            raise TypeError("Callback must be Callable")
+        self._callback_button = callback
+
+    @property
+    def callback_stick(self) -> Callable[[str, str, float], Any]:
+        """Return Stick Callback."""
+        return self._callback_stick
+
+    @callback_stick.setter
+    def callback_stick(self, callback: Callable[[str, str, float], Any]):
+        """Set Stick Callback."""
+        if callback is not None and not isinstance(callback, Callable):
+            raise TypeError("Callback must be Callable")
+        self._callback_stick = callback
 
     @property
     def joystick(self) -> pygame.joystick.Joystick:

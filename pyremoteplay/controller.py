@@ -16,7 +16,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class Controller:
-    """Emulated controller input."""
+    """Controller Interface. Sends user input to Remote Play Session."""
 
     class ButtonAction(IntEnum):
         """Button Action Types."""
@@ -28,8 +28,6 @@ class Controller:
     MAX_EVENTS = 16
     STATE_INTERVAL_MAX_MS = 0.200
     STATE_INTERVAL_MIN_MS = 0.100
-    STICK_STATE_MAX = 0x7FFF
-    STICK_STATE_MIN = -0x7FFF
 
     @staticmethod
     def buttons() -> list:
