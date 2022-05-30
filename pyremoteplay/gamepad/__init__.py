@@ -34,7 +34,17 @@ DEFAULT_DEADZONE = 0.1
 
 
 class Gamepad:
-    """Gamepad. PyGame interface to Controller."""
+    """Gamepad. PyGame interface to Controller.
+    Instances are not re-entrant after calling `close`.
+    Creating an instance automatically starts the event loop.
+    User should ensure that dangling instances are stopped with `close`.
+
+    :param joystick: Either the id from `pygame.joystick.Joystick.get_instance_id()` or an instance of `pygame.joystick.Joystick`.
+    :param controller: Instance of `Controller`.
+    :param mapping: Dict which maps pygame Joystick to Remote Play keys. See default maps in `mappings` module.
+    :param deadzone: The deadzone for analog axes. Absolute Axis Values less than this are considered to be 0.0.
+    :param auto_close: If True, `close` will be called automatically when `Session` ends.
+    """
 
     __thread: threading.Thread = None
     __stop_event = threading.Event()
@@ -56,6 +66,8 @@ class Gamepad:
         valid_buttons = Controller.buttons()
         buttons = mapping["button"]
         for button in buttons.values():
+            if button is None:
+                continue
             button = button.upper()
             if button not in valid_buttons:
                 _LOGGER.error("Invalid button: %s", button)
@@ -65,6 +77,8 @@ class Gamepad:
         axes = list(mapping["axis"].values())
         axes.extend(list(mapping["hat"].values()))
         for axis in axes:
+            if axis is None:
+                continue
             axis = axis.upper()
             if axis in valid_buttons:
                 continue
@@ -75,7 +89,7 @@ class Gamepad:
 
     @classmethod
     def start(cls):
-        """Start Gamepad loop. Called automatically"""
+        """Start Gamepad loop. Called automatically when an instance is created."""
         if cls.running():
             return
         _LOGGER.debug("Starting Gamepad loop")
@@ -86,17 +100,17 @@ class Gamepad:
 
     @classmethod
     def stop(cls):
-        """Stop Gamepad loop."""
+        """Stop Gamepad loop. Called when all instances have called `quit` or when all instances are deleted."""
         cls.__stop_event.set()
         cls.__thread = None
         _LOGGER.debug("Stopped Gamepad loop")
 
     @classmethod
     def stop_all(cls):
-        """Stop all instances."""
+        """Stop all instances. Stop Event loop."""
         _LOGGER.debug("Stopping all")
         for instance in list(cls.__instances):
-            instance.quit()
+            instance.close()
         cls.stop()
 
     @classmethod
@@ -130,7 +144,7 @@ class Gamepad:
             cls.stop()
 
     def __del__(self):
-        self.quit()
+        self.close()
 
     def __init__(
         self,
@@ -138,12 +152,14 @@ class Gamepad:
         controller: Controller = None,
         mapping: dict = None,
         deadzone: float = DEFAULT_DEADZONE,
+        auto_close: bool = True,
     ):
         self._thread = None
         self._stop_event = threading.Event()
         self._joystick = None
         self._controller = None
         self._deadzone = deadzone
+        self._auto_close = False
         self.__last_button = ()
         self.__last_hat = {}
 
@@ -173,10 +189,11 @@ class Gamepad:
         self.controller = controller
         Gamepad.__add_ref(self)  # pylint: disable=protected-access
 
-    def quit(self):
-        """Quit handling events."""
+    def close(self):
+        """Close. Quit handling events."""
         self.controller = None
         if self.joystick is not None and self.joystick.get_init():
+            _LOGGER.info("Gamepad with joystick closed: %s", self.joystick.get_guid())
             self.joystick.quit()
         self._joystick = None
         Gamepad.__del_ref(self)
@@ -306,6 +323,15 @@ class Gamepad:
             raise TypeError(
                 f"Expected instance of {Controller}; Got type {type(controller)}"
             )
+        if controller is not None:
+            if self.controller is not None:
+                _LOGGER.error("Cannot change controller once set")
+            else:
+                if controller.session and self._auto_close:
+                    controller.session.events.on("stop", self.close)
+        else:
+            if self.controller and self._auto_close:
+                self.close()
         self._controller = controller
 
     @property
