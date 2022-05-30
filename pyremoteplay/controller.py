@@ -148,7 +148,7 @@ class Controller:
         :param action: One of `press`, `release`, `tap`, or `Controller.ButtonAction`.
         :param delay: Delay between press and release. Only used when action is `tap`.
         """
-        if isinstance(self.ButtonAction, action):
+        if isinstance(action, self.ButtonAction):
             _action = action
         else:
             try:
@@ -156,7 +156,7 @@ class Controller:
             except KeyError:
                 _LOGGER.error("Invalid Action: %s", action)
                 return
-        if isinstance(FeedbackEvent.Type, name):
+        if isinstance(name, FeedbackEvent.Type):
             button = int(name)
         else:
             try:
