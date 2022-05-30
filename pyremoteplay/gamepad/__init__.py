@@ -240,6 +240,10 @@ class Gamepad:
 
     def _handle_event(self, event: pygame.event.Event):
         """Handle event."""
+        if not self.controller:
+            return
+        if not self.controller.session:
+            return
         if event.type in (pygame.JOYBUTTONDOWN, pygame.JOYBUTTONUP):
             self._handle_button_event(event)
         elif event.type in (

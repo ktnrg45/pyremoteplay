@@ -103,8 +103,8 @@ class Controller:
         Will be called automatically if controller has been started.
         """
         if (
-            self._session is None
-            or self._session.is_stopped
+            self.session is None
+            or self.session.is_stopped
             or self.stick_state == self._last_state
         ):
             return
@@ -117,6 +117,8 @@ class Controller:
 
     def _send_event(self):
         """Send controller button event."""
+        if self.session is None or self.session.is_stopped:
+            return
         data = b"".join(self._event_buf)
         if not data:
             return
@@ -256,3 +258,8 @@ class Controller:
         if not self._session:
             return False
         return not self._session.is_stopped and not self._stop_event.is_set()
+
+    @property
+    def session(self) -> Session:
+        """Return Session."""
+        return self._session
