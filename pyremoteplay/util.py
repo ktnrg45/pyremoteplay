@@ -49,7 +49,7 @@ def write_mapping(mapping: dict, path: str = None):
     else:
         path = pathlib.Path(path)
     with open(path, "w", encoding="utf-8") as _file:
-        json.dump(mapping, _file)
+        json.dump(mapping, _file, indent=2)
 
 
 def get_options(path: str = None) -> dict:

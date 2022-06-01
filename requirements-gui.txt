@@ -3,3 +3,4 @@ av>=8.0.0
 PyOpenGL>=3.1.5
 sounddevice>=0.4.4
 pyjerasure>=1.0.0
+pygame>=2.1.2

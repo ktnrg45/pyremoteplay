@@ -1,4 +1,5 @@
 """Mappings for Gamepad."""
+from __future__ import annotations
 from enum import IntEnum, auto
 from pyremoteplay.stream_packets import FeedbackEvent
 
@@ -17,10 +18,22 @@ class AxisType(IntEnum):
 class HatType(IntEnum):
     """Hat Type Enum."""
 
-    LEFT = auto()
-    RIGHT = auto()
-    DOWN = auto()
-    UP = auto()
+    left = auto()
+    right = auto()
+    down = auto()
+    up = auto()
+
+    # HAT_UP = hy = 1
+    # HAT_DOWN = hy = -1
+    # HAT_RIGHT = hx = 1
+    # HAT_LEFT = hx = -1
+
+
+def rp_map_keys() -> list[str]:
+    """Return RP Mapping Keys."""
+    keys = [item.name for item in FeedbackEvent.Type]
+    keys.extend([item.name for item in AxisType])
+    return keys
 
 
 def dualshock4_map() -> dict:
@@ -116,19 +129,13 @@ def xbox360_map() -> dict:
         },
         "hat": {
             0: {
-                HatType.LEFT.name: FeedbackEvent.Type.LEFT.name,
-                HatType.RIGHT.name: FeedbackEvent.Type.RIGHT.name,
-                HatType.DOWN.name: FeedbackEvent.Type.DOWN.name,
-                HatType.UP.name: FeedbackEvent.Type.UP.name,
+                HatType.left.name: FeedbackEvent.Type.LEFT.name,
+                HatType.right.name: FeedbackEvent.Type.RIGHT.name,
+                HatType.down.name: FeedbackEvent.Type.DOWN.name,
+                HatType.up.name: FeedbackEvent.Type.UP.name,
             },
         },
     }
-
-
-# HAT_UP = hy = 1
-# HAT_DOWN = hy = -1
-# HAT_RIGHT = hx = 1
-# HAT_LEFT = hx = -1
 
 
 def default_maps():
@@ -136,4 +143,5 @@ def default_maps():
     return {
         "PS4 Controller": dualshock4_map(),
         "PS5 Controller": dualsense_map(),
+        "Xbox 360 Controller": xbox360_map(),
     }

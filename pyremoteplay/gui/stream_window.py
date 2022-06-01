@@ -11,9 +11,9 @@ from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from pyremoteplay.receiver import AVReceiver
 from pyremoteplay.device import RPDevice
 from pyremoteplay.const import Resolution
+from pyremoteplay.gamepad import Gamepad
 
 from .joystick import JoystickWidget
-from .controls import ControlsWidget
 from .util import message, format_qt_key
 from .video import VideoWidget, YUVGLWidget
 from .widgets import FadeOutLabel
@@ -89,17 +89,17 @@ class StreamWindow(QtWidgets.QWidget):
         device: RPDevice,
         options: Options,
         audio_device: Any,
-        input_map: dict = None,
-        input_options: dict = None,
+        input_map_kb: dict,
+        input_options_kb: dict,
+        gamepad: Gamepad = None,
     ):
         self._rp_worker = rp_worker
         self._device = device
         self._options = options
         self._audio_device = audio_device
-        self._input_options = input_options
-        self._input_map = (
-            ControlsWidget.DEFAULT_MAPPING if input_map is None else input_map
-        )
+        self._input_map_kb = input_map_kb
+        self._input_options_kb = input_options_kb
+        self._gamepad = gamepad
 
         super().__init__()
         self.hide()
@@ -165,6 +165,8 @@ class StreamWindow(QtWidgets.QWidget):
             codec=codec,
             hdr=hdr,
         )
+        if self._gamepad:
+            self._gamepad.controller = self.device.controller
         self.device.session.events.on("audio_config", self._init_audio)
         self._video_output.hide()
 
@@ -239,7 +241,7 @@ class StreamWindow(QtWidgets.QWidget):
 
     def _show_message(self):
         key_name = ""
-        for key, button in self._input_map.items():
+        for key, button in self._input_map_kb.items():
             if button == "QUIT":
                 key_name = format_qt_key(key)
                 break
@@ -252,11 +254,17 @@ class StreamWindow(QtWidgets.QWidget):
         """Show Video Output."""
         self._show_message()
         self._video_output.show()
-        joysticks = self._input_options.get("joysticks")
-        if joysticks:
-            self._joystick.hide_sticks()
-            self._joystick.show_sticks(joysticks["left"], joysticks["right"])
-            self._joystick.default_pos()
+        show_left = show_right = True
+        try:
+            joysticks = self._input_options_kb["joysticks"]
+            show_left = joysticks["left"]
+            show_right = joysticks["right"]
+        except KeyError:
+            show_left = show_right = True
+
+        self._joystick.hide_sticks()
+        self._joystick.show_sticks(show_left, show_right)
+        self._joystick.default_pos()
         self.setFixedSize(self.width(), self.height())
 
     def _init_audio(self):
@@ -282,7 +290,7 @@ class StreamWindow(QtWidgets.QWidget):
         return stick, point
 
     def _handle_press(self, key):
-        button = self._input_map.get(key)
+        button = self._input_map_kb.get(key)
         if button is None:
             return
         if button == "QUIT":
@@ -305,7 +313,7 @@ class StreamWindow(QtWidgets.QWidget):
             self._rp_worker.send_button(self.device, button, "press")
 
     def _handle_release(self, key):
-        button = self._input_map.get(key)
+        button = self._input_map_kb.get(key)
         if button is None:
             _LOGGER.debug("Button Invalid: %s", key)
             return
@@ -331,6 +339,9 @@ class StreamWindow(QtWidgets.QWidget):
             self._video_output = None
         if self._audio_output:
             self._audio_output.quit()
+        if self._gamepad:
+            self._gamepad.controller = None
+            self._gamepad = None
         error = ""
         if self.device and self.device.session:
             error = self.device.session.error

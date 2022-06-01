@@ -1,6 +1,7 @@
 # pylint: disable=c-extension-no-member,invalid-name,no-name-in-module
 """Generic custom QT Widgets."""
 
+
 from PySide6.QtCore import (
     Property,
     QEasingCurve,
@@ -14,7 +15,7 @@ from PySide6.QtCore import (
     QTimer,
 )
 from PySide6.QtGui import QBrush, QColor, QPainter, QPaintEvent, QPen
-from PySide6.QtWidgets import QCheckBox, QLabel
+from PySide6.QtWidgets import QCheckBox, QLabel, QWidget, QHBoxLayout
 
 
 class FadeOutLabel(QLabel):
@@ -252,3 +253,18 @@ class AnimatedToggle(QCheckBox):
     def pulse_radius(self, pos):
         self._pulse_radius = pos
         self.update()
+
+
+class LabeledWidget(QWidget):
+    """Widget with Label."""
+
+    def __init__(self, text: str, widget: QWidget, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._widget = widget
+        self.setLayout(QHBoxLayout())
+        self.layout().addWidget(QLabel(text, self), alignment=Qt.AlignLeft)
+        self.layout().addWidget(widget, stretch=1, alignment=Qt.AlignLeft)
+
+    def widget(self) -> QWidget:
+        """Return Widget."""
+        return self._widget

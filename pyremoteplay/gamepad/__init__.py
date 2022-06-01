@@ -6,13 +6,35 @@ import logging
 import warnings
 from typing import Any, Union, Callable
 import atexit
+import weakref
+import json
 
 from pyremoteplay.controller import Controller
-from .mappings import AxisType, HatType, default_maps, dualshock4_map
+from .mapping import AxisType, HatType, default_maps, dualshock4_map
 
 try:
     import pygame
+except ModuleNotFoundError:
+    warnings.warn("pygame not installed")
 
+_LOGGER = logging.getLogger(__name__)
+
+DEFAULT_DEADZONE = 0.1
+
+
+def _format_json_keys(data: dict):
+    """Format number JSON keys to int."""
+    return {
+        int(key)
+        if key.isdigit()
+        else key.lower(): val.upper()
+        if isinstance(val, str)
+        else val
+        for key, val in data.items()
+    }
+
+
+def __init_pygame():
     pygame.init()
     pygame.joystick.init()
     pygame.event.set_allowed(
@@ -25,40 +47,41 @@ try:
             pygame.JOYDEVICEREMOVED,
         ]
     )
-except ModuleNotFoundError:
-    warnings.warn("pygame not installed")
 
-_LOGGER = logging.getLogger(__name__)
 
-DEFAULT_DEADZONE = 0.1
+__init_pygame()
 
 
 class Gamepad:
-    """Gamepad. PyGame interface to Controller.
+    """Gamepad. Wraps a PyGame Joystick to interface with RP Controller.
     Instances are not re-entrant after calling `close`.
     Creating an instance automatically starts the event loop.
-    User should ensure that dangling instances are stopped with `close`.
+    Joystick instances are closed automatically when deallocated.
+    If creating a new instance with the same joystick as an existing gamepad,
+    the existing gamepad will be returned. This ensures that only one gamepad instance
+    will exist per joystick.
 
     :param joystick: Either the id from `pygame.joystick.Joystick.get_instance_id()` or an instance of `pygame.joystick.Joystick`.
-    :param controller: Instance of `Controller`.
-    :param mapping: Dict which maps pygame Joystick to Remote Play keys. See default maps in `mappings` module.
-    :param deadzone: The deadzone for analog axes. Absolute Axis Values less than this are considered to be 0.0.
-    :param callback_button: Callback to be called for button event. Only used if controller is None.
-    :param callback_stick: Callback to be called for stick event. Only used if controller is None.
     """
 
     __thread: threading.Thread = None
     __stop_event = threading.Event()
-    __instances = set()
+    __refs = set()
+    __cb_refs = set()
 
     @staticmethod
     def joysticks() -> list[pygame.joystick.Joystick]:
-        """Return Joysticks."""
+        """Return All Joysticks."""
         joysticks = [
             pygame.joystick.Joystick(index)
             for index in range(pygame.joystick.get_count())
         ]
         return joysticks
+
+    @staticmethod
+    def get_all() -> list[Gamepad]:
+        """Return All Gamepads."""
+        return [Gamepad(joystick) for joystick in Gamepad.joysticks()]
 
     @staticmethod
     def check_map(mapping: dict) -> bool:
@@ -67,7 +90,7 @@ class Gamepad:
         valid_buttons = Controller.buttons()
         buttons = mapping["button"]
         for button in buttons.values():
-            if button is None:
+            if button is None or button == "":
                 continue
             button = button.upper()
             if button not in valid_buttons:
@@ -76,9 +99,17 @@ class Gamepad:
 
         valid_axes = [item.name for item in AxisType]
         axes = list(mapping["axis"].values())
-        axes.extend(list(mapping["hat"].values()))
+        hats = list(mapping["hat"].values())
+        valid_hats = [item.name for item in HatType]
+        for group in hats:
+            for hat_type in group:
+                if hat_type not in valid_hats:
+                    _LOGGER.error("Invalid Hat Type: %s", hat_type)
+                    is_valid = False
+            axes.extend(list(group.values()))
+
         for axis in axes:
-            if axis is None:
+            if axis is None or axis == "":
                 continue
             axis = axis.upper()
             if axis in valid_buttons:
@@ -87,6 +118,24 @@ class Gamepad:
                 _LOGGER.error("Invalid axis: %s", axis)
                 is_valid = False
         return is_valid
+
+    @classmethod
+    def register(cls, callback: Callable[[pygame.event.Event], None]):
+        """Register a callback for device added/removed events."""
+        if not isinstance(callback, Callable):
+            raise TypeError(f"Expected a callable. Got: {type(callback)}")
+        ref = weakref.ref(callback)
+        cls.__cb_refs.add(ref)
+
+    @classmethod
+    def unregister(cls, callback: Callable[[pygame.event.Event], None]):
+        """Unregister a callback from receiving device added/removed events."""
+        for ref in cls.__cb_refs:
+            if ref() == callback:
+                try:
+                    cls.__cb_refs.remove(ref)
+                except KeyError:
+                    pass
 
     @classmethod
     def start(cls):
@@ -105,67 +154,22 @@ class Gamepad:
         Called automatically when all instances have called `quit` or when all instances are deleted.
         Any running instances will have quit called.
         """
-        for instance in list(cls.__instances):
+        for ref in list(cls.__refs):
+            instance = ref()
             instance.close()
         cls.__stop_event.set()
         cls.__thread = None
-        _LOGGER.debug("Stopped Gamepad loop")
+        _LOGGER.info("Stopped Gamepad loop")
 
     @classmethod
     def running(cls) -> bool:
         """Return True if running."""
         return cls.__thread is not None and cls.__thread.is_alive()
 
-    @classmethod
-    def __worker(cls):
-        while not cls.__stop_event.is_set():
-            event = pygame.event.wait(timeout=1)
-            if event.type == pygame.NOEVENT or not hasattr(event, "instance_id"):
-                continue
-            for instance in cls.__instances:
-                if instance.instance_id == event.instance_id:
-                    instance._handle_event(event)  # pylint: disable=protected-access
-
-    @classmethod
-    def __add_ref(cls, instance: Gamepad):
-        cls.__instances.add(instance)
-        cls.start()
-
-    @classmethod
-    def __del_ref(cls, instance: Gamepad):
-        try:
-            cls.__instances.remove(instance)
-        except KeyError:
-            pass
-        if not cls.__instances:
-            cls.stop()
-
-    def __del__(self):
-        self.close()
-
-    def __init__(
-        self,
-        joystick: Union[int, pygame.joystick.Joystick],
-        controller: Controller = None,
-        mapping: dict = None,
-        deadzone: float = DEFAULT_DEADZONE,
-        callback_button: Callable = None,
-        callback_stick: Callable = None,
-    ):
-        self._thread = None
-        self._stop_event = threading.Event()
-        self._joystick = None
-        self._controller = None
-        self._deadzone = DEFAULT_DEADZONE
-        self._callback_button = None
-        self._callback_stick = None
-        self.__last_button = ()
-        self.__last_hat = {}
-
-        self.deadzone = deadzone
-        self.callback_button = callback_button
-        self.callback_stick = callback_stick
-
+    @staticmethod
+    def __check_joystick(
+        joystick: Union[int, pygame.joystick.Joystick]
+    ) -> pygame.joystick.Joystick:
         if isinstance(joystick, int):
             joystick = pygame.joystick.Joystick(joystick)
         else:
@@ -180,43 +184,148 @@ class Gamepad:
                 raise TypeError(
                     f"Expected an int or an instance of 'pygame.joystick.Joystick'. Got: {type(joystick)}"
                 ) from error
+        return joystick
 
-        if not mapping:
-            mapping = default_maps().get(joystick.get_name())
-            mapping = mapping or dualshock4_map()
-        self._mapping = mapping
-        if not Gamepad.check_map(self._mapping):
-            raise ValueError("Invalid Mapping")
+    @classmethod
+    def __worker(cls):
+        while not cls.__stop_event.is_set():
+            try:
+                cls.__handle_events()
+            except Exception as error:  # pylint: disable=broad-except
+                _LOGGER.info("Error Handling Events: %s", error)
 
-        self._joystick = joystick
-        self.controller = controller
-        Gamepad.__add_ref(self)  # pylint: disable=protected-access
+    @classmethod
+    def __handle_events(cls):
+        event = pygame.event.wait(timeout=1)
+        if event.type == pygame.NOEVENT or not hasattr(event, "instance_id"):
+            return
+        if event.type in (pygame.JOYDEVICEREMOVED, pygame.JOYDEVICEADDED):
+            if event.type == pygame.JOYDEVICEREMOVED:
+                for ref in list(cls.__refs):
+                    instance = ref()
+                    if instance:
+                        if event.instance_id == instance.instance_id:
+                            _LOGGER.debug("Gamepad closed: Joystick removed")
+                            instance.close()
+
+            for ref in list(cls.__cb_refs):
+                callback = ref()
+                if callback:
+                    callback(event)
+            return
+
+        for ref in cls.__refs:
+            instance = ref()
+            if instance.instance_id == event.instance_id:
+                instance._handle_event(event)  # pylint: disable=protected-access
+
+    @classmethod
+    def __add_ref(cls, instance: Gamepad):
+        ref = weakref.ref(instance)
+        cls.__refs.add(ref)
+        cls.start()
+
+    @classmethod
+    def __del_ref(cls, instance: Gamepad):
+        for ref in list(cls.__refs):
+            if ref() == instance:
+                try:
+                    cls.__refs.remove(ref)
+                except KeyError:
+                    pass
+
+    def __new__(cls, joystick: Union[int, pygame.joystick.Joystick]):
+        """Only allow one instance."""
+        joystick = cls.__check_joystick(joystick)
+        instance_id = joystick.get_instance_id()
+        for ref in cls.__refs:
+            instance = ref()
+            if instance.instance_id == instance_id:
+                return instance
+
+        instance = super().__new__(cls)
+        cls.__add_ref(instance)
+        return instance
+
+    def __del__(self):
+        self.close()
+
+    def __init__(self, joystick: Union[int, pygame.joystick.Joystick]):
+        self._joystick = self.__check_joystick(joystick)
+        self._controller = None
+        self._deadzone = None
+        self._mapping = {}
+        self._last_button = ()
+        self._last_hat = {}
+
+        self.mapping = self.default_map()
+        self.deadzone = DEFAULT_DEADZONE
+
+    def default_map(self) -> dict:
+        """Return Default Map."""
+        mapping = dualshock4_map()
+        if self._joystick:
+            mapping = default_maps().get(self._joystick.get_name())
+        return mapping
 
     def close(self):
         """Close. Quit handling events."""
         self.controller = None
-        if self.joystick is not None and self.joystick.get_init():
-            _LOGGER.info("Gamepad with joystick closed: %s", self.joystick.get_guid())
-            self.joystick.quit()
+        if self._joystick is not None and self._joystick.get_init():
+            _LOGGER.info("Gamepad with joystick closed: %s", self._joystick.get_guid())
+            self._joystick.quit()
         self._joystick = None
         Gamepad.__del_ref(self)
 
+    def get_hat(self, hat: int) -> HatType:
+        """Get Hat."""
+        if not self.available:
+            raise RuntimeError("Joystick Not Available")
+        values = self._joystick.get_hat(hat)
+        return self._parse_hat(values)
+
+    def get_button(self, button: int) -> int:
+        """Return button value."""
+        if not self.available:
+            raise RuntimeError("Joystick Not Available")
+        return self._joystick.get_button(button)
+
+    def get_axis(self, axis: int) -> float:
+        """Return axis value."""
+        if not self.available:
+            raise RuntimeError("Joystick Not Available")
+        return self._joystick.get_axis(axis)
+
+    def _parse_hat(self, values: tuple[float, float]) -> HatType:
+        """Parse hat value. Return enum."""
+        # Only one hat direction can be active at a time
+        if not values:
+            return None
+        values = (int(values[0]), int(values[1]))
+        if values == (-1, 0):
+            hat_type = HatType.left
+        elif values == (1, 0):
+            hat_type = HatType.right
+        elif values == (0, -1):
+            hat_type = HatType.down
+        elif values == (0, 1):
+            hat_type = HatType.up
+        else:
+            hat_type = None
+        return hat_type
+
     def _send_button(self, button: str, action: Controller.ButtonAction):
         current = (button, action)
-        if self.__last_button == current:
+        if self._last_button == current:
             return
-        self.__last_button = current
+        self._last_button = current
         _LOGGER.debug("Button: %s, Action: %s", button, action)
         if self.controller:
             self.controller.button(button, action)
-        elif isinstance(self.callback_button, Callable):
-            self.callback_button(button, action)  # pylint: disable=not-callable
 
     def _send_stick(self, stick: str, axis: str, value: float):
         if self.controller:
             self.controller.stick(stick, axis=axis, value=value)
-        elif isinstance(self.callback_stick, Callable):
-            self.callback_stick(stick, axis, value)  # pylint: disable=not-callable
 
     def _handle_event(self, event: pygame.event.Event):
         """Handle event."""
@@ -241,7 +350,7 @@ class Gamepad:
             raise RuntimeError("Could not determine Button Action")
 
         button = self._mapping["button"].get(event.button)
-        if action is None or button is None:
+        if action is None or not button:
             return
         self._send_button(button, action)
 
@@ -288,21 +397,11 @@ class Gamepad:
             return
         values = tuple(event.value)
         action = Controller.ButtonAction.PRESS
-        hat_type = None
         name = None
 
-        # We're assuming that only one hat direction can be active at a time
-        if values == (-1, 0):
-            hat_type = HatType.LEFT
-        elif values == (1, 0):
-            hat_type = HatType.RIGHT
-        elif values == (0, -1):
-            hat_type = HatType.DOWN
-        elif values == (0, 1):
-            hat_type = HatType.UP
-        else:
-            # (0, 0)
-            hat_type = self.__last_hat.get(event.hat)
+        hat_type = self._parse_hat(values)
+        if hat_type is None:
+            hat_type = self._last_hat.get(event.hat)
             action = Controller.ButtonAction.RELEASE
 
         if hat_type is None:
@@ -310,8 +409,18 @@ class Gamepad:
         name = hat_map.get(hat_type.name)
         if name is None:
             return
-        self.__last_hat[event.hat] = hat_type
+        self._last_hat[event.hat] = hat_type
         self._send_button(name, action)
+
+    def get_config(self) -> dict[str, int]:
+        """Return Joystick config."""
+        if not self.available:
+            raise RuntimeError("Joystick Not Available")
+        return {
+            "button": self._joystick.get_numbuttons(),
+            "axis": self._joystick.get_numaxes(),
+            "hat": self._joystick.get_numhats(),
+        }
 
     @property
     def controller(self) -> Controller:
@@ -341,37 +450,43 @@ class Gamepad:
         self._deadzone = deadzone
 
     @property
-    def callback_button(self) -> Callable[[str, Controller.ButtonAction], Any]:
-        """Return Button Callback."""
-        return self._callback_button
+    def mapping(self) -> dict:
+        """Return mapping."""
+        return self._mapping
 
-    @callback_button.setter
-    def callback_button(self, callback: Callable[[str, Controller.ButtonAction], Any]):
-        """Set Button Callback."""
-        if callback is not None and not isinstance(callback, Callable):
-            raise TypeError("Callback must be Callable")
-        self._callback_button = callback
-
-    @property
-    def callback_stick(self) -> Callable[[str, str, float], Any]:
-        """Return Stick Callback."""
-        return self._callback_stick
-
-    @callback_stick.setter
-    def callback_stick(self, callback: Callable[[str, str, float], Any]):
-        """Set Stick Callback."""
-        if callback is not None and not isinstance(callback, Callable):
-            raise TypeError("Callback must be Callable")
-        self._callback_stick = callback
-
-    @property
-    def joystick(self) -> pygame.joystick.Joystick:
-        """Return Joystick."""
-        return self._joystick
+    @mapping.setter
+    def mapping(self, mapping: dict):
+        """Set Mapping."""
+        mapping = json.dumps(mapping)
+        mapping = json.loads(mapping, object_hook=_format_json_keys)
+        if not Gamepad.check_map(mapping):
+            raise ValueError("Invalid Mapping")
+        self._mapping = mapping
 
     @property
     def instance_id(self) -> int:
         """Return instance id."""
-        if not self.joystick:
+        if not self._joystick:
             return None
-        return self.joystick.get_instance_id()
+        return self._joystick.get_instance_id()
+
+    @property
+    def guid(self) -> str:
+        """Return GUID."""
+        if not self._joystick:
+            return None
+        return self._joystick.get_guid()
+
+    @property
+    def name(self) -> str:
+        """Return Name."""
+        if not self._joystick:
+            return None
+        return self._joystick.get_name()
+
+    @property
+    def available(self) -> bool:
+        """Return True if available."""
+        if not self._joystick:
+            return False
+        return self._joystick.get_init()

@@ -110,13 +110,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self._device_grid.setEnabled(False)
         self._stop_update()
         audio_device = self._options.get_audio_device()
+        gamepad = None
+        if self._controls.use_gamepad():
+            gamepad = self._controls.get_gamepad()
         self._stream_window = StreamWindow(
             self.rp_worker,
             device,
             options,
             audio_device,
-            self._controls.get_map(),
-            self._controls.get_options(),
+            self._controls.get_keyboard_map(),
+            self._controls.get_keyboard_options(),
+            gamepad,
         )
         self._stream_window.started.connect(self.session_start)
         self._stream_window.stopped.connect(self.session_stop)
