@@ -1,0 +1,25 @@
+button:
+    0: CROSS
+    1: CIRCLE
+    2: SQUARE
+    3: TRIANGLE
+    4: SHARE
+    5: PS
+    6: OPTIONS
+    7: L3
+    8: R3
+    9: L1
+    10: R1
+    11: UP
+    12: DOWN
+    13: LEFT
+    14: RIGHT
+    15: TOUCHPAD
+axis:
+    0: LEFT_X
+    1: LEFT_Y
+    2: RIGHT_X
+    3: RIGHT_Y
+    4: L2
+    5: R2
+hat:
