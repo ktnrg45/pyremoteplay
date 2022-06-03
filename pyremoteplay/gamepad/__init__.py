@@ -8,6 +8,7 @@ from typing import Any, Union, Callable
 import atexit
 import weakref
 import json
+import yaml
 
 from pyremoteplay.controller import Controller
 from .mapping import AxisType, HatType, default_maps, dualshock4_map
@@ -88,7 +89,7 @@ class Gamepad:
         """Check map. Return True if valid."""
         is_valid = True
         valid_buttons = Controller.buttons()
-        buttons = mapping["button"]
+        buttons = mapping.get("button") or {}
         for button in buttons.values():
             if button is None or button == "":
                 continue
@@ -98,9 +99,12 @@ class Gamepad:
                 is_valid = False
 
         valid_axes = [item.name for item in AxisType]
-        axes = list(mapping["axis"].values())
-        hats = list(mapping["hat"].values())
         valid_hats = [item.name for item in HatType]
+
+        axes = mapping.get("axis") or {}
+        hats = mapping.get("hat") or {}
+        axes = list(axes.values())
+        hats = list(hats.values())
         for group in hats:
             for hat_type in group:
                 if hat_type not in valid_hats:
@@ -260,6 +264,16 @@ class Gamepad:
 
         self.mapping = self.default_map()
         self.deadzone = DEFAULT_DEADZONE
+
+    def load_map(self, filename: str):
+        """Load map from file and apply.
+        Mapping must be in `yaml` or `json` format.
+
+        :param filename: Absolute Path to File.
+        """
+        with open(filename, "r") as _file:
+            mapping = yaml.load(_file, yaml.Loader)
+            self.mapping = mapping
 
     def default_map(self) -> dict:
         """Return Default Map."""
