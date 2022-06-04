@@ -15,6 +15,8 @@ This project provides an API to programmatically connect to and control Remote P
 - Python 3.8+
 - OS: Linux, Windows 10
 
+- Note: Untested on MacOS
+
 ## GUI Dependencies ##
 The GUI requires dependencies that may be complex to install.
 Below is a list of such dependencies.
