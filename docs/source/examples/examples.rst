@@ -4,3 +4,4 @@ Examples
    :maxdepth: 2
 
    client
+   gamepad
