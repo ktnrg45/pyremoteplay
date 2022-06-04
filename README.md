@@ -9,6 +9,7 @@ This project provides an API to programmatically connect to and control Remote P
 - Interface for controlling the host, which emulates a DualShock controller
 - Ability to power off/on the host if standby is enabled
 - GUI which displays the live stream and supports keyboard/mouse input
+- Support for controllers
 
 ## Requirements ##
 - Python 3.8+
