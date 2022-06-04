@@ -8,24 +8,24 @@ import sys
 import threading
 from collections import OrderedDict
 import socket
+import atexit
 
 from .ddp import get_status, search
 from .oauth import prompt as oauth_prompt
 from .register import register
-from .session import Session
 from .util import add_profile, add_regist_data, get_profiles, write_profiles
-from .controller import Controller
+from . import RPDevice
 
 NEW_PROFILE = "New Profile"
 CANCEL = "Cancel"
-RESOLUTIONS = ["360p", "540p", "720p", "1080p"]
-FPS_CHOICES = ["high", "low", "60", "30"]
-logging.basicConfig(level=logging.WARNING)
+# RESOLUTIONS = ["360p", "540p", "720p", "1080p"]
+# FPS_CHOICES = ["high", "low", "60", "30"]
 _LOGGER = logging.getLogger(__name__)
 
 
 def main():
     """Main entrypoint."""
+    logging.basicConfig(level=logging.WARNING)
     if "-l" in sys.argv or "--list" in sys.argv:
         show_devices()
         return
@@ -64,8 +64,8 @@ def main():
     args = parser.parse_args()
     host = args.host
     should_register = args.register
-    resolution = "360p"
-    fps = 30
+    # resolution = "360p"
+    # fps = 30
     # resolution = args.resolution
     # fps = args.fps
     # if fps.isnumeric():
@@ -80,7 +80,7 @@ def main():
     if should_register:
         register_profile(host)
         return
-    cli(host, resolution, fps)
+    cli(host)
 
 
 def show_devices():
@@ -170,48 +170,54 @@ def register_profile(host: str):
     write_profiles(profiles)
 
 
-def cli(host: str, resolution: str, fps: str):
+def cli(host: str):
     """Start CLI."""
+    device = RPDevice(host)
+    device.get_status()
     profiles = get_profiles()
     if profiles:
-        name = select_profile(profiles, True, False)
-        profile = profiles[name]
-        session = Session(host, profile, resolution=resolution, fps=fps)
-        async_start(session, cb_curses)
+        user = select_profile(profiles, True, False)
+        if user not in device.get_users():
+            _LOGGER.error("User: %s not registered with this device", user)
+        setup_worker(device, user)
     else:
         _LOGGER.info("No Profiles")
 
 
-def cb_curses(session, status: bool):
-    """Start Curses."""
-    if status:
-        instance = CLIInstance(session)
-        worker = threading.Thread(target=curses.wrapper, args=(start, instance))
-        worker.start()
-    else:
-        _LOGGER.error("Session Failed to Start: %s", session.error)
-
-
-def async_start(session, callback: callable):
-    """Sync method for starting session."""
-    loop = asyncio.get_event_loop()
-    session.loop = loop
-    task = loop.create_task(async_start_session(session, callback))
+def worker(device: RPDevice, user: str, event: threading.Event):
+    """Worker."""
+    loop = asyncio.new_event_loop()
+    device.create_session(user, loop=loop)
+    task = loop.create_task(async_start(device, event))
+    atexit.register(loop.stop)
     loop.run_until_complete(task)
     loop.run_forever()
 
 
-async def async_start_session(session, callback: callable):
+def setup_worker(device: RPDevice, user: str):
+    """Sync method for starting session."""
+    event = threading.Event()
+    thread = threading.Thread(target=worker, args=(device, user, event), daemon=True)
+    thread.start()
+    curses.wrapper(start, device, event)
+
+
+async def async_start(device: RPDevice, event: threading.Event):
     """Start Session."""
-    status = await session.start()
-    if status:
-        callback(session, status)
-    else:
-        asyncio.get_event_loop().stop()
+    loop = asyncio.get_running_loop()
+    started = await device.connect()
+    if not started:
+        loop.stop()
+    event.set()
 
 
-def start(stdscr, instance):
+def start(stdscr, device: RPDevice, event: threading.Event):
     """Start Instance."""
+    event.wait(timeout=5)
+    instance = CLIInstance(device)
+    if not device.session.is_running:
+        _LOGGER.error("Session Failed to Start: %s", device.session.error)
+        return
     instance.run(stdscr)
 
 
@@ -241,9 +247,10 @@ class CLIInstance:
         "y": "TOUCHPAD",
     }
 
-    def __init__(self, session: Session):
-        self._session = session
-        self.controller = Controller()
+    def __init__(self, device: RPDevice):
+        self._device = device
+        self._loop = self._device.session.loop
+        self.controller = self._device.controller
         self.stdscr = None
         self.last_key = None
         self.map = self.MAP
@@ -294,7 +301,6 @@ class CLIInstance:
 
     def run(self, stdscr):
         """Run CLI Instance."""
-        self.controller.connect(self._session)
         self.controller.start()
         self.stdscr = stdscr
         self._init_color()
@@ -304,7 +310,7 @@ class CLIInstance:
         self.stdscr.timeout(timeout)
         self.stdscr.clrtobot()
         _last = ""
-        while not self._session.state == Session.STATE_STOP:
+        while self._device.session.is_running:
             self._init_window()
             if _last:
                 self._write_str(_last, 5)
@@ -330,14 +336,14 @@ class CLIInstance:
             if key == "QUIT":
                 self._write_str(key, 3)
                 self.stdscr.refresh()
-                self._session.stop()
-                self._session.loop.call_soon_threadsafe(self._session.loop.stop)
+                self._device.disconnect()
+                self._loop.call_soon_threadsafe(self._loop.stop)
                 sys.exit()
             elif key == "STANDBY":
                 self._write_str(key, 3)
                 self.stdscr.refresh()
-                self._session.standby()
-                self._session.loop.call_soon_threadsafe(self._session.loop.stop)
+                self._device.session.standby()
+                self._loop.call_soon_threadsafe(self._loop.stop)
                 sys.exit()
             self.controller.button(key, "press")
         return key
