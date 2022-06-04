@@ -38,24 +38,6 @@ def _format_json_keys(data: dict):
     }
 
 
-def __init_pygame():
-    pygame.init()
-    pygame.joystick.init()
-    pygame.event.set_allowed(
-        [
-            pygame.JOYBUTTONDOWN,
-            pygame.JOYBUTTONUP,
-            pygame.JOYAXISMOTION,
-            pygame.JOYHATMOTION,
-            pygame.JOYDEVICEADDED,
-            pygame.JOYDEVICEREMOVED,
-        ]
-    )
-
-
-__init_pygame()
-
-
 class Gamepad:
     """Gamepad. Wraps a PyGame Joystick to interface with RP Controller.
     Instances are not re-entrant after calling `close`.
@@ -74,8 +56,24 @@ class Gamepad:
     __callbacks = set()
 
     @staticmethod
+    def __init_pygame():
+        pygame.init()
+        pygame.joystick.init()
+        pygame.event.set_allowed(
+            [
+                pygame.JOYBUTTONDOWN,
+                pygame.JOYBUTTONUP,
+                pygame.JOYAXISMOTION,
+                pygame.JOYHATMOTION,
+                pygame.JOYDEVICEADDED,
+                pygame.JOYDEVICEREMOVED,
+            ]
+        )
+
+    @staticmethod
     def joysticks() -> list[pygame.joystick.Joystick]:
         """Return All Joysticks."""
+        Gamepad.__init_pygame()
         joysticks = []
         for index in range(pygame.joystick.get_count()):
             try:
@@ -155,6 +153,7 @@ class Gamepad:
     @classmethod
     def start(cls):
         """Start Gamepad loop. Called automatically when an instance is created."""
+        Gamepad.__init_pygame()
         if cls.running():
             return
         _LOGGER.debug("Starting Gamepad loop")
@@ -254,6 +253,7 @@ class Gamepad:
 
     def __new__(cls, joystick: Union[int, pygame.joystick.Joystick]):
         """Only allow one instance."""
+        Gamepad.__init_pygame()
         joystick = cls.__check_joystick(joystick)
         instance_id = joystick.get_instance_id()
         for ref in cls.__refs:
