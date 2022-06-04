@@ -1,7 +1,7 @@
 """Tests for pyremoteplay/stream_packets.py."""
 from pyremoteplay.stream_packets import Chunk, Header, Packet
 
-
+# fmt: off
 def test_init():
     """Test build init packet."""
     INIT = bytes([
@@ -137,3 +137,20 @@ def test_parse_data_ack():
     assert params["a_rwnd"] == A_RWND
     assert params["gap_ack_blocks_count"] == 0
     assert params["dup_tsns_count"] == 0
+
+def test_parse_video():
+    """Test Video Parsing."""
+    AV_DATA = b"\x12\x00\x01\x00\x01\x00 \x08\x01\x06x\x9c\xef\xe8\x00\x00\x10\xc0\x00<\x00\x00\x00\x05!6F\xd2D\xe7\'<\x7f\xca\xfe\xcf\x8ft\xb5\xb9*\xdfm\xd7\x97\r\x8b\xac\xcee\x05\r\xf8r]Kg\xdf\xde\xda\xd2aT\xf5\xb0"
+    KEY_POS = 4288
+    mock_packet = Packet.parse(AV_DATA)
+    assert mock_packet.type == Header.Type.VIDEO
+    assert mock_packet.key_pos == KEY_POS
+    assert mock_packet.index == 1
+    assert mock_packet.unit_index == 1
+    assert mock_packet.frame_index == 1
+    assert mock_packet.frame_length == 3
+    assert mock_packet.frame_length_src == 2
+    assert mock_packet.frame_length_fec == 1
+
+
+# fmt: on
