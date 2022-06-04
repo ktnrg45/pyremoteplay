@@ -233,6 +233,7 @@ class GamepadControlsTable(AbstractControlsTable):
         selected = None
         self.scrollToItem(item)
         items = self.selectedItems()
+        mapping = self._gamepad.mapping
         if items:
             selected = self.item(items[0].row(), 2)
             item = self.item(item.row(), 2)
@@ -245,9 +246,10 @@ class GamepadControlsTable(AbstractControlsTable):
                 index = self.item(_item.row(), 1).data(self.IndexRole)
                 if _type == self.ControlType.hat:
                     hat = self.item(_item.row(), 1).data(self.HatRole).name
-                    self._gamepad.mapping[_type.name.lower()][index][hat] = _item.text()
+                    mapping[_type.name.lower()][index][hat] = _item.text()
                 else:
-                    self._gamepad.mapping[_type.name.lower()][index] = _item.text()
+                    mapping[_type.name.lower()][index] = _item.text()
+            self._gamepad.mapping = mapping
             self.keyChanged.emit(self._gamepad.mapping)
             self.clearSelection()
 
@@ -499,10 +501,12 @@ class ControlsWidget(QtWidgets.QWidget):
         self._reset = QtWidgets.QPushButton("Reset to Default")
         self._clear = QtWidgets.QPushButton("Clear")
         self._cancel = QtWidgets.QPushButton("Cancel")
+        self._save_gamepad = QtWidgets.QPushButton("Save Map")
         self._add.hide()
         self._remove.hide()
         self._cancel.hide()
         self._clear.hide()
+        self._save_gamepad.hide()
 
         self._init_controls()
         self._set_instructions()
@@ -516,11 +520,12 @@ class ControlsWidget(QtWidgets.QWidget):
 
         self.layout().addWidget(self._left_joystick, 0, 0, 1, 1)
         self.layout().addWidget(self._right_joystick, 0, 1, 1, 1)
-        self.layout().addWidget(self._use_gamepad, 0, 2, 1, 1)
-        self.layout().addWidget(input_select_widget, 1, 0, 1, 1)
-        self.layout().addWidget(gamepad_select_widget, 1, 1, 1, 1)
-        self.layout().addWidget(deadzone_widget, 1, 2, 1, 1)
-        self.layout().addWidget(self._add, 3, 2, 1, 1)
+        self.layout().addWidget(self._use_gamepad, 1, 0, 1, 1)
+        self.layout().addWidget(self._save_gamepad, 1, 2, 1, 1)
+        self.layout().addWidget(input_select_widget, 2, 0, 1, 1)
+        self.layout().addWidget(gamepad_select_widget, 2, 1, 1, 1)
+        self.layout().addWidget(deadzone_widget, 2, 2, 1, 1)
+        # self.layout().addWidget(self._add, 3, 2, 1, 1)
         self.layout().addWidget(self._clear, 4, 0, 1, 1)
         self.layout().addWidget(self._cancel, 4, 1, 1, 1)
         self.layout().addWidget(self._reset, 4, 2, 1, 1)
@@ -533,6 +538,7 @@ class ControlsWidget(QtWidgets.QWidget):
         self._reset.clicked.connect(self._click_reset)
         self._clear.clicked.connect(self._click_clear)
         self._use_gamepad.clicked.connect(self._click_gamepad)
+        self._save_gamepad.clicked.connect(self._click_gamepad_save)
         self._keyboard_table.keyChanged.connect(self._set_keyboard_map)
         self._keyboard_table.itemSelectionChanged.connect(self._item_selection_changed)
         self._gamepad_table.keyChanged.connect(self._set_gamepad_map)
@@ -749,6 +755,7 @@ class ControlsWidget(QtWidgets.QWidget):
         if self._input_selector.currentText() == INPUT_KEYBOARD:
             self._gamepad_selector.parent().hide()
             self._deadzone.parent().hide()
+            self._save_gamepad.hide()
             self._stacked_widget.setCurrentWidget(self._keyboard_table)
         else:
             self._stacked_widget.setCurrentWidget(self._gamepad_table)
@@ -761,15 +768,16 @@ class ControlsWidget(QtWidgets.QWidget):
         if self._input_selector.currentText() == INPUT_GAMEPAD:
             if self._gamepad_selector.currentText():
                 self._deadzone.parent().show()
-            self._set_selected_gamepad()
-            gamepad = self.get_gamepad()
-            if self._selected_gamepad_guid and gamepad:
-                mapping = self.get_gamepad_map()
-                if mapping:
-                    gamepad.mapping = mapping
-                    options = self.get_gamepad_options()
-                    self._deadzone.setValue(options["deadzone"])
-                self._gamepad_table.set_mapping(gamepad)
+                self._save_gamepad.show()
+                self._set_selected_gamepad()
+                gamepad = self.get_gamepad()
+                if self._selected_gamepad_guid and gamepad:
+                    mapping = self.get_gamepad_map()
+                    if mapping:
+                        gamepad.mapping = mapping
+                        options = self.get_gamepad_options()
+                        self._deadzone.setValue(options["deadzone"])
+                    self._gamepad_table.set_mapping(gamepad)
 
     def _deadzone_changed(self, value: int):
         options = self.get_gamepad_options()
@@ -814,6 +822,19 @@ class ControlsWidget(QtWidgets.QWidget):
     def _click_gamepad(self):
         self._mapping[INPUT_GAMEPAD]["use_gamepad"] = self._use_gamepad.isChecked()
         self._write_mapping()
+
+    def _click_gamepad_save(self):
+        filename, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self.window(), "Save Gamepad Mapping", filter="YAML (*.yaml *.yml)"
+        )
+        if filename:
+            gamepad = self.get_gamepad()
+            if not gamepad:
+                QtWidgets.QMessageBox.warning(
+                    self.window(), "Error", "No Gamepad Available"
+                )
+                return
+            gamepad.save_map(filename)
 
     def _reset_map(self):
         """Reset Current map."""

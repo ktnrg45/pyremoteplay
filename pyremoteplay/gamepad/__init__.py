@@ -271,9 +271,17 @@ class Gamepad:
 
         :param filename: Absolute Path to File.
         """
-        with open(filename, "r") as _file:
-            mapping = yaml.load(_file, yaml.Loader)
+        with open(filename, "r", encoding="utf-8") as _file:
+            mapping = yaml.load(_file, yaml.SafeLoader)
             self.mapping = mapping
+
+    def save_map(self, filename: str):
+        """Save current map to file.
+
+        :param filename: Absolute Path to File.
+        """
+        with open(filename, "w", encoding="utf-8") as _file:
+            yaml.dump(self.mapping, _file, yaml.SafeDumper)
 
     def default_map(self) -> dict:
         """Return Default Map."""
@@ -452,7 +460,11 @@ class Gamepad:
 
     @property
     def deadzone(self) -> float:
-        """Return stick deadzone. Will be positive."""
+        """Return axis deadzone. Will be positive.
+        This represents the minimum threshold of the axis.
+        If the absolute value of the axis is less than this value,
+        then the value of the axis will be 0.0.
+        """
         return self._deadzone
 
     @deadzone.setter
@@ -466,7 +478,7 @@ class Gamepad:
     @property
     def mapping(self) -> dict:
         """Return mapping."""
-        return self._mapping
+        return dict(self._mapping)
 
     @mapping.setter
     def mapping(self, mapping: dict):
