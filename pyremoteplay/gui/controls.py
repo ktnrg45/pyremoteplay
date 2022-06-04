@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from pyremoteplay.util import get_mapping, write_mapping
 from pyremoteplay.gamepad import Gamepad, DEFAULT_DEADZONE
 from pyremoteplay.gamepad.mapping import HatType, rp_map_keys
+import pygame
 
 from .util import message, format_qt_key
 from .widgets import AnimatedToggle, LabeledWidget
@@ -72,6 +73,8 @@ class AbstractControlsTable(QtWidgets.QTableWidget):
 
 class GamepadControlsTable(AbstractControlsTable):
     """Table for gamepad controls."""
+
+    gamepad_removed = QtCore.Signal(int)
 
     IndexRole = Qt.UserRole + 1
     TypeRole = Qt.UserRole + 2
@@ -167,6 +170,10 @@ class GamepadControlsTable(AbstractControlsTable):
     def _update_values(self):
         found_activated = activated = False
         if self._gamepad:
+            if not self._gamepad.available:
+                self.gamepad_removed.emit(self._gamepad.instance_id)
+                self._gamepad = None
+                return
             config = self._gamepad.get_config()
             row = 0
             funcs = {
@@ -543,6 +550,7 @@ class ControlsWidget(QtWidgets.QWidget):
         self._keyboard_table.itemSelectionChanged.connect(self._item_selection_changed)
         self._gamepad_table.keyChanged.connect(self._set_gamepad_map)
         self._gamepad_table.itemSelectionChanged.connect(self._item_selection_changed)
+        self._gamepad_table.gamepad_removed.connect(self._remove_gamepad)
         self._input_selector.currentTextChanged.connect(self._map_type_changed)
         self._gamepad_selector.currentTextChanged.connect(self._gamepad_changed)
         self._deadzone.valueChanged.connect(self._deadzone_changed)
@@ -556,6 +564,9 @@ class ControlsWidget(QtWidgets.QWidget):
     def hide(self):
         """Hide widget."""
         self._click_cancel()
+        if self._gamepad_timer:
+            self.killTimer(self._gamepad_timer)
+        self._gamepad_timer = None
         super().hide()
 
     def get_keyboard_map_names(self) -> list[str]:
@@ -657,11 +668,16 @@ class ControlsWidget(QtWidgets.QWidget):
         except (KeyError, TypeError):
             self._default_mapping()
 
+        Gamepad.start()
         for gamepad in Gamepad.get_all():
-            text = gamepad.name
-            text = f"{text} ({gamepad.guid[-5:]})"
-            self._gamepad_selector.addItem(text, gamepad)
+            self._add_gamepad(gamepad)
         self._set_selected_gamepad()
+        Gamepad.register(self._gamepad_event)
+
+    def _add_gamepad(self, gamepad: Gamepad):
+        text = gamepad.name
+        text = f"{text} ({gamepad.guid[-5:]})"
+        self._gamepad_selector.addItem(text, gamepad)
 
     def _set_keyboard_table(self):
         self._click_cancel()
@@ -778,6 +794,9 @@ class ControlsWidget(QtWidgets.QWidget):
                         options = self.get_gamepad_options()
                         self._deadzone.setValue(options["deadzone"])
                     self._gamepad_table.set_mapping(gamepad)
+            else:
+                self._gamepad_table.clearContents()
+                self._set_selected_gamepad()
 
     def _deadzone_changed(self, value: int):
         options = self.get_gamepad_options()
@@ -786,6 +805,45 @@ class ControlsWidget(QtWidgets.QWidget):
         if gamepad:
             gamepad.deadzone = value
         self._set_gamepad_options(options)
+
+    def _check_gamepads(self):
+        count = self._gamepad_selector.count()
+        existing = [
+            self._gamepad_selector.itemData(index, Qt.UserRole)
+            for index in range(0, count)
+        ]
+        for gamepad in Gamepad.get_all():
+            if gamepad is not None and gamepad not in existing:
+                self._add_gamepad(gamepad)
+
+    def _remove_gamepad(self, instance_id: int):
+        for index in range(0, self._gamepad_selector.count()):
+            gamepad = self._gamepad_selector.itemData(index, Qt.UserRole)
+            if gamepad and gamepad.instance_id == instance_id:
+                self._gamepad_selector.removeItem(index)
+                self._gamepad_selector.update()
+                self._gamepad_changed()
+
+    def _gamepad_event(self, event: pygame.event.Event):
+        if event.type not in (pygame.JOYDEVICEADDED, pygame.JOYDEVICEREMOVED):
+            return
+
+        if event.type == pygame.JOYDEVICEREMOVED:
+            self._remove_gamepad(event.instance_id)
+        else:
+            gamepads = Gamepad.get_all()
+            gamepad = None
+            for _gamepad in gamepads:
+                if _gamepad.guid == event.guid:
+                    gamepad = _gamepad
+                    break
+            count = self._gamepad_selector.count()
+            existing = [
+                self._gamepad_selector.itemData(index, Qt.UserRole)
+                for index in range(0, count)
+            ]
+            if gamepad is not None and gamepad not in existing:
+                self._add_gamepad(gamepad)
 
     @QtCore.Slot()
     def _click_joystick(self):

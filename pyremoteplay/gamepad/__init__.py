@@ -68,21 +68,31 @@ class Gamepad:
     __thread: threading.Thread = None
     __stop_event = threading.Event()
     __refs = set()
-    __cb_refs = set()
+    __callbacks = set()
 
     @staticmethod
     def joysticks() -> list[pygame.joystick.Joystick]:
         """Return All Joysticks."""
-        joysticks = [
-            pygame.joystick.Joystick(index)
-            for index in range(pygame.joystick.get_count())
-        ]
+        joysticks = []
+        for index in range(pygame.joystick.get_count()):
+            try:
+                joystick = pygame.joystick.Joystick(index)
+                joysticks.append(joystick)
+            except pygame.error:
+                pass
         return joysticks
 
     @staticmethod
     def get_all() -> list[Gamepad]:
         """Return All Gamepads."""
-        return [Gamepad(joystick) for joystick in Gamepad.joysticks()]
+        gamepads = []
+        for joystick in Gamepad.joysticks():
+            try:
+                gamepad = Gamepad(joystick)
+                gamepads.append(gamepad)
+            except pygame.error:
+                pass
+        return gamepads
 
     @staticmethod
     def check_map(mapping: dict) -> bool:
@@ -128,18 +138,16 @@ class Gamepad:
         """Register a callback for device added/removed events."""
         if not isinstance(callback, Callable):
             raise TypeError(f"Expected a callable. Got: {type(callback)}")
-        ref = weakref.ref(callback)
-        cls.__cb_refs.add(ref)
+        cls.__callbacks.add(callback)
 
     @classmethod
     def unregister(cls, callback: Callable[[pygame.event.Event], None]):
         """Unregister a callback from receiving device added/removed events."""
-        for ref in cls.__cb_refs:
-            if ref() == callback:
-                try:
-                    cls.__cb_refs.remove(ref)
-                except KeyError:
-                    pass
+        for callback in list(cls.__callbacks):
+            try:
+                cls.__callbacks.remove(callback)
+            except KeyError:
+                pass
 
     @classmethod
     def start(cls):
@@ -177,13 +185,10 @@ class Gamepad:
         if isinstance(joystick, int):
             joystick = pygame.joystick.Joystick(joystick)
         else:
+            # TODO: Find a better type check.
             # Hack to check we do have a Joystick object
             try:
-                old_id = joystick.get_instance_id()
-                joystick = pygame.joystick.Joystick(old_id)
-                new_id = joystick.get_instance_id()
-                if old_id != new_id:
-                    raise RuntimeError(f"Joystick ID changed from {old_id} to {new_id}")
+                joystick.get_instance_id()
             except AttributeError as error:
                 raise TypeError(
                     f"Expected an int or an instance of 'pygame.joystick.Joystick'. Got: {type(joystick)}"
@@ -201,8 +206,14 @@ class Gamepad:
     @classmethod
     def __handle_events(cls):
         event = pygame.event.wait(timeout=1)
-        if event.type == pygame.NOEVENT or not hasattr(event, "instance_id"):
+        if event.type == pygame.NOEVENT:
             return
+        if (
+            not hasattr(event, "instance_id")
+            and not event.type == pygame.JOYDEVICEADDED
+        ):
+            return
+
         if event.type in (pygame.JOYDEVICEREMOVED, pygame.JOYDEVICEADDED):
             if event.type == pygame.JOYDEVICEREMOVED:
                 for ref in list(cls.__refs):
@@ -212,8 +223,7 @@ class Gamepad:
                             _LOGGER.debug("Gamepad closed: Joystick removed")
                             instance.close()
 
-            for ref in list(cls.__cb_refs):
-                callback = ref()
+            for callback in list(cls.__callbacks):
                 if callback:
                     callback(event)
             return
@@ -251,11 +261,23 @@ class Gamepad:
         cls.__add_ref(instance)
         return instance
 
+    def __repr__(self) -> str:
+        return (
+            f"{super().__repr__()[:-1]} "
+            f"available={self.available} "
+            f"instance_id={self.instance_id} "
+            f"guid={self.guid} "
+            f"name={self.name}>"
+        )
+
     def __del__(self):
         self.close()
 
     def __init__(self, joystick: Union[int, pygame.joystick.Joystick]):
         self._joystick = self.__check_joystick(joystick)
+        self._instance_id = -1
+        self._guid = self._name = ""
+        self._config = {}
         self._controller = None
         self._deadzone = None
         self._mapping = {}
@@ -285,9 +307,11 @@ class Gamepad:
 
     def default_map(self) -> dict:
         """Return Default Map."""
-        mapping = dualshock4_map()
+        mapping = {}
         if self._joystick:
             mapping = default_maps().get(self._joystick.get_name())
+        if not mapping:
+            mapping = dualshock4_map()
         return mapping
 
     def close(self):
@@ -437,7 +461,7 @@ class Gamepad:
     def get_config(self) -> dict[str, int]:
         """Return Joystick config."""
         if not self.available:
-            raise RuntimeError("Joystick Not Available")
+            return {}
         return {
             "button": self._joystick.get_numbuttons(),
             "axis": self._joystick.get_numaxes(),
@@ -493,22 +517,25 @@ class Gamepad:
     def instance_id(self) -> int:
         """Return instance id."""
         if not self._joystick:
-            return None
-        return self._joystick.get_instance_id()
+            return self._instance_id
+        self._instance_id = self._joystick.get_instance_id()
+        return self._instance_id
 
     @property
     def guid(self) -> str:
         """Return GUID."""
         if not self._joystick:
-            return None
-        return self._joystick.get_guid()
+            return self._guid
+        self._guid = self._joystick.get_guid()
+        return self._guid
 
     @property
     def name(self) -> str:
         """Return Name."""
         if not self._joystick:
-            return None
-        return self._joystick.get_name()
+            return self._name
+        self._name = self._joystick.get_name()
+        return self._name
 
     @property
     def available(self) -> bool:
