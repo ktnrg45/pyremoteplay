@@ -55,8 +55,11 @@ class Controller:
         """Worker for sending feedback packets. Run in thread."""
         self._should_send.acquire(timeout=1)
         while self.running:
-            self._should_send.acquire(timeout=Controller.STATE_INTERVAL_MAX_MS)
-            self.update_sticks()
+            try:
+                self._should_send.acquire(timeout=Controller.STATE_INTERVAL_MAX_MS)
+                self.update_sticks()
+            except Exception as error:  # pylint: disable=broad-except
+                _LOGGER.error("Error in controller thread: %s", error)
         self._session = None
         self._thread = None
         self._stop_event.clear()
