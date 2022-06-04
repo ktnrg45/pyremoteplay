@@ -60,7 +60,7 @@ class Gamepad:
     """Gamepad. Wraps a PyGame Joystick to interface with RP Controller.
     Instances are not re-entrant after calling `close`.
     Creating an instance automatically starts the event loop.
-    Joystick instances are closed automatically when deallocated.
+    Instances are closed automatically when deallocated.
     If creating a new instance with the same joystick as an existing gamepad,
     the existing gamepad will be returned. This ensures that only one gamepad instance
     will exist per joystick.
@@ -138,7 +138,7 @@ class Gamepad:
 
     @classmethod
     def register(cls, callback: Callable[[pygame.event.Event], None]):
-        """Register a callback for device added/removed events."""
+        """Register a callback with a single argument for device added/removed events."""
         if not isinstance(callback, Callable):
             raise TypeError(f"Expected a callable. Got: {type(callback)}")
         cls.__callbacks.add(callback)
@@ -165,10 +165,7 @@ class Gamepad:
 
     @classmethod
     def stop(cls):
-        """Stop Gamepad loop.
-        Called automatically when all instances have called `quit` or when all instances are deleted.
-        Any running instances will have quit called.
-        """
+        """Stop Gamepad loop."""
         for ref in list(cls.__refs):
             instance = ref()
             instance.close()

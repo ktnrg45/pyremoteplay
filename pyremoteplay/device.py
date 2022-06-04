@@ -36,7 +36,7 @@ class RPDevice:
 
     Most, if not all user interactions should be performed with this class.
     Status must be polled manually with `get_status`.
-    Most iteractions cannot be used unless there is a valid status.
+    Most interactions cannot be used unless there is a valid status.
 
     :param host: IP address of Remote Play Host
     """

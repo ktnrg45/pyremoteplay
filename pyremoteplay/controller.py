@@ -202,7 +202,7 @@ class Controller:
         :param stick_name: The stick to move. One of 'left' or 'right'
         :param axis: The axis to move. One of 'x' or 'y'
         :param value: The value to move stick to. Must be between -1.0 and 1.0
-        :param point: An interable of two floats, which represent coordinates.
+        :param point: An iterable of two floats, which represent coordinates.
             Point takes precedence over axis and value.
             The first value represents the x axis and the second represents the y axis
         """
