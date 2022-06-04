@@ -521,9 +521,9 @@ class ControlsWidget(QtWidgets.QWidget):
         self.layout().addWidget(gamepad_select_widget, 1, 1, 1, 1)
         self.layout().addWidget(deadzone_widget, 1, 2, 1, 1)
         self.layout().addWidget(self._add, 3, 2, 1, 1)
-        self.layout().addWidget(self._reset, 4, 0, 1, 1)
-        self.layout().addWidget(self._clear, 4, 1, 1, 1)
-        self.layout().addWidget(self._cancel, 4, 2, 1, 1)
+        self.layout().addWidget(self._clear, 4, 0, 1, 1)
+        self.layout().addWidget(self._cancel, 4, 1, 1, 1)
+        self.layout().addWidget(self._reset, 4, 2, 1, 1)
         self.layout().addWidget(self._stacked_widget, 5, 0, 2, 3)
         self.layout().addWidget(self._instructions, 5, 3, 2, 1)
 
