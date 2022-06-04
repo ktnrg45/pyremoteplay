@@ -8,6 +8,9 @@ from typing import Any, Union, Callable
 import atexit
 import weakref
 import json
+import sys
+import traceback
+
 import yaml
 
 from pyremoteplay.controller import Controller
@@ -201,7 +204,11 @@ class Gamepad:
             try:
                 cls.__handle_events()
             except Exception as error:  # pylint: disable=broad-except
-                _LOGGER.info("Error Handling Events: %s", error)
+                _LOGGER.error("Error Handling Events: %s", error)
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                traceback.print_exception(
+                    exc_type, exc_value, exc_traceback, file=sys.stdout
+                )
 
     @classmethod
     def __handle_events(cls):
