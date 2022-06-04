@@ -1,7 +1,8 @@
 # pylint: disable=c-extension-no-member,invalid-name,no-name-in-module
 """Video Output for Stream."""
+from __future__ import annotations
 from textwrap import dedent
-
+from typing import TYPE_CHECKING
 import av
 from OpenGL import GL
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -15,6 +16,9 @@ from PySide6.QtOpenGL import (
 )
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from shiboken6 import VoidPtr
+
+if TYPE_CHECKING:
+    from .stream_window import StreamWindow
 
 YUV_VERT = dedent(
     """
@@ -200,10 +204,15 @@ class VideoWidget(QtWidgets.QLabel):
 
     frame_updated = Signal()
 
-    def __init__(self, width, height, *args, **kwargs):
+    def __init__(self, width: int, height: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.frame_width = width
         self.frame_height = height
+
+    # pylint: disable=useless-super-delegation
+    def parent(self) -> StreamWindow:
+        """Return Parent."""
+        return super().parent()
 
     @QtCore.Slot(av.VideoFrame)
     def next_video_frame(self, frame: av.VideoFrame):
@@ -216,7 +225,7 @@ class VideoWidget(QtWidgets.QLabel):
             QtGui.QImage.Format_RGB888,
         )
         pixmap = QtGui.QPixmap.fromImage(image)
-        if self.parent().fullscreen:
+        if self.parent().fullscreen():
             pixmap = pixmap.scaled(
                 self.parent().size(),
                 aspectMode=QtCore.Qt.KeepAspectRatio,

@@ -226,6 +226,10 @@ class StreamWindow(QtWidgets.QWidget):
         self.deleteLater()
         event.accept()
 
+    def fullscreen(self) -> bool:
+        """Return True if full screen."""
+        return self.options().fullscreen
+
     def _setup_receiver(self) -> QtReceiver:
         """Setup Receiver."""
         receiver = QtReceiver()
