@@ -15,7 +15,7 @@ from pyremoteplay.gamepad import Gamepad
 
 from .joystick import JoystickWidget
 from .util import message, format_qt_key
-from .video import VideoWidget, YUVGLWidget
+from .video import VideoWidget, YUVGLWidget, YUVNV12GLWidget
 from .widgets import FadeOutLabel
 from .audio import QtAudioWorker, SoundDeviceAudioWorker
 
@@ -120,10 +120,14 @@ class StreamWindow(QtWidgets.QWidget):
         )
 
         output = YUVGLWidget if self.options().use_opengl else VideoWidget
+        kwargs = {}
+        if isinstance(output, YUVGLWidget):
+            kwargs["is_nv12"] = self.options().use_hw
         resolution = Resolution.preset(self.options().resolution)
         self._video_output = output(
             resolution["width"],
             resolution["height"],
+            **kwargs,
         )
         self.layout().addWidget(self._video_output)
 
@@ -234,6 +238,8 @@ class StreamWindow(QtWidgets.QWidget):
         """Setup Receiver."""
         receiver = QtReceiver()
         receiver.rgb = not self.options().use_opengl
+        if not receiver.rgb:
+            receiver.force_rgb = self.options().use_hw
         receiver.set_signals(self.video_frame, self.audio_frame)
         self.audio_frame.connect(
             self._audio_output.next_audio_frame, Qt.QueuedConnection

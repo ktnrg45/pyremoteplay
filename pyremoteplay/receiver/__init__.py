@@ -49,7 +49,7 @@ class AVReceiver(abc.ABC):
         return frame
 
     @staticmethod
-    def video_frame(buf, codec_ctx, to_rgb=True):
+    def video_frame(buf, codec_ctx, to_rgb=True, force_rgb=True):
         """Decode H264 Frame to raw image.
         Return AV Frame.
 
@@ -74,8 +74,9 @@ class AVReceiver(abc.ABC):
         # )
         if to_rgb:
             frame = frame.reformat(frame.width, frame.height, "rgb24")
-        elif frame.format.name == "nv12":  # HW Decode will output NV12 frames
-            frame = frame.reformat(format="yuv420p")
+        elif frame.format.name != "rgb24":  # HW Decode will output NV12 frames
+            if force_rgb:
+                frame = frame.reformat(format="yuv420p")
         return frame
 
     @staticmethod
@@ -137,6 +138,7 @@ class AVReceiver(abc.ABC):
     def __init__(self):
         self._session = None
         self.rgb = False
+        self.force_rgb = True
         self.video_decoder = None
         self.audio_decoder = None
         self.audio_resampler = None
@@ -190,7 +192,9 @@ class AVReceiver(abc.ABC):
         """Return decoded Video Frame."""
         if not self.video_decoder:
             return None
-        frame = AVReceiver.video_frame(buf, self.video_decoder, self.rgb)
+        frame = AVReceiver.video_frame(
+            buf, self.video_decoder, self.rgb, self.force_rgb
+        )
         return frame
 
     def decode_audio_frame(self, buf: bytes) -> av.AudioFrame:

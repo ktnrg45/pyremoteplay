@@ -78,6 +78,29 @@ YUV_FRAG = dedent(
 )
 
 
+YUV_FRAG_NV12 = dedent(
+    """
+    #version 150 core
+    uniform sampler2D plane1;
+    uniform sampler2D plane2;
+    in vec2 v_coord;
+    out vec4 out_color;
+
+    void main() {
+        vec3 yuv = vec3(
+            (texture(plane1, v_coord).r - (16.0 / 255.0)) / ((235.0 - 16.0) / 255.0),
+            (texture(plane2, v_coord).r - (16.0 / 255.0)) / ((240.0 - 16.0) / 255.0) - 0.5,
+            (texture(plane2, v_coord).g - (16.0 / 255.0)) / ((240.0 - 16.0) / 255.0) - 0.5);
+        vec3 rgb = mat3(
+            1.0,        1.0,        1.0,
+            0.0,        -0.21482,   2.12798,
+            1.28033,    -0.38059,   0.0) * yuv;
+        out_color = vec4(rgb, 1.0);
+    }    
+    """
+)
+
+
 class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
     """YUV to RGB Opengl Widget."""
 
@@ -95,7 +118,8 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         QSurfaceFormat.setDefaultFormat(surface_format)
         return surface_format
 
-    def __init__(self, width, height, parent=None):
+    def __init__(self, width, height, is_nv12=False, parent=None):
+        self._is_nv12 = is_nv12
         QOpenGLWidget.__init__(self, parent)
         QOpenGLFunctions.__init__(self)
         surface_format = YUVGLWidget.surface_format()
@@ -119,9 +143,11 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
         """Initilize GL Program and textures."""
         self.initializeOpenGLFunctions()
 
+        frag_shader = YUV_FRAG_NV12 if self._is_nv12 else YUV_FRAG
+
         # Setup shaders
         assert self.program.addShaderFromSourceCode(QOpenGLShader.Vertex, YUV_VERT)
-        assert self.program.addShaderFromSourceCode(QOpenGLShader.Fragment, YUV_FRAG)
+        assert self.program.addShaderFromSourceCode(QOpenGLShader.Fragment, frag_shader)
 
         self.program.link()
         self.program.bind()
@@ -149,20 +175,31 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
 
         self.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
 
+    def _get_texture_config(
+        self, index: int
+    ) -> tuple[int, int, QOpenGLTexture.PixelFormat, QOpenGLTexture.TextureFormat]:
+        tex_format = QOpenGLTexture.R8_UNorm
+        pix_format = QOpenGLTexture.Red
+        width = self.frame_width
+        height = self.frame_height
+        if index > 0:
+            width /= 2
+            height /= 2
+            if self._is_nv12:
+                tex_format = QOpenGLTexture.RG8_UNorm
+                pix_format = QOpenGLTexture.RG
+        return width, height, pix_format, tex_format
+
     def _create_textures(self):
         """Create Textures."""
         self.textures = []
         for index, name in enumerate(YUVGLWidget.TEXTURE_NAMES):
-            width = self.frame_width
-            height = self.frame_height
-            if index > 0:
-                width /= 2
-                height /= 2
+            width, height, pix_format, tex_format = self._get_texture_config(index)
 
             texture = QOpenGLTexture(QOpenGLTexture.Target2D)
-            texture.setFormat(QOpenGLTexture.R8_UNorm)
+            texture.setFormat(tex_format)
             texture.setSize(width, height)
-            texture.allocateStorage(QOpenGLTexture.Red, QOpenGLTexture.UInt8)
+            texture.allocateStorage(pix_format, QOpenGLTexture.UInt8)
             texture.setMinMagFilters(QOpenGLTexture.Linear, QOpenGLTexture.Linear)
             texture.setWrapMode(QOpenGLTexture.DirectionS, QOpenGLTexture.ClampToEdge)
             texture.setWrapMode(QOpenGLTexture.DirectionT, QOpenGLTexture.ClampToEdge)
@@ -173,8 +210,7 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
 
     def update_texture(self, index, pixels):
         """Update texture with video plane."""
-        width = self.frame_width if index == 0 else self.frame_width / 2
-        height = self.frame_height if index == 0 else self.frame_height / 2
+        width, height, pix_format, _ = self._get_texture_config(index)
 
         self.glActiveTexture(GL.GL_TEXTURE0 + index)
         texture = self.textures[index]
@@ -186,7 +222,7 @@ class YUVGLWidget(QOpenGLWidget, QOpenGLFunctions):
             width,
             height,
             0,
-            QOpenGLTexture.Red,
+            pix_format,
             QOpenGLTexture.UInt8,
             VoidPtr(pixels),
         )
