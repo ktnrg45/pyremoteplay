@@ -2,6 +2,8 @@
 from __future__ import annotations
 import logging
 import threading
+import sys
+import traceback
 from typing import Iterable, TYPE_CHECKING, Union
 from collections import deque
 from enum import IntEnum, auto
@@ -60,6 +62,11 @@ class Controller:
                 self.update_sticks()
             except Exception as error:  # pylint: disable=broad-except
                 _LOGGER.error("Error in controller thread: %s", error)
+                if _LOGGER.level == logging.DEBUG:
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+                    traceback.print_exception(
+                        exc_type, exc_value, exc_traceback, file=sys.stdout
+                    )
         self._session = None
         self._thread = None
         self._stop_event.clear()
