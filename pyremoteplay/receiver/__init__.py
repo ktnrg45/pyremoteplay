@@ -132,9 +132,9 @@ class AVReceiver(abc.ABC):
         codec_ctx.format = "s16"
         return codec_ctx
 
-    def __init__(self, video_format: str = "rgb24"):
+    def __init__(self):
         self._session = None
-        self._video_format = video_format
+        self._video_format = "rgb24"
         self.video_decoder = None
         self.audio_decoder = None
         self.audio_resampler = None
@@ -276,7 +276,7 @@ class QueueReceiver(AVReceiver):
     New Frames are added to the end of queue.
     When queue is full the oldest frame is removed.
 
-    :param max_frames: Maximum number of frames to be stored
+    :param max_frames: Maximum number of frames to be stored. Will be at least 1.
     :param max_video_frames: Maximum video frames that can be stored.
         If <= 0, max_frames will be used.
     :param max_audio_frames: Maximum audio frames that can be stored.
@@ -285,6 +285,7 @@ class QueueReceiver(AVReceiver):
 
     def __init__(self, max_frames=10, max_video_frames=-1, max_audio_frames=-1):
         super().__init__()
+        max_frames = max(1, max_frames)
         max_video_frames = max_frames if max_video_frames <= 0 else max_video_frames
         max_audio_frames = max_frames if max_audio_frames <= 0 else max_audio_frames
         self._v_queue = deque(maxlen=max_video_frames)
