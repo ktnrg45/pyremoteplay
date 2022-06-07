@@ -185,7 +185,7 @@ class OptionsWidget(QtWidgets.QWidget):
     def get_decoder(self) -> list:
         """Return HW decoder or CPU if not found."""
         decoders = []
-        found = AVReceiver.find_video_decoder(video_format="h264", use_hw=True)
+        found = AVReceiver.find_video_decoder(codec_name="h264", use_hw=True)
         for decoder, alias in found:
             decoder = decoder.replace("h264", "").replace("_", "")
             if alias == "CPU":

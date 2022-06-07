@@ -39,7 +39,7 @@ class AVReceiver(abc.ABC):
     }
 
     @staticmethod
-    def audio_frame(buf, codec_ctx):
+    def audio_frame(buf: bytes, codec_ctx: av.CodecContext):
         """Return decoded audio frame."""
         packet = av.packet.Packet(buf)
         frames = codec_ctx.decode(packet)
@@ -49,14 +49,13 @@ class AVReceiver(abc.ABC):
         return frame
 
     @staticmethod
-    def video_frame(buf, codec_ctx, to_rgb=True, force_rgb=True):
+    def video_frame(buf: bytes, codec_ctx: av.CodecContext, video_format="rgb24"):
         """Decode H264 Frame to raw image.
         Return AV Frame.
 
-        Frame Format:
-        AV_PIX_FMT_YUV420P (libavutil)
-        YUV 4:2:0, 12bpp
-        (1 Cr & Cb sample per 2x2 Y samples)
+        :param buf: Raw Video Packet representing one video frame
+        :param codec_ctx: av codec context for decoding
+        :param video_format: Format to output frames as.
         """
         packet = av.packet.Packet(b"".join([buf, bytes(FFMPEG_PADDING)]))
         frames = codec_ctx.decode(packet)
@@ -72,15 +71,13 @@ class AVReceiver(abc.ABC):
         #     frame.interlaced_frame,
         #     frame.pict_type,
         # )
-        if to_rgb:
-            frame = frame.reformat(frame.width, frame.height, "rgb24")
-        elif frame.format.name != "rgb24":  # HW Decode will output NV12 frames
-            if force_rgb:
-                frame = frame.reformat(format="yuv420p")
+
+        if frame.format.name != video_format:
+            frame = frame.reformat(frame.width, frame.height, video_format)
         return frame
 
     @staticmethod
-    def find_video_decoder(video_format="h264", use_hw=False):
+    def find_video_decoder(codec_name="h264", use_hw=False):
         """Return all decoders found."""
         found = []
         decoders = (
@@ -88,19 +85,19 @@ class AVReceiver(abc.ABC):
             ("cuvid", "Nvidia"),
             ("qsv", "Intel"),
             ("videotoolbox", "Apple"),
-            (video_format, "CPU"),
+            (codec_name, "CPU"),
         )
 
         decoder = None
         _LOGGER.debug("Using HW: %s", use_hw)
         if not use_hw:
-            _LOGGER.debug("%s - %s - %s", video_format, use_hw, decoders)
-            return [(video_format, "CPU")]
+            _LOGGER.debug("%s - %s - %s", codec_name, use_hw, decoders)
+            return [(codec_name, "CPU")]
         for decoder in decoders:
-            if decoder[0] == video_format:
-                name = video_format
+            if decoder[0] == codec_name:
+                name = codec_name
             else:
-                name = f"{video_format}_{decoder[0]}"
+                name = f"{codec_name}_{decoder[0]}"
             try:
                 av.codec.Codec(name, "r")
             except (av.codec.codec.UnknownCodecError, av.error.PermissionError):
@@ -135,10 +132,9 @@ class AVReceiver(abc.ABC):
         codec_ctx.format = "s16"
         return codec_ctx
 
-    def __init__(self):
+    def __init__(self, video_format: str = "rgb24"):
         self._session = None
-        self.rgb = False
-        self.force_rgb = True
+        self._video_format = video_format
         self.video_decoder = None
         self.audio_decoder = None
         self.audio_resampler = None
@@ -192,9 +188,7 @@ class AVReceiver(abc.ABC):
         """Return decoded Video Frame."""
         if not self.video_decoder:
             return None
-        frame = AVReceiver.video_frame(
-            buf, self.video_decoder, self.rgb, self.force_rgb
-        )
+        frame = AVReceiver.video_frame(buf, self.video_decoder, self.video_format)
         return frame
 
     def decode_audio_frame(self, buf: bytes) -> av.AudioFrame:
@@ -265,6 +259,16 @@ class AVReceiver(abc.ABC):
         if self.audio_decoder is not None:
             self.audio_decoder.close()
         self.video_decoder = self.audio_decoder = None
+
+    @property
+    def video_format(self):
+        """Return Video Format Name."""
+        return self._video_format
+
+    @video_format.setter
+    def video_format(self, video_format: str):
+        """Set Video Format."""
+        self._video_format = video_format
 
 
 class QueueReceiver(AVReceiver):
