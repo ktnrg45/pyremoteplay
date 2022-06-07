@@ -237,6 +237,7 @@ class GamepadControlsTable(AbstractControlsTable):
                         row += 1
 
     def _key_activated(self, item: QtWidgets.QTableWidgetItem):
+        """Set item key with Selected RP Key."""
         selected = None
         self.scrollToItem(item)
         items = self.selectedItems()
@@ -473,6 +474,7 @@ class ControlsWidget(QtWidgets.QWidget):
         self._gamepad_mapping = {}
         self._selected_keyboard_map = DEFAULT
         self._selected_gamepad_guid = None
+        self._gamepad_timer = None
 
         self._keyboard_table = KeyboardControlsTable(self)
         self._gamepad_table = GamepadControlsTable(self)
@@ -761,7 +763,8 @@ class ControlsWidget(QtWidgets.QWidget):
             text = (
                 "To change a Remote Play Control, click on the corresponding row "
                 "and then press the button or move the sticks on the gamepad. "
-                "The Remote Play Controls will be swapped.<br><br>"
+                "The activated button or stick will be mapped to "
+                "the Remote Play Control that was selected.<br><br>"
                 "<b>Note:</b> Analog Triggers are shown as an axis with an idle value of '-1'."
             )
         self._instructions.setText(text)
