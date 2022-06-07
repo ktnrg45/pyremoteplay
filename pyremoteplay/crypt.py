@@ -124,7 +124,7 @@ def get_key_stream(
     key_stream = cipher.encrypt(key_stream)
 
     # Align to the overflow of the block and truncate to match packet size.
-    key_stream = key_stream[padding:data_len]
+    key_stream = key_stream[padding : padding + data_len]
     return key_stream
 
 
