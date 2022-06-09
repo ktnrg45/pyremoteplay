@@ -60,6 +60,7 @@ LAUNCH_SPEC = {
         "yuvCoefficient": "bt709",  # Changed from bt601
         "videoEncoderProfile": "hw4.1",
         "audioEncoderProfile": "audio1",
+        "adaptiveStreamMode": "resize",
     },
     "userProfile": {
         "onlineId": "psnId",
@@ -67,7 +68,6 @@ LAUNCH_SPEC = {
         "region": "US",
         "languagesUsed": ["en", "jp"],
     },
-    "adaptiveStreamMode": "resize",
     "videoCodec": "",
     "dynamicRange": "",
     "handshakeKey": None,
