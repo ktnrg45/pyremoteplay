@@ -3,9 +3,14 @@ from __future__ import annotations
 import logging
 import time
 from collections import deque
+from typing import TYPE_CHECKING, Callable
 
 from .stream_packets import AVPacket, Packet
 from .const import FFMPEG_PADDING
+
+if TYPE_CHECKING:
+    from .session import Session
+    from pyremoteplay.receiver import AVReceiver
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -16,7 +21,7 @@ class AVHandler:
     def __del__(self):
         self._queue.clear()
 
-    def __init__(self, session):
+    def __init__(self, session: Session):
         self._session = session
         self._receiver = None
         self._v_stream = None
@@ -27,7 +32,7 @@ class AVHandler:
         self._last_congestion = 0
         self._waiting = False
 
-    def add_receiver(self, receiver):
+    def add_receiver(self, receiver: AVReceiver):
         """Add AV reciever and run."""
         if self._receiver:
             raise RuntimeError("Cannot add Receiver more than once")
@@ -41,20 +46,27 @@ class AVHandler:
         self._cipher = cipher
         self._session.events.emit("av_ready")
 
-    def set_headers(self, v_header, a_header):
+    def set_headers(self, v_header: bytes, a_header: bytes):
         """Set headers."""
         if self._receiver:
             self._v_stream = AVStream(
-                "video", v_header, self._receiver.handle_video_data
+                "video",
+                v_header,
+                self._receiver.handle_video_data,
+                self._send_corrupt,
             )
             self._a_stream = AVStream(
-                "audio", a_header, self._receiver.handle_audio_data
+                "audio",
+                a_header,
+                self._receiver.handle_audio_data,
+                self._send_corrupt,
             )
             self._receiver.get_audio_config(a_header)
+            self._schedule_congestion()
 
-    def add_packet(self, packet):
+    def add_packet(self, msg: bytes):
         """Add Packet."""
-        packet = Packet.parse(packet)
+        packet = Packet.parse(msg)
         if len(self._queue) >= self._queue.maxlen:
             self._queue.clear()
             self._waiting = True
@@ -89,12 +101,6 @@ class AVHandler:
         self._queue.clear()
         _LOGGER.debug("AV Receiver Closed")
 
-    def _send_congestion(self):
-        now = time.time()
-        if now - self._last_congestion > 0.2:
-            self._session.stream.send_congestion(self.received, self.lost)
-            self._last_congestion = now
-
     def _handle(self, packet: AVPacket):
         _LOGGER.debug(packet)
         if not self._receiver:
@@ -104,6 +110,30 @@ class AVHandler:
         else:
             stream = self._a_stream
         stream.handle(packet)
+
+    def _schedule_congestion(self):
+        self._session.loop.call_later(0.5, self._send_congestion)
+
+    def _send_congestion(self):
+        now = time.time()
+        if now - self._last_congestion > 0.2 and not self._session.is_stopped:
+            self._session._sync_run_io(  # pylint: disable=protected-access
+                self._session.stream.send_congestion, self.received, self.lost
+            )
+            self._v_stream.reset_counters()
+            self._a_stream.reset_counters()
+            self._last_congestion = now
+            self._schedule_congestion()
+
+    def _send_corrupt(self, last_complete: int, current: int):
+        """Handle corrupt frame.
+
+        :param last_complete: The last frame index that was completed
+        :param current: The current frame index
+        """
+        # current -= 1 # Could be wrong
+        if not self._session.is_stopped:
+            self._session.stream.send_corrupt(last_complete, current)
 
     @property
     def has_receiver(self) -> bool:
@@ -127,9 +157,16 @@ class AVStream:
     TYPE_VIDEO = "video"
     TYPE_AUDIO = "audio"
 
-    def __init__(self, av_type: str, header: bytes, callback: callable):
+    def __init__(
+        self,
+        av_type: str,
+        header: bytes,
+        callback_done: Callable[[bytes], None],
+        callback_corrupt: Callable[[int, int], None],
+    ):
         self._type = av_type
-        self._callback = callback
+        self._callback_done = callback_done
+        self._callback_corrupt = callback_corrupt
         self._header = header
         self._packets = []
         self._frame = -1
@@ -138,12 +175,17 @@ class AVStream:
         self._received = 0
         self._last_index = -1
         self._frame_bad_order = False
+        self._last_complete = 0
         self._missing = []
 
         if self._type not in [AVStream.TYPE_VIDEO, AVStream.TYPE_AUDIO]:
             raise ValueError("Invalid Type")
         if av_type == AVStream.TYPE_VIDEO:
             self._header = b"".join([self._header, bytes(FFMPEG_PADDING)])
+
+    def reset_counters(self):
+        """Reset packet counters."""
+        self._lost = self._received = 0
 
     def _set_new_frame(self, packet: AVPacket):
         self._frame_bad_order = False
@@ -179,12 +221,21 @@ class AVStream:
             if len(self._packets) < packet.frame_length_src:
                 _LOGGER.error("Frame buffer missing packets")
                 return
-            self._callback(
-                self._header
-                + b"".join(
-                    [packet[2:] for packet in self._packets[: packet.frame_length_src]]
+            self._last_complete = packet.frame_index
+
+            if self._type == AVStream.TYPE_AUDIO:
+                self._callback_done(b"".join(self._packets[: packet.frame_length_src]))
+            else:
+                # First two decrypted bytes is the difference of the unit size and the data size.
+                self._callback_done(
+                    self._header
+                    + b"".join(
+                        [
+                            packet[2:]
+                            for packet in self._packets[: packet.frame_length_src]
+                        ]
+                    )
                 )
-            )
 
     def _handle_fec_packet(self, packet: AVPacket):
         try:
@@ -217,20 +268,27 @@ class AVStream:
                     _LOGGER.error(err)
                     return
                 if restored:
+                    self._last_complete = packet.frame_index
                     _LOGGER.debug("FEC Successful")
                     for index in missing:
                         packets[index] = restored[
                             size * index : size * (index + 1)
                         ].rstrip(b"\x00")
-                    self._callback(
-                        self._header
-                        + b"".join(
-                            [
-                                packet[2:]
-                                for packet in packets[: packet.frame_length_src]
-                            ]
+
+                    if self._type == AVStream.TYPE_AUDIO:
+                        self._callback_done(
+                            b"".join(packets[: packet.frame_length_src])
                         )
-                    )
+                    else:
+                        self._callback_done(
+                            self._header
+                            + b"".join(
+                                [
+                                    packet[2:]
+                                    for packet in packets[: packet.frame_length_src]
+                                ]
+                            )
+                        )
                 else:
                     _LOGGER.warning("FEC Failed")
 
@@ -242,13 +300,10 @@ class AVStream:
         if self._received > 65535:
             self._received = 1
 
-        # Audio frames are sent in one packet.
-        if self._type == AVStream.TYPE_AUDIO:
-            self._callback(packet.data[: packet.frame_size_audio])
-            return
-
         # New Video Frame.
         if packet.frame_index != self.frame:
+            if self._last_complete + 1 != packet.frame_index:
+                self._callback_corrupt(self._last_complete + 1, packet.frame_index)
             self._set_new_frame(packet)
 
         # Check if packet is in order
@@ -256,8 +311,10 @@ class AVStream:
             self._handle_missing_packet(packet.index, packet.unit_index)
 
         self._last_unit += 1
-        # First two decrypted bytes is the difference of the unit size and the data size.
-        self._packets.append(packet.data)
+        if self._type == AVStream.TYPE_AUDIO:
+            self._packets.append(packet.data[: packet.frame_size_audio])
+        else:
+            self._packets.append(packet.data)
 
         # Current Frame is src.
         if not packet.is_fec:

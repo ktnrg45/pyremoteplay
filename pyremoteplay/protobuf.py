@@ -55,7 +55,7 @@ class ProtoHandler:
         return data
 
     @staticmethod
-    def send_corrupt_frame(start: int, end: int):
+    def corrupt_frame(start: int, end: int):
         """Notify of corrupt or missing frame."""
         msg = ProtoHandler.message()
         msg.type = msg.PayloadType.CORRUPTFRAME

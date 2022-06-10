@@ -212,17 +212,26 @@ class RPStream:
         self.send(msg.bytes(self._cipher, True))
 
     def send_congestion(self, received: int, lost: int):
-        """Send congestion Packet."""
+        """Send congestion packet."""
         msg = CongestionPacket(received=received, lost=lost)
-        _LOGGER.info(msg)
         self.send(msg.bytes(self._cipher))
+
+    def send_corrupt(self, start: int, end: int):
+        """Send corrupt frame packet.
+
+        Sending this packet will request a new key frame.
+        The decoder should be able to correct itself.
+        """
+        data = ProtoHandler.corrupt_frame(start, end)
+        _LOGGER.info("Sending Corrupt Frame Notification from %s to %s", start, end)
+        self.send_data(data, 1, 2, True)
 
     def send(self, msg: bytes):
         """Send Message."""
         # log_bytes("Stream Send", msg)
         self._protocol.sendto(msg, (self._host, self._port))
 
-    def handle(self, msg):
+    def handle(self, msg: bytes):
         """Handle received packets."""
         av_type = Packet.is_av(msg[:1])
         if av_type:
@@ -242,7 +251,7 @@ class RPStream:
                     self._handle_later, msg
                 )
 
-    def _handle_later(self, msg):
+    def _handle_later(self, msg: bytes):
         packet = Packet.parse(msg)
         _LOGGER.debug(packet)
         # log_bytes("Stream RECV", msg)
@@ -263,7 +272,7 @@ class RPStream:
         elif packet.chunk.type == Chunk.Type.DATA:
             self._recv_data(packet)
 
-    def _recv_init(self, packet):
+    def _recv_init(self, packet: Packet):
         """Handle Init."""
         params = packet.params
         self._tag_remote = params["tag"]
@@ -273,13 +282,13 @@ class RPStream:
         """Handle Cookie Ack"""
         self._send_big()
 
-    def _recv_data(self, packet):
+    def _recv_data(self, packet: Packet):
         """Handle Data."""
         params = packet.params
         self._send_data_ack(params["tsn"])
         self._proto.handle(params["data"])
 
-    def _recv_data_ack(self, packet):
+    def _recv_data_ack(self, packet: Packet):
         """Handle data ack."""
         params = packet.params
         _LOGGER.debug(
