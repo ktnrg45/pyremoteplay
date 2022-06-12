@@ -4,6 +4,7 @@ import logging
 from ssl import SSLError
 import asyncio
 from typing import Callable, Union
+import socket
 
 import aiohttp
 from aiohttp.client_exceptions import ContentTypeError
@@ -45,6 +46,8 @@ class RPDevice:
         return list(profiles.keys())
 
     def __init__(self, host: str):
+        socket.gethostbyname(host)  # Raise Exception if invalid
+
         self._host = host
         self._max_polls = DEFAULT_POLL_COUNT
         self._host_type = None
@@ -148,7 +151,7 @@ class RPDevice:
         self,
         user: str,
         profiles: dict = None,
-        profile_path="",
+        profile_path: str = "",
         loop: asyncio.AbstractEventLoop = None,
         receiver: AVReceiver = None,
         resolution: Union[Resolution, str, int] = "360p",
