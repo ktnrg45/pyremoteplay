@@ -2,9 +2,8 @@
 from __future__ import annotations
 import logging
 from ssl import SSLError
-import time
 import asyncio
-from typing import Union
+from typing import Callable, Union
 
 import aiohttp
 from aiohttp.client_exceptions import ContentTypeError
@@ -18,7 +17,7 @@ from .const import (
     Resolution,
     FPS,
 )
-from .ddp import async_get_status, get_status, wakeup
+from .ddp import async_get_status, get_status, wakeup, STATUS_OK
 from .session import Session
 from .util import get_users, get_profiles, format_regist_key
 from .register import register
@@ -26,9 +25,6 @@ from .controller import Controller
 
 
 _LOGGER = logging.getLogger(__name__)
-
-STATUS_OK = 200
-STATUS_STANDBY = 620
 
 
 class RPDevice:
@@ -56,7 +52,6 @@ class RPDevice:
         self._mac_address = None
         self._ip_address = None
         self._callback = None
-        self._standby_start = 0
         self._unreachable = False
         self._status = {}
         self._media_info = None
@@ -89,24 +84,24 @@ class RPDevice:
     def get_status(self) -> dict:
         """Return status."""
         status = get_status(self.host)
-        self.set_status(status)
+        self._set_status(status)
         return status
 
     async def async_get_status(self):
         """Return status. Async."""
         status = async_get_status(self.host)
-        self.set_status(status)
+        self._set_status(status)
         return status
 
     def set_unreachable(self, state: bool):
         """Set unreachable attribute."""
         self._unreachable = state
 
-    def set_callback(self, callback: callable):
+    def set_callback(self, callback: Callable):
         """Set callback for status changes."""
         self._callback = callback
 
-    def set_status(self, data):
+    def _set_status(self, data: dict):
         """Set status."""
         if self.host_type is None:
             self._host_type = data.get("host-type")
@@ -129,13 +124,6 @@ class RPDevice:
             if not title_id and self.callback:
                 # Call immediately since we don't have to get media.
                 self.callback()  # pylint: disable=not-callable
-            # Status changed from OK to Standby/Turned Off
-            if (
-                old_status is not None
-                and old_status.get("status-code") == STATUS_OK
-                and self.status.get("status-code") == STATUS_STANDBY
-            ):
-                self._standby_start = time.time()
 
     async def _get_media_info(self, title_id: str, region="United States"):
         """Retrieve Media info."""
@@ -339,7 +327,7 @@ class RPDevice:
         return self._unreachable
 
     @property
-    def callback(self) -> callable:
+    def callback(self) -> Callable:
         """Return callback for status updates."""
         return self._callback
 
@@ -396,11 +384,6 @@ class RPDevice:
         if self.session is not None and self.session.is_running:
             return True
         return False
-
-    @property
-    def standby_start(self) -> float:
-        """Return timestamp when device was seen changing to standby."""
-        return self._standby_start
 
     @property
     def controller(self) -> Controller:
