@@ -1,8 +1,8 @@
 """OAuth methods for getting PSN credentials."""
-import asyncio
 import base64
 import logging
 from urllib.parse import parse_qs, urlparse
+import requests
 
 import aiohttp
 from Cryptodome.Hash import SHA256
@@ -41,23 +41,7 @@ def get_login_url() -> str:
     return __LOGIN_URL
 
 
-def get_user_account(redirect_url: str, loop: asyncio.AbstractEventLoop = None) -> dict:
-    """Return user account.
-
-    :param redirect_url: Redirect url found after logging in
-    :param loop: Asyncio Loop
-    """
-    if loop is None:
-        loop = asyncio.get_event_loop()
-        if not loop.is_running():
-            task = asyncio.ensure_future(async_get_user_account(redirect_url))
-            account = loop.run_until_complete(task)
-    else:
-        account = loop.create_task(async_get_user_account(redirect_url))
-    return account
-
-
-async def async_get_user_account(redirect_url: str) -> dict:
+def get_user_account(redirect_url: str) -> dict:
     """Return user account.
 
     :param redirect_url: Redirect url found after logging in
@@ -65,14 +49,47 @@ async def async_get_user_account(redirect_url: str) -> dict:
     code = _parse_redirect_url(redirect_url)
     if code is None:
         return None
-    token = await _get_token(code)
+    token = _get_token(code)
     if token is None:
         return None
-    account = await _fetch_account_info(token)
+    account = _fetch_account_info(token)
     return account
 
 
-async def _get_token(code):
+async def async_get_user_account(redirect_url: str) -> dict:
+    """Return user account. Async.
+
+    :param redirect_url: Redirect url found after logging in
+    """
+    code = _parse_redirect_url(redirect_url)
+    if code is None:
+        return None
+    token = await _async_get_token(code)
+    if token is None:
+        return None
+    account = await _async_fetch_account_info(token)
+    return account
+
+
+def _get_token(code: str) -> str:
+    _LOGGER.debug("Sending POST request")
+    body = __TOKEN_BODY.format(code).encode("ascii")
+    resp = requests.post(
+        __TOKEN_URL,
+        headers=__HEADERS,
+        data=body,
+        auth=(__CLIENT_ID, base64.b64decode(__CLIENT_SECRET.encode()).decode()),
+        timeout=3,
+    )
+    if resp.status_code == 200:
+        content = resp.json()
+        token = content.get("access_token")
+        return token
+    _LOGGER.error("Error getting token. Got response: %s", resp.status_code)
+    return None
+
+
+async def _async_get_token(code: str) -> str:
     _LOGGER.debug("Sending POST request")
     auth = aiohttp.BasicAuth(
         __CLIENT_ID, password=base64.b64decode(__CLIENT_SECRET.encode()).decode()
@@ -91,7 +108,22 @@ async def _get_token(code):
             return None
 
 
-async def _fetch_account_info(token):
+def _fetch_account_info(token: str) -> dict:
+    resp = requests.get(
+        f"{__TOKEN_URL}/{token}",
+        headers=__HEADERS,
+        auth=(__CLIENT_ID, base64.b64decode(__CLIENT_SECRET.encode()).decode()),
+        timeout=3,
+    )
+    if resp.status_code == 200:
+        account_info = resp.json()
+        account_info = _format_account_info(account_info)
+        return account_info
+    _LOGGER.error("Error getting account. Got response: %s", resp.status_code)
+    return None
+
+
+async def _async_fetch_account_info(token: str) -> dict:
     auth = aiohttp.BasicAuth(
         __CLIENT_ID, password=base64.b64decode(__CLIENT_SECRET.encode()).decode()
     )
@@ -101,15 +133,20 @@ async def _fetch_account_info(token):
         ) as resp:
             if resp.status == 200:
                 account_info = await resp.json()
-                user_id = account_info.get("user_id")
-                user_b64 = _format_user_id(user_id, "base64")
-                user_creds = _format_user_id(user_id, "sha256")
-                account_info["user_rpid"] = user_b64
-                account_info["credentials"] = user_creds
+                account_info = _format_account_info(account_info)
                 return account_info
             _LOGGER.error("Error getting account. Got response: %s", resp.status)
             await resp.release()
             return None
+
+
+def _format_account_info(account_info: dict) -> dict:
+    user_id = account_info["user_id"]
+    user_b64 = _format_user_id(user_id, "base64")
+    user_creds = _format_user_id(user_id, "sha256")
+    account_info["user_rpid"] = user_b64
+    account_info["credentials"] = user_creds
+    return account_info
 
 
 def _parse_redirect_url(redirect_url):
@@ -145,7 +182,7 @@ def _format_user_id(user_id: str, encoding="base64"):
     return user_id
 
 
-def prompt():
+def prompt() -> dict:
     """Prompt for input and return account info."""
     msg = (
         "\r\n\r\nGo to the url below in a web browser, "
