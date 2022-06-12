@@ -90,7 +90,6 @@ class AVHandler:
             return
         packet.decrypt(self._cipher)
         self._handle(packet)
-        # self._send_congestion()
 
     def worker(self):
         """Worker for AV Handler. Run in thread."""

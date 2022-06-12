@@ -81,7 +81,7 @@ To run the GUI use the following command:
 
 ## Notes ##
 - Video decoding is performed by the CPU by default. Hardware Decoding can be enabled in the options screen in the GUI.
-- You may have to install `ffmpeg` with hardware decoding enabled for `h264` and `hevc` and then install `pyav` with the following command to allow for hardware decoding:
+- You may have to install `ffmpeg` with hardware decoding enabled and then install `pyav` with the following command to allow for hardware decoding:
 `pip install av --no-binary av`
 
 

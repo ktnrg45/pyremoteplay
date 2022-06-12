@@ -6,7 +6,7 @@ from struct import unpack_from
 import warnings
 import logging
 from collections import deque
-from typing import Iterable
+from typing import Sequence
 
 from pyremoteplay.const import FFMPEG_PADDING
 
@@ -202,7 +202,7 @@ class AVReceiver(abc.ABC):
             frames = self.audio_resampler.resample(frame)
             if not frames:
                 return None
-            if isinstance(frames, Iterable):
+            if isinstance(frames, Sequence):
                 frame = frames[0]
             else:
                 frame = frames

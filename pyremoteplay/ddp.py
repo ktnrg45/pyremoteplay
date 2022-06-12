@@ -1,4 +1,5 @@
 """Device Discovery Protocol for RP Hosts."""
+from __future__ import annotations
 import asyncio
 import logging
 import re
@@ -37,7 +38,7 @@ def get_host_type(response: dict) -> str:
     return response.get("host-type")
 
 
-def get_ddp_message(msg_type, data=None):
+def get_ddp_message(msg_type: str, data: dict = None):
     """Get DDP message."""
     if msg_type not in DDP_MSG_TYPES:
         raise TypeError(f"DDP MSG type: '{msg_type}' is not a valid type")
@@ -89,12 +90,12 @@ def parse_ddp_response(rsp: Union[str, bytes]):
     return data
 
 
-def get_ddp_search_message():
+def get_ddp_search_message() -> str:
     """Get DDP search message."""
     return get_ddp_message(DDP_TYPE_SEARCH)
 
 
-def get_ddp_wake_message(credential):
+def get_ddp_wake_message(credential: str) -> str:
     """Get DDP wake message."""
     data = {
         "user-credential": credential,
@@ -106,7 +107,7 @@ def get_ddp_wake_message(credential):
     return get_ddp_message(DDP_TYPE_WAKEUP, data)
 
 
-def get_ddp_launch_message(credential):
+def get_ddp_launch_message(credential: str) -> str:
     """Get DDP launch message."""
     data = {
         "user-credential": credential,
@@ -116,7 +117,7 @@ def get_ddp_launch_message(credential):
     return get_ddp_message(DDP_TYPE_LAUNCH, data)
 
 
-def get_socket(port: Optional[int] = DEFAULT_UDP_PORT):
+def get_socket(port: Optional[int] = DEFAULT_UDP_PORT) -> socket.socket:
     """Return DDP socket object."""
     retries = 0
     sock = None
@@ -140,13 +141,13 @@ def get_socket(port: Optional[int] = DEFAULT_UDP_PORT):
 
 
 def _send_recv_msg(
-    host,
-    msg,
-    host_type=TYPE_PS4,
-    receive=True,
-    send=True,
-    sock=None,
-    close=True,
+    host: str,
+    msg: str,
+    host_type: str = TYPE_PS4,
+    receive: bool = True,
+    send: bool = True,
+    sock: socket.socket = None,
+    close: bool = True,
 ):
     """Send a ddp message and receive the response."""
     response = None
@@ -180,7 +181,13 @@ def _send_recv_msg(
     return response
 
 
-def _send_msg(host, msg, host_type=TYPE_PS4, sock=None, close=True):
+def _send_msg(
+    host: str,
+    msg: str,
+    host_type: str = TYPE_PS4,
+    sock: socket.socket = None,
+    close: bool = True,
+):
     """Send a ddp message."""
     return _send_recv_msg(
         host,
@@ -193,7 +200,7 @@ def _send_msg(host, msg, host_type=TYPE_PS4, sock=None, close=True):
     )
 
 
-def _recv_msg(host, msg, sock=None, close=True):
+def _recv_msg(host: str, msg: str, sock: socket.socket = None, close: bool = True):
     """Send a ddp message."""
     return _send_recv_msg(
         host,
@@ -205,14 +212,18 @@ def _recv_msg(host, msg, sock=None, close=True):
     )
 
 
-def send_search_msg(host, host_type=TYPE_PS4, sock=None):
+def send_search_msg(host: str, host_type: str = TYPE_PS4, sock: socket.socket = None):
     """Send SRCH message only."""
     msg = get_ddp_search_message()
     return _send_msg(host, msg, host_type=host_type, sock=sock)
 
 
 def search(
-    host=BROADCAST_IP, port=UDP_PORT, host_type=None, sock=None, timeout=3
+    host: str = BROADCAST_IP,
+    port: int = UDP_PORT,
+    host_type: str = "",
+    sock: socket.socket = None,
+    timeout: int = 3,
 ) -> list:
     """Return list of discovered devices."""
     ps_list = []
@@ -246,7 +257,9 @@ def search(
     return ps_list
 
 
-def get_status(host, port=UDP_PORT, host_type=None, sock=None):
+def get_status(
+    host: str, port: int = UDP_PORT, host_type: str = "", sock: socket.socket = None
+):
     """Return status dict."""
     ps_list = search(host=host, port=port, host_type=host_type, sock=sock)
     if not ps_list:
@@ -254,19 +267,25 @@ def get_status(host, port=UDP_PORT, host_type=None, sock=None):
     return ps_list[0]
 
 
-def wakeup(host, credential, host_type=TYPE_PS4, sock=None):
+def wakeup(
+    host: str, credential: str, host_type: str = TYPE_PS4, sock: socket.socket = None
+):
     """Wakeup Host."""
     msg = get_ddp_wake_message(credential)
     _send_msg(host, msg, host_type=host_type, sock=sock)
 
 
-def launch(host, credential, host_type=TYPE_PS4, sock=None):
+def launch(
+    host: str, credential: str, host_type: str = TYPE_PS4, sock: socket.socket = None
+):
     """Launch."""
     msg = get_ddp_launch_message(credential)
     _send_msg(host, msg, host_type=host_type, sock=sock)
 
 
-async def _async_get_socket(host=BROADCAST_IP, port=DEFAULT_UDP_PORT):
+async def _async_get_socket(
+    host: str = BROADCAST_IP, port: int = DEFAULT_UDP_PORT
+) -> asyncudp.Socket:
     try:
         sock = await asyncudp.create_socket(local_addr=(UDP_IP, port))
     except OSError:
@@ -280,7 +299,9 @@ async def _async_get_socket(host=BROADCAST_IP, port=DEFAULT_UDP_PORT):
     return sock
 
 
-async def _async_send_msg(sock, host, msg, host_type=None):
+async def _async_send_msg(
+    sock: asyncudp.Socket, host: str, msg: str, host_type: str = ""
+):
     """Send a ddp message."""
     host_types = [host_type] if host_type else DDP_PORTS.keys()
     for host_type in host_types:
@@ -289,8 +310,12 @@ async def _async_send_msg(sock, host, msg, host_type=None):
 
 
 async def async_search(
-    host=BROADCAST_IP, port=DEFAULT_UDP_PORT, host_type=None, sock=None, timeout=3
-) -> list:
+    host: str = BROADCAST_IP,
+    port: int = DEFAULT_UDP_PORT,
+    host_type: str = "",
+    sock: asyncudp.Socket = None,
+    timeout: int = 3,
+) -> list[dict]:
     """Return list of discovered devices."""
     device_list = []
     msg = get_ddp_search_message()
@@ -323,7 +348,12 @@ async def async_search(
     return device_list
 
 
-async def async_get_status(host, port=DEFAULT_UDP_PORT, host_type=None, sock=None):
+async def async_get_status(
+    host: str,
+    port: int = DEFAULT_UDP_PORT,
+    host_type: str = "",
+    sock: asyncudp.Socket = None,
+):
     """Return status dict."""
     device_list = await async_search(
         host=host, port=port, host_type=host_type, sock=sock
@@ -334,7 +364,11 @@ async def async_get_status(host, port=DEFAULT_UDP_PORT, host_type=None, sock=Non
 
 
 async def async_wakeup(
-    host, credential, port=DEFAULT_UDP_PORT, host_type=None, sock=None
+    host: str,
+    credential: str,
+    port: int = DEFAULT_UDP_PORT,
+    host_type: str = "",
+    sock: asyncudp.Socket = None,
 ):
     """Wakeup Host."""
     msg = get_ddp_wake_message(credential)
@@ -345,7 +379,11 @@ async def async_wakeup(
 
 
 async def async_launch(
-    host, credential, port=DEFAULT_UDP_PORT, host_type=None, sock=None
+    host: str,
+    credential: str,
+    port: int = DEFAULT_UDP_PORT,
+    host_type: str = "",
+    sock: asyncudp.Socket = None,
 ):
     """Launch."""
     msg = get_ddp_launch_message(credential)

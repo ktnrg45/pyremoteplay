@@ -144,12 +144,9 @@ def add_regist_data(profile: dict, host_status: dict, data: dict) -> dict:
     return profile
 
 
-def format_regist_key(regist_key: str) -> bytes:
+def format_regist_key(regist_key: str) -> str:
     """Format Regist Key for wakeup."""
-    regist_key = int.from_bytes(
-        bytes.fromhex(bytes.fromhex(regist_key).decode()), "big"
-    )
-    return regist_key
+    return str(int.from_bytes(bytes.fromhex(bytes.fromhex(regist_key).decode()), "big"))
 
 
 def get_devices(path: str = None) -> dict:
