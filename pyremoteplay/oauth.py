@@ -1,4 +1,5 @@
 """OAuth methods for getting PSN credentials."""
+from __future__ import annotations
 import base64
 import logging
 from urllib.parse import parse_qs, urlparse
@@ -6,6 +7,8 @@ import requests
 
 import aiohttp
 from Cryptodome.Hash import SHA256
+
+from .util import format_user_data
 
 __CLIENT_ID = "ba495a24-818c-472b-b12d-ff231c1b5745"
 __CLIENT_SECRET = "bXZhaVprUnNBc0kxSUJrWQ=="
@@ -42,7 +45,9 @@ def get_login_url() -> str:
 
 
 def get_user_account(redirect_url: str) -> dict:
-    """Return user account.
+    """Return user account. Account should be formmated with `format_user_account` before use.
+
+    See :meth:`pyremoteplay.oauth.format_user_account() <pyremoteplay.oauth.format_user_account>`
 
     :param redirect_url: Redirect url found after logging in
     """
@@ -57,7 +62,9 @@ def get_user_account(redirect_url: str) -> dict:
 
 
 async def async_get_user_account(redirect_url: str) -> dict:
-    """Return user account. Async.
+    """Return user account. Async. Account should be formmated with `format_user_account` before use.
+
+    See :meth:`pyremoteplay.oauth.format_user_account() <pyremoteplay.oauth.format_user_account>`
 
     :param redirect_url: Redirect url found after logging in
     """
@@ -180,6 +187,16 @@ def _format_user_id(user_id: str, encoding="base64"):
         elif encoding == "base64":
             user_id = base64.b64encode(int(user_id).to_bytes(8, "little")).decode()
     return user_id
+
+
+def format_user_account(user_data: dict) -> dict[str, dict]:
+    """Formats account data to user profile. Return user profile.
+
+    See :meth:`pyremoteplay.oauth.get_user_account() <pyremoteplay.oauth.get_user_account>`
+
+    :param user_data: User data from `get_user_account`.
+    """
+    return format_user_data(user_data)
 
 
 def prompt() -> dict:

@@ -20,7 +20,7 @@ from .const import (
 )
 from .ddp import async_get_status, get_status, wakeup, STATUS_OK
 from .session import Session
-from .util import get_users, get_profiles, format_regist_key
+from .util import get_users, get_profiles, format_regist_key, add_regist_data
 from .register import register
 from .controller import Controller
 
@@ -39,7 +39,7 @@ class RPDevice:
     """
 
     @staticmethod
-    def get_all_users(profiles: dict = None, profile_path="") -> list:
+    def get_all_users(profiles: dict[str, dict] = None, profile_path="") -> list:
         """Return all users that have been authenticated with OAuth."""
         if not profiles:
             profiles = get_profiles(profile_path)
@@ -62,7 +62,7 @@ class RPDevice:
         self._session = None
         self._controller = None
 
-    def get_users(self, profiles: dict = None, profile_path="") -> list[str]:
+    def get_users(self, profiles: dict[str, dict] = None, profile_path="") -> list[str]:
         """Return Registered Users."""
         if not self.mac_address:
             _LOGGER.error("Device ID is unknown. Status needs to be updated.")
@@ -70,8 +70,14 @@ class RPDevice:
         users = get_users(self.mac_address, profiles, profile_path)
         return users
 
-    def get_profile(self, user: str, profiles: dict = None, profile_path="") -> dict:
+    def get_profile(
+        self, user: str, profiles: dict[str, dict] = None, profile_path=""
+    ) -> dict:
         """Return valid profile for user.
+
+        See:
+        :meth:`pyremoteplay.oauth.get_user_account() <pyremoteplay.oauth.get_user_account>`
+        :meth:`pyremoteplay.oauth.format_user_account() <pyremoteplay.oauth.format_user_account>`
 
         :param profiles: dict of all user profiles. If None, profiles will be retrieved from default location. Optional.
         :param profile_path: Path to saved profile file. Specify if profile data was not saved to the default path. Optional.
@@ -150,7 +156,7 @@ class RPDevice:
     def create_session(
         self,
         user: str,
-        profiles: dict = None,
+        profiles: dict[str, dict] = None,
         profile_path: str = "",
         loop: asyncio.AbstractEventLoop = None,
         receiver: AVReceiver = None,
@@ -163,7 +169,7 @@ class RPDevice:
         """Return initialized session if session created else return None.
         Also connects a controller.
 
-        See 'Session' for param details.
+        See :class:`Session <pyremoteplay.session.Session>`  for param details.
 
         :param user: Name of user to use. Can be found with `get_users`
 
@@ -209,7 +215,9 @@ class RPDevice:
             del self._session
         self._session = None
 
-    async def standby(self, user="", profiles: dict = None, profile_path="") -> bool:
+    async def standby(
+        self, user="", profiles: dict[str, dict] = None, profile_path=""
+    ) -> bool:
         """Place Device in standby. Return True if successful.
 
         If there is a valid and connected session, no arguments need to be passed.
@@ -240,7 +248,7 @@ class RPDevice:
     def wakeup(
         self,
         user: str = "",
-        profiles: dict = None,
+        profiles: dict[str, dict] = None,
         profile_path: str = None,
         key: str = "",
     ):
@@ -268,26 +276,30 @@ class RPDevice:
         user: str,
         pin: str,
         timeout: float = 2.0,
-        profiles: dict = None,
+        profiles: dict[str, dict] = None,
         profile_path="",
     ) -> dict:
-        """Register psn_id with device. Return register info.
+        """Register psn_id with device. Return updated user profile.
 
         :param user: User name. Can be found with `get_all_users`
         :param pin: PIN for linking found on Remote Play Host
         :param timeout: Timeout to wait for completion
         """
+        if not self.status:
+            _LOGGER.error("No status")
+            return {}
         if not profiles:
             profiles = get_profiles(profile_path)
-        data = profiles.get(user)
-        if not data:
+        profile = profiles.get(user)
+        if not profile:
             _LOGGER.error("User: %s not found", user)
             return {}
-        psn_id = data.get("id")
+        psn_id = profile.get("id")
         if not psn_id:
             _LOGGER.error("Error retrieving ID for user: %s", user)
             return {}
-        return register(self.host, psn_id, pin, timeout)
+        regist_data = register(self.host, psn_id, pin, timeout)
+        return add_regist_data(profile, self.status, regist_data)
 
     @property
     def host(self) -> str:

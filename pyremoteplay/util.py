@@ -100,12 +100,13 @@ def write_profiles(profiles: dict, path: str = None):
         json.dump(profiles, _file)
 
 
-def add_profile(profiles: dict, user_data: dict) -> dict:
-    """Add profile to profiles and return profiles."""
+def format_user_data(user_data: dict) -> dict:
+    """Format user data into profile data."""
+    profile = {}
     user_id = user_data.get("user_rpid")
     if not isinstance(user_id, str) and not user_id:
         _LOGGER.error("Invalid user id or user id not found")
-        return dict()
+        return profile
     name = user_data["online_id"]
     profile = {
         name: {
@@ -113,7 +114,14 @@ def add_profile(profiles: dict, user_data: dict) -> dict:
             "hosts": {},
         }
     }
-    profiles.update(profile)
+    return profile
+
+
+def add_profile(profiles: dict, user_data: dict) -> dict:
+    """Add profile to profiles and return profiles."""
+    profile = format_user_data(user_data)
+    if profile:
+        profiles.update(profile)
     return profiles
 
 
