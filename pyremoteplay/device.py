@@ -5,6 +5,8 @@ from ssl import SSLError
 import asyncio
 from typing import Callable, Union
 import socket
+from functools import wraps
+import inspect
 
 import aiohttp
 from aiohttp.client_exceptions import ContentTypeError
@@ -29,9 +31,42 @@ from .util import (
 )
 from .register import register
 from .controller import Controller
+from .profile import Profiles, UserProfile
 
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _load_profiles(func: Callable):
+    """Decorator. Load profiles if profiles is None."""
+
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        param = "profiles"
+        signature = inspect.signature(func)
+        bound_args = signature.bind(*args, **kwargs)
+        if not isinstance(bound_args.arguments.get("self"), RPDevice):
+            raise TypeError(f"Can only wrap a {RPDevice} instance")
+        if param not in signature.parameters:
+            raise ValueError(f"Method: {func} has no parameter '{param}'")
+
+        profiles = bound_args.arguments.get(param)
+        if not profiles:
+            param_index = list(signature.parameters.keys()).index(param)
+            # Remove profiles from arguments
+            if param_index < len(bound_args.args):
+                _args = list(args)
+                _args.pop(param_index)
+                args = tuple(_args)
+            kwargs[param] = Profiles.load()
+        else:
+            if not isinstance(profiles, Profiles):
+                raise TypeError(
+                    f"Expected {param} to be instance of {Profiles}. Got: {type(profiles)}"
+                )
+        return func(*args, **kwargs)
+
+    return wrapped
 
 
 class RPDevice:
@@ -45,11 +80,18 @@ class RPDevice:
     """
 
     @staticmethod
-    def get_all_users(profiles: dict[str, dict] = None, profile_path="") -> list:
-        """Return all users that have been authenticated with OAuth."""
-        if not profiles:
-            profiles = get_profiles(profile_path)
-        return list(profiles.keys())
+    def get_all_users(profiles: Profiles = None) -> list[str]:
+        """Return all usernames that have been authenticated with OAuth."""
+        profiles = Profiles.load()
+        return profiles.usernames
+
+    @staticmethod
+    def get_profiles(path: str = "") -> Profiles:
+        """Return Profiles.
+
+        :param path: Path to file to load profiles. If not given, will load profiles from default path.
+        """
+        return Profiles.load(path)
 
     def __init__(self, host: str):
         socket.gethostbyname(host)  # Raise Exception if invalid
@@ -68,31 +110,29 @@ class RPDevice:
         self._session = None
         self._controller = None
 
-    def get_users(self, profiles: dict[str, dict] = None, profile_path="") -> list[str]:
+    @_load_profiles
+    def get_users(self, profiles: Profiles = None) -> list[str]:
         """Return Registered Users."""
         if not self.mac_address:
             _LOGGER.error("Device ID is unknown. Status needs to be updated.")
             return []
-        users = get_users(self.mac_address, profiles, profile_path)
+        users = profiles.get_users(self.mac_address)
         return users
 
-    def get_profile(
-        self, user: str, profiles: dict[str, dict] = None, profile_path=""
-    ) -> dict:
+    @_load_profiles
+    def get_profile(self, user: str, profiles: Profiles = None) -> UserProfile:
         """Return valid profile for user.
 
         See:
         :meth:`pyremoteplay.oauth.get_user_account() <pyremoteplay.oauth.get_user_account>`
         :meth:`pyremoteplay.oauth.format_user_account() <pyremoteplay.oauth.format_user_account>`
 
+        :param user: Username of user
         :param profiles: dict of all user profiles. If None, profiles will be retrieved from default location. Optional.
-        :param profile_path: Path to saved profile file. Specify if profile data was not saved to the default path. Optional.
         """
-        if not profiles:
-            profiles = get_profiles(profile_path)
         users = self.get_users(profiles)
         if user not in users:
-            _LOGGER.error("User: %s not valid", user)
+            _LOGGER.error("User: %s not registered", user)
             return None
         return profiles.get(user)
 
@@ -118,6 +158,8 @@ class RPDevice:
 
     def _set_status(self, data: dict):
         """Set status."""
+        if not data:
+            return
         if self.host_type is None:
             self._host_type = data.get("host-type")
         if self.mac_address is None:
@@ -162,8 +204,7 @@ class RPDevice:
     def create_session(
         self,
         user: str,
-        profiles: dict[str, dict] = None,
-        profile_path: str = "",
+        profiles: Profiles = None,
         loop: asyncio.AbstractEventLoop = None,
         receiver: AVReceiver = None,
         resolution: Union[Resolution, str, int] = "360p",
@@ -185,7 +226,7 @@ class RPDevice:
                 _LOGGER.error("Device session already exists. Disconnect first.")
                 return None
             self.disconnect()  # Cleanup session
-        profile = self.get_profile(user, profiles, profile_path)
+        profile = self.get_profile(user, profiles)
         if not profile:
             _LOGGER.error("Could not find valid user profile")
             return None
@@ -221,9 +262,7 @@ class RPDevice:
             del self._session
         self._session = None
 
-    async def standby(
-        self, user="", profiles: dict[str, dict] = None, profile_path=""
-    ) -> bool:
+    async def standby(self, user="", profiles: Profiles = None) -> bool:
         """Place Device in standby. Return True if successful.
 
         If there is a valid and connected session, no arguments need to be passed.
@@ -238,7 +277,7 @@ class RPDevice:
             if not user:
                 _LOGGER.error("User needed")
                 return False
-            self.create_session(user, profiles, profile_path)
+            self.create_session(user, profiles)
         if not self.connected:
             if not await self.connect():
                 _LOGGER.error("Error connecting")
@@ -254,8 +293,7 @@ class RPDevice:
     def wakeup(
         self,
         user: str = "",
-        profiles: dict[str, dict] = None,
-        profile_path: str = None,
+        profiles: Profiles = None,
         key: str = "",
     ):
         """Send Wakeup.
@@ -269,7 +307,7 @@ class RPDevice:
         if not key:
             if not user:
                 raise ValueError("User must be specified")
-            profile = self.get_profile(user, profiles, profile_path)
+            profile = self.get_profile(user, profiles)
             if not profile:
                 _LOGGER.error("Profile not found")
                 return
@@ -277,37 +315,45 @@ class RPDevice:
         regist_key = format_regist_key(key)
         wakeup(self.host, regist_key, host_type=self.host_type)
 
+    @_load_profiles
     def register(
         self,
         user: str,
         pin: str,
         timeout: float = 2.0,
-        profiles: dict[str, dict] = None,
-        profile_path="",
-    ) -> dict:
+        profiles: Profiles = None,
+        save: bool = True,
+    ) -> UserProfile:
         """Register psn_id with device. Return updated user profile.
 
         :param user: User name. Can be found with `get_all_users`
         :param pin: PIN for linking found on Remote Play Host
         :param timeout: Timeout to wait for completion
+        :param profiles: Profiles to use
+        :param save: Save profiles if True
         """
         if not self.status:
             _LOGGER.error("No status")
-            return {}
-        if not profiles:
-            profiles = get_profiles(profile_path)
-        profile = profiles.get(user)
+            return None
+        profile = None
+        for _profile in profiles.users:
+            if _profile.name == user:
+                profile = _profile
         if not profile:
             _LOGGER.error("User: %s not found", user)
-            return {}
-        psn_id = profile.get("id")
+            return None
+        psn_id = profile.id
         if not psn_id:
             _LOGGER.error("Error retrieving ID for user: %s", user)
-            return {}
+            return None
         regist_data = register(self.host, psn_id, pin, timeout)
-        profile = add_regist_data(profile, self.status, regist_data)
-        profiles[user] = profile
-        write_profiles(profiles, profile_path)
+        if not regist_data:
+            _LOGGER.error("Registering failed")
+            return None
+        profile.add_regist_data(self.status, regist_data)
+        profiles.update_user(profile)
+        if save:
+            profiles.save()
         return profile
 
     @property

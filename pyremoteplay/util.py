@@ -1,4 +1,5 @@
 """Utility Methods."""
+from __future__ import annotations
 import inspect
 import json
 import logging
@@ -6,7 +7,6 @@ import pathlib
 import select
 import time
 from binascii import hexlify
-
 
 from .const import CONTROLS_FILE, OPTIONS_FILE, PROFILE_DIR, PROFILE_FILE
 
@@ -17,7 +17,7 @@ def check_dir() -> pathlib.Path:
     """Return path. Check file dir and create dir if not exists."""
     dir_path = pathlib.Path.home() / PROFILE_DIR
     if not dir_path.is_dir():
-        dir_path.mkdir()
+        dir_path.mkdir(exist_ok=True)
     return dir_path
 
 
@@ -28,7 +28,7 @@ def check_file(path: pathlib.Path):
             json.dump({}, _file)
 
 
-def get_mapping(path: str = None) -> dict:
+def get_mapping(path: str = "") -> dict:
     """Return dict of key mapping."""
     data = {}
     if not path:
@@ -42,7 +42,7 @@ def get_mapping(path: str = None) -> dict:
     return data
 
 
-def write_mapping(mapping: dict, path: str = None):
+def write_mapping(mapping: dict, path: str = ""):
     """Write mapping."""
     if not path:
         path = pathlib.Path.home() / PROFILE_DIR / CONTROLS_FILE
@@ -52,7 +52,7 @@ def write_mapping(mapping: dict, path: str = None):
         json.dump(mapping, _file, indent=2)
 
 
-def get_options(path: str = None) -> dict:
+def get_options(path: str = "") -> dict:
     """Return dict of options."""
     data = {}
     if not path:
@@ -66,7 +66,7 @@ def get_options(path: str = None) -> dict:
     return data
 
 
-def write_options(options: dict, path: str = None):
+def write_options(options: dict, path: str = ""):
     """Write options."""
     if not path:
         path = pathlib.Path.home() / PROFILE_DIR / OPTIONS_FILE
@@ -76,7 +76,7 @@ def write_options(options: dict, path: str = None):
         json.dump(options, _file)
 
 
-def get_profiles(path: str = None) -> dict:
+def get_profiles(path: str = "") -> dict:
     """Return Profiles."""
     data = []
     if not path:
@@ -90,7 +90,7 @@ def get_profiles(path: str = None) -> dict:
     return data
 
 
-def write_profiles(profiles: dict, path: str = None):
+def write_profiles(profiles: dict, path: str = ""):
     """Write profile data."""
     if not path:
         path = pathlib.Path.home() / PROFILE_DIR / PROFILE_FILE
@@ -98,23 +98,6 @@ def write_profiles(profiles: dict, path: str = None):
         path = pathlib.Path(path)
     with open(path, "w", encoding="utf-8") as _file:
         json.dump(profiles, _file)
-
-
-def format_user_data(user_data: dict) -> dict:
-    """Format user data into profile data."""
-    profile = {}
-    user_id = user_data.get("user_rpid")
-    if not isinstance(user_id, str) and not user_id:
-        _LOGGER.error("Invalid user id or user id not found")
-        return profile
-    name = user_data["online_id"]
-    profile = {
-        name: {
-            "id": user_id,
-            "hosts": {},
-        }
-    }
-    return profile
 
 
 def add_profile(profiles: dict, user_data: dict) -> dict:
@@ -125,7 +108,7 @@ def add_profile(profiles: dict, user_data: dict) -> dict:
     return profiles
 
 
-def get_users(device_id: str, profiles: dict = None, path: str = None):
+def get_users(device_id: str, profiles: dict = None, path: str = "") -> list[str]:
     """Return users for device."""
     users = []
     if not profiles:
@@ -155,18 +138,6 @@ def add_regist_data(profile: dict, host_status: dict, data: dict) -> dict:
 def format_regist_key(regist_key: str) -> str:
     """Format Regist Key for wakeup."""
     return str(int.from_bytes(bytes.fromhex(bytes.fromhex(regist_key).decode()), "big"))
-
-
-def get_devices(path: str = None) -> dict:
-    """Return dict of devices from profiles."""
-    devices = {}
-    profiles = get_profiles(path)
-    for _, data in profiles.items():
-        _device_data = data.get("hosts")
-        if not _device_data:
-            continue
-        devices.update(_device_data)
-    return devices
 
 
 def log_bytes(name: str, data: bytes):

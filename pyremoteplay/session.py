@@ -41,6 +41,7 @@ from .keys import (
 )
 from .stream import RPStream
 from .util import format_regist_key
+from .profile import UserProfile
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -170,7 +171,7 @@ class Session:
     """Remote Play Session Async.
 
     :param host: IP Address of Remote Play Host
-    :param profile: Profile data to connect with. From registering
+    :param profile: User Profile to connect with
     :param loop: A running asyncio event loop. If None, loop will be the current running loop
     :param receiver: A receiver for handling video and audio frames
     :param resolution: The resolution of video stream.
@@ -244,7 +245,7 @@ class Session:
     def __init__(
         self,
         host: str,
-        profile: dict,
+        profile: Union[dict, UserProfile],
         loop: asyncio.AbstractEventLoop = None,
         receiver: AVReceiver = None,
         resolution: Union[Resolution, str, int] = "360p",
