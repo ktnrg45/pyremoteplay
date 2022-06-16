@@ -20,7 +20,13 @@ from .const import (
 )
 from .ddp import async_get_status, get_status, wakeup, STATUS_OK
 from .session import Session
-from .util import get_users, get_profiles, format_regist_key, add_regist_data
+from .util import (
+    get_users,
+    get_profiles,
+    format_regist_key,
+    add_regist_data,
+    write_profiles,
+)
 from .register import register
 from .controller import Controller
 
@@ -299,7 +305,10 @@ class RPDevice:
             _LOGGER.error("Error retrieving ID for user: %s", user)
             return {}
         regist_data = register(self.host, psn_id, pin, timeout)
-        return add_regist_data(profile, self.status, regist_data)
+        profile = add_regist_data(profile, self.status, regist_data)
+        profiles[user] = profile
+        write_profiles(profiles, profile_path)
+        return profile
 
     @property
     def host(self) -> str:
