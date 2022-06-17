@@ -78,7 +78,7 @@ def write_options(options: dict, path: str = ""):
 
 def get_profiles(path: str = "") -> dict:
     """Return Profiles."""
-    data = []
+    data = {}
     if not path:
         dir_path = check_dir()
         path = dir_path / PROFILE_FILE
@@ -86,7 +86,10 @@ def get_profiles(path: str = "") -> dict:
         path = pathlib.Path(path)
     check_file(path)
     with open(path, "r", encoding="utf-8") as _file:
-        data = json.load(_file)
+        try:
+            data = json.load(_file)
+        except json.JSONDecodeError:
+            _LOGGER.error("Profiles file is corrupt: %s", path)
     return data
 
 
@@ -98,14 +101,6 @@ def write_profiles(profiles: dict, path: str = ""):
         path = pathlib.Path(path)
     with open(path, "w", encoding="utf-8") as _file:
         json.dump(profiles, _file)
-
-
-def add_profile(profiles: dict, user_data: dict) -> dict:
-    """Add profile to profiles and return profiles."""
-    profile = format_user_data(user_data)
-    if profile:
-        profiles.update(profile)
-    return profiles
 
 
 def get_users(device_id: str, profiles: dict = None, path: str = "") -> list[str]:

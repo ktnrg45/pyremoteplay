@@ -208,7 +208,7 @@ def format_user_account(user_data: dict) -> UserProfile:
     return UserProfile(name, data)
 
 
-def prompt() -> dict:
+def prompt() -> UserProfile:
     """Prompt for input and return account info."""
     msg = (
         "\r\n\r\nGo to the url below in a web browser, "
@@ -220,5 +220,5 @@ def prompt() -> dict:
     redirect_url = input(msg)
     if redirect_url is not None:
         account_info = get_user_account(redirect_url)
-        return account_info
+        return format_user_account(account_info)
     return None

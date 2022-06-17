@@ -65,16 +65,11 @@ class UserProfile(UserDict):
             raise ValueError(f"Expected instance of {HostProfile}. Got {type(host)}")
         # pylint: disable=protected-access
         host._verify()
-        self[host.name] = host
+        self[host.name] = host.data
 
     def add_regist_data(self, host_status: dict, data: dict):
         """Add regist data to user profile."""
-        host_data = add_regist_data({}, host_status, data)
-        hosts = list(host_data["hosts"].items())
-        assert len(hosts) == 1
-        name, _host_data = hosts[0]
-        profile = HostProfile(name, _host_data)
-        self.update_host(profile)
+        add_regist_data(self.data, host_status, data)
 
     @property
     def name(self) -> str:
@@ -133,7 +128,7 @@ class Profiles(UserDict):
             raise ValueError(f"Expected instance of {UserProfile}. Got {type(user)}")
         # pylint: disable=protected-access
         user._verify()
-        self[user.name] = user
+        self[user.name] = user.data
 
     def update_host(self, user: UserProfile, host: HostProfile):
         """Update host in User Profile.
@@ -157,6 +152,18 @@ class Profiles(UserDict):
         :param device_id: Device ID / Device Mac Address
         """
         return get_users(device_id, self)
+
+    def get_user_profile(self, user: str) -> UserProfile:
+        """Return User Profile for user.
+
+        :param user: PSN ID / Username
+        """
+        profile = None
+        for _profile in self.users:
+            if _profile.name == user:
+                profile = _profile
+                break
+        return profile
 
     @property
     def usernames(self) -> list[str]:

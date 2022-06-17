@@ -20,15 +20,9 @@ from .const import (
     Resolution,
     FPS,
 )
-from .ddp import async_get_status, get_status, wakeup, STATUS_OK
+from .ddp import async_get_status, get_status, wakeup, STATUS_OK, search
 from .session import Session
-from .util import (
-    get_users,
-    get_profiles,
-    format_regist_key,
-    add_regist_data,
-    write_profiles,
-)
+from .util import format_regist_key
 from .register import register
 from .controller import Controller
 from .profile import Profiles, UserProfile
@@ -92,6 +86,18 @@ class RPDevice:
         :param path: Path to file to load profiles. If not given, will load profiles from default path.
         """
         return Profiles.load(path)
+
+    @staticmethod
+    def search() -> list[RPDevice]:
+        """Return all devices that are discovered."""
+        hosts = search()
+        devices = []
+        for status in hosts:
+            ip_address = status.get("host-ip")
+            if ip_address:
+                device = RPDevice(ip_address)
+                device.get_status()
+                devices.append(device)
 
     def __init__(self, host: str):
         socket.gethostbyname(host)  # Raise Exception if invalid
@@ -335,10 +341,7 @@ class RPDevice:
         if not self.status:
             _LOGGER.error("No status")
             return None
-        profile = None
-        for _profile in profiles.users:
-            if _profile.name == user:
-                profile = _profile
+        profile = profiles.get_user_profile(user)
         if not profile:
             _LOGGER.error("User: %s not found", user)
             return None

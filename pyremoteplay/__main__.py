@@ -10,11 +10,10 @@ from collections import OrderedDict
 import socket
 import atexit
 
-from .ddp import get_status, search
+from .ddp import search
 from .oauth import prompt as oauth_prompt
-from .register import register
-from .util import add_profile, add_regist_data, get_profiles, write_profiles
-from . import RPDevice
+from .profile import Profiles
+from .device import RPDevice
 
 NEW_PROFILE = "New Profile"
 CANCEL = "Cancel"
@@ -77,10 +76,11 @@ def main():
         print(f"\nError: Could not find host with address: {host}\n\n")
         parser.print_help()
         return
+    device = RPDevice(host)
     if should_register:
-        register_profile(host)
+        register_profile(device)
         return
-    cli(host)
+    cli(device)
 
 
 def show_devices():
@@ -95,14 +95,14 @@ def show_devices():
         )
 
 
-def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
+def select_profile(profiles: Profiles, use_single: bool, get_new: bool) -> str:
     """Return profile name."""
     name = NEW_PROFILE
-    if len(profiles) == 1 and use_single:
-        name = list(profiles.keys())[0]
+    names = profiles.usernames
+    if names == 1 and use_single:
+        name = names[0]
         return name
     print("Found Profiles")
-    names = list(profiles.keys())
     if get_new:
         names.append(NEW_PROFILE)
     names.append(CANCEL)
@@ -110,7 +110,11 @@ def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
     for _index, item in enumerate(names):
         prompt = f"{prompt}{_index}: {item}\n"
     while True:
-        index = int(input(f"Select a profile to use:\n{prompt}>> "))
+        try:
+            index = int(input(f"Select a profile to use:\n{prompt}>> "))
+        except (KeyboardInterrupt, EOFError):
+            print("")
+            sys.exit()
         try:
             name = names[index]
         except IndexError:
@@ -119,69 +123,96 @@ def select_profile(profiles: dict, use_single: bool, get_new: bool) -> str:
         if name == CANCEL:
             sys.exit()
         break
+    print("")
     return name
 
 
-def register_profile(host: str):
+def register_profile(device: RPDevice):
     """Register with host."""
-    name = ""
-    status = get_status(host)
+    user = ""
+    status = device.get_status()
     if not status:
         print("Host is not reachable")
         return
     if status.get("status-code") != 200:
         return
 
-    profiles = get_profiles()
+    profiles = RPDevice.get_profiles()
     if profiles:
-        name = select_profile(profiles, False, True)
-    if name == NEW_PROFILE or not profiles:
-        user_data = oauth_prompt()
-        if user_data is None:
+        user = select_profile(profiles, False, True)
+    if user == NEW_PROFILE or not profiles:
+        try:
+            user_profile = oauth_prompt()
+        except (KeyboardInterrupt, EOFError):
+            print("")
             sys.exit()
-        profiles = add_profile(profiles, user_data)
-        if not profiles:
-            print("Could not parse user data")
-            return
-        write_profiles(profiles)
-        name = user_data["online_id"]
+        print("")
+        if user_profile is None:
+            print("Error: Could not get user profile.")
+            sys.exit()
+        profiles.update_user(user_profile)
+        profiles.save()
+        user = user_profile.name
+        print(f"PSN User: {user} added.\n\n")
+    link_profile(device, user)
 
-    user_id = profiles[name]["id"]
+
+def link_profile(device: RPDevice, user: str):
+    """Link User Profile with device."""
+    profiles = RPDevice.get_profiles()
+    user_profile = profiles.get_user_profile(user)
+    if not user_profile:
+        print(f"Profile not found for user: {user}")
+        sys.exit()
+    user_id = user_profile.id
     if not user_id:
         _LOGGER.error("No User ID")
         sys.exit()
     pin = ""
     while True:
-        pin = input(
-            f"On Remote Play host, Login to your PSN Account: {name}\n"
-            "Then go to Settings -> "
-            "Remote Play Connection Settings -> "
-            "Add Device and enter the PIN shown\n>> "
-        )
+        try:
+            pin = input(
+                f"On Remote Play host, Login to your PSN Account: {user}\n"
+                "Then go to Settings -> "
+                "Remote Play Connection Settings -> "
+                "Add Device and enter the PIN shown\n>> "
+            )
+        except (KeyboardInterrupt, EOFError):
+            print("")
+            sys.exit()
         if pin.isnumeric() and len(pin) == 8:
             break
-        print("Invalid PIN. PIN must be only 8 numbers")
+        print("Invalid PIN. PIN must be only 8 numbers\n")
+    print("")
 
-    data = register(host, user_id, pin)
-    if not data:
+    regist_profile = device.register(user, pin)
+    if not regist_profile:
+        print("Error: Registering with host.")
         sys.exit()
-    profile = profiles[name]
-    profile = add_regist_data(profile, status, data)
-    write_profiles(profiles)
 
 
-def cli(host: str):
+def cli(device: RPDevice):
     """Start CLI."""
-    device = RPDevice(host)
-    device.get_status()
-    profiles = get_profiles()
+    status = device.get_status()
+    if not status:
+        print(f"Could not reach host at: {device.host}")
+        sys.exit()
+    profiles = RPDevice.get_profiles()
     if profiles:
         user = select_profile(profiles, True, False)
         if user not in device.get_users():
-            _LOGGER.error("User: %s not registered with this device", user)
+            print(f"User: {user} not registered with this device.\n")
+            link_profile(device, user)
         setup_worker(device, user)
     else:
-        _LOGGER.info("No Profiles")
+        try:
+            selection = input("No Profiles Found. Enter 'Y' to create profile.\n>> ")
+        except (KeyboardInterrupt, EOFError):
+            print("")
+            sys.exit()
+        print("")
+        if selection.upper() == "Y":
+            register_profile(device)
 
 
 def worker(device: RPDevice, user: str, event: threading.Event):
@@ -216,7 +247,8 @@ def start(stdscr, device: RPDevice, event: threading.Event):
     event.wait(timeout=5)
     instance = CLIInstance(device)
     if not device.session.is_running:
-        _LOGGER.error("Session Failed to Start: %s", device.session.error)
+        curses.endwin()
+        print(f"Session Failed to Start: {device.session.error}")
         return
     instance.run(stdscr)
 
@@ -322,6 +354,8 @@ class CLIInstance:
                 if self.last_key is not None:
                     self.controller.button(self.last_key, "release")
                     self.last_key = None
+            except (KeyboardInterrupt, EOFError):
+                self.quit()
 
     def _write_str(self, text, color=1):
         self.stdscr.move(self._pos[0], self._pos[1])
@@ -336,14 +370,21 @@ class CLIInstance:
             if key == "QUIT":
                 self._write_str(key, 3)
                 self.stdscr.refresh()
-                self._device.disconnect()
-                self._loop.call_soon_threadsafe(self._loop.stop)
-                sys.exit()
+                self.quit()
             elif key == "STANDBY":
                 self._write_str(key, 3)
                 self.stdscr.refresh()
                 self._device.session.standby()
-                self._loop.call_soon_threadsafe(self._loop.stop)
-                sys.exit()
+                self.quit()
+                # self._loop.call_soon_threadsafe(self._loop.stop)
+                # curses.endwin()
+                # sys.exit()
             self.controller.button(key, "press")
         return key
+
+    def quit(self):
+        """Quit."""
+        self._device.disconnect()
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        curses.endwin()
+        sys.exit()
