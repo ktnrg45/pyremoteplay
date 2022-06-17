@@ -37,7 +37,8 @@ def _status_to_device(hosts: list[dict]) -> list[RPDevice]:
         ip_address = status.get("host-ip")
         if ip_address:
             device = RPDevice(ip_address)
-            device.get_status()
+            # pylint: disable=protected-access
+            device._set_status(status)
             devices.append(device)
     return devices
 
