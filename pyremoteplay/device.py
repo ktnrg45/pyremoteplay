@@ -180,17 +180,17 @@ class RPDevice:
         """Set status."""
         if not data:
             return
-        if self.host_type is None:
+        if data.get("host-type") is not None:
             self._host_type = data.get("host-type")
-        if self.mac_address is None:
+        if data.get("host-id") is not None:
             self._mac_address = data.get("host-id")
-        if self.host_name is None:
+        if data.get("host-name") is not None:
             self._host_name = data.get("host-name")
-        if self.ip_address is None:
+        if data.get("host-ip") is not None:
             self._ip_address = data.get("host-ip")
-        if self.ddp_version is None:
+        if data.get("device-discovery-protocol-version") is not None:
             self._ddp_version = data.get("device-discovery-protocol-version")
-        if self.system_version is None:
+        if data.get("system-version") is not None:
             self._system_version = data.get("system-version")
         old_status = self.status
         self._status = data
