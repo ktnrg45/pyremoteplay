@@ -119,6 +119,8 @@ class RPDevice:
         self._host_name = None
         self._mac_address = None
         self._ip_address = None
+        self._ddp_version = None
+        self._system_version = None
         self._callback = None
         self._unreachable = False
         self._status = {}
@@ -185,6 +187,10 @@ class RPDevice:
             self._host_name = data.get("host-name")
         if self.ip_address is None:
             self._ip_address = data.get("host-ip")
+        if self.ddp_version is None:
+            self._ddp_version = data.get("device-discovery-protocol-version")
+        if self.system_version is None:
+            self._system_version = data.get("system-version")
         old_status = self.status
         self._status = data
         if old_status != data:
@@ -398,6 +404,16 @@ class RPDevice:
     def ip_address(self) -> str:
         """Return IP Address."""
         return self._ip_address
+
+    @property
+    def ddp_version(self) -> str:
+        """Return DDP Version."""
+        return self._ddp_version
+
+    @property
+    def system_version(self) -> str:
+        """Return System Version."""
+        return self._system_version
 
     @property
     def remote_port(self) -> int:
