@@ -20,7 +20,7 @@ from .const import (
     Resolution,
     FPS,
 )
-from .ddp import async_get_status, get_status, wakeup, STATUS_OK, search
+from .ddp import async_get_status, get_status, wakeup, STATUS_OK, search, async_search
 from .session import Session
 from .util import format_regist_key
 from .register import register
@@ -29,6 +29,17 @@ from .profile import Profiles, UserProfile
 
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _status_to_device(hosts: list[dict]) -> list[RPDevice]:
+    devices = []
+    for status in hosts:
+        ip_address = status.get("host-ip")
+        if ip_address:
+            device = RPDevice(ip_address)
+            device.get_status()
+            devices.append(device)
+    return devices
 
 
 def _load_profiles(func: Callable):
@@ -91,13 +102,13 @@ class RPDevice:
     def search() -> list[RPDevice]:
         """Return all devices that are discovered."""
         hosts = search()
-        devices = []
-        for status in hosts:
-            ip_address = status.get("host-ip")
-            if ip_address:
-                device = RPDevice(ip_address)
-                device.get_status()
-                devices.append(device)
+        return _status_to_device(hosts)
+
+    @staticmethod
+    async def async_search() -> list[RPDevice]:
+        """Return all devices that are discovered. Async."""
+        hosts = await async_search()
+        return _status_to_device(hosts)
 
     def __init__(self, host: str):
         socket.gethostbyname(host)  # Raise Exception if invalid
@@ -273,6 +284,10 @@ class RPDevice:
 
         If there is a valid and connected session, no arguments need to be passed.
         Otherwise creates and connects a session first.
+
+        If already connected, the sync method
+        :meth:`RPDevice.session.standby() <pyremoteplay.session.Session.standby>`
+        is available.
 
         :param user: Name of user to use. Can be found with `get_users`
         """
