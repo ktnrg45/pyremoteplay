@@ -1,4 +1,12 @@
-"""Collections for User Profiles."""
+"""Collections for User Profiles.
+
+These classes shouldn't be created manually.
+Use the helper methods such as:
+:meth:`pyremoteplay.profile.Profiles.load() <pyremoteplay.profile.Profiles.load>`
+and
+:meth:`pyremoteplay.device.RPDevice.get_profiles() <pyremoteplay.device.RPDevice.get_profiles>`
+
+"""
 from __future__ import annotations
 from collections import UserDict
 from typing import Union
@@ -44,7 +52,7 @@ class HostProfile(UserDict):
 
 
 class UserProfile(UserDict):
-    """PSN User Profile. Collection of Host Profiles for user."""
+    """PSN User Profile. Stores Host Profiles for user."""
 
     def __init__(self, name: str, data: dict):
         if not name or not isinstance(name, str):
@@ -57,19 +65,27 @@ class UserProfile(UserDict):
         assert self.name, "Attribute 'name' cannot be empty"
         assert self.id, "Attribute 'id' cannot be empty"
 
-    def update_host(self, host: HostProfile):
+    def update_host(self, host_profile: HostProfile):
         """Update host profile.
 
-        :param: host: Host Profile
+        :param: host_profile: Host Profile
         """
-        if not isinstance(host, HostProfile):
-            raise ValueError(f"Expected instance of {HostProfile}. Got {type(host)}")
+        if not isinstance(host_profile, HostProfile):
+            raise ValueError(
+                f"Expected instance of {HostProfile}. Got {type(host_profile)}"
+            )
         # pylint: disable=protected-access
-        host._verify()
-        self[host.name] = host.data
+        host_profile._verify()
+        self[host_profile.name] = host_profile.data
 
     def add_regist_data(self, host_status: dict, data: dict):
-        """Add regist data to user profile."""
+        """Add regist data to user profile.
+
+        :param host_status: Status from device. \
+            See :meth:`pyremoteplay.device.RPDevice.get_status() <pyremoteplay.device.RPDevice.get_status>`
+        :param data: Data from registering. \
+            See :func:`pyremoteplay.register.register() <pyremoteplay.register.register>`
+        """
         add_regist_data(self.data, host_status, data)
 
     @property

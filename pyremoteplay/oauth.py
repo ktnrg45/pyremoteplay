@@ -45,9 +45,10 @@ def get_login_url() -> str:
 
 
 def get_user_account(redirect_url: str) -> dict:
-    """Return user account. Account should be formatted with `format_user_account` before use.
-
-    See :meth:`pyremoteplay.oauth.format_user_account() <pyremoteplay.oauth.format_user_account>`
+    """Return user account.
+    
+    Account should be formatted with \
+        :meth:`pyremoteplay.oauth.format_user_account() <pyremoteplay.oauth.format_user_account>` before use.
 
     :param redirect_url: Redirect url found after logging in
     """
@@ -62,9 +63,10 @@ def get_user_account(redirect_url: str) -> dict:
 
 
 async def async_get_user_account(redirect_url: str) -> dict:
-    """Return user account. Async. Account should be formatted with `format_user_account` before use.
+    """Return user account. Async.
 
-    See :meth:`pyremoteplay.oauth.format_user_account() <pyremoteplay.oauth.format_user_account>`
+    Account should be formatted with \
+        :meth:`pyremoteplay.oauth.format_user_account() <pyremoteplay.oauth.format_user_account>` before use.
 
     :param redirect_url: Redirect url found after logging in
     """
@@ -192,9 +194,8 @@ def _format_user_id(user_id: str, encoding="base64"):
 def format_user_account(user_data: dict) -> UserProfile:
     """Format account data to user profile. Return user profile.
 
-    See :meth:`pyremoteplay.oauth.get_user_account() <pyremoteplay.oauth.get_user_account>`
-
-    :param user_data: User data from `get_user_account`.
+    :param user_data: User data. \
+        See :meth:`pyremoteplay.oauth.get_user_account() <pyremoteplay.oauth.get_user_account>`
     """
     user_id = user_data.get("user_rpid")
     if not isinstance(user_id, str) and not user_id:

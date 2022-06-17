@@ -84,8 +84,11 @@ class Controller:
 
     def start(self):
         """Start Controller.
+
         This starts the controller worker which listens for when the sticks changes and sends the state to the host.
-        If this is not called, the 'update_sticks()' method needs to be called for the host to receive the state.
+        If this is not called, the
+        :meth:`update_sticks() <pyremoteplay.controller.Controller.update_sticks>`
+        method needs to be called for the host to receive the state.
         """
         if self._thread is not None:
             _LOGGER.warning("Controller is running. Call stop first")
@@ -108,7 +111,8 @@ class Controller:
     def update_sticks(self):
         """Send controller stick state to host.
 
-        Will be called automatically if controller has been started.
+        Will be called automatically if controller has been started with
+        :meth:`start() <pyremoteplay.controller.Controller.start>`.
         """
         if (
             self.session is None
@@ -196,8 +200,10 @@ class Controller:
     ):
         """Set Stick State.
 
-        If controller has not been started with `start()`,
-        the `update_sticks()` method needs to be called manually to send stick state.
+        If controller has not been started with
+        :meth:`start() <pyremoteplay.controller.Controller.start>`,
+        the :meth:`update_sticks() <pyremoteplay.controller.Controller.update_sticks>`
+        method needs to be called manually to send stick state.
 
         The value param represents how far to push the stick away from center.
 
