@@ -1,6 +1,7 @@
 """Collections for User Profiles."""
 from __future__ import annotations
 from collections import UserDict
+from typing import Union
 
 from .util import get_profiles, write_profiles, get_users, add_regist_data
 
@@ -119,25 +120,37 @@ class Profiles(UserDict):
         path = cls.__DEFAULT_PATH if not path else path
         return cls(get_profiles(path))
 
-    def update_user(self, user: UserProfile):
+    def update_user(self, user_profile: UserProfile):
         """Update stored User Profile.
 
-        :param user: User Profile
+        :param user_profile: User Profile
         """
-        if not isinstance(user, UserProfile):
-            raise ValueError(f"Expected instance of {UserProfile}. Got {type(user)}")
+        if not isinstance(user_profile, UserProfile):
+            raise ValueError(
+                f"Expected instance of {UserProfile}. Got {type(user_profile)}"
+            )
         # pylint: disable=protected-access
-        user._verify()
-        self[user.name] = user.data
+        user_profile._verify()
+        self[user_profile.name] = user_profile.data
 
-    def update_host(self, user: UserProfile, host: HostProfile):
+    def update_host(self, user_profile: UserProfile, host_profile: HostProfile):
         """Update host in User Profile.
 
-        :param user: User Profile
-        :param host: Host Profile
+        :param user_profile: User Profile
+        :param host_profile: Host Profile
         """
-        user.update_host(host)
-        self.update_user(user)
+        user_profile.update_host(host_profile)
+        self.update_user(user_profile)
+
+    def remove_user(self, user: Union[str, UserProfile]):
+        """Remove user.
+
+        :param user: User profile or user name to remove
+        """
+        if isinstance(user, UserProfile):
+            user = user.name
+        if user in self.data:
+            self.data.pop(user)
 
     def save(self, path: str = ""):
         """Save profiles to file.

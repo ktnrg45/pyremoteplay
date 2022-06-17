@@ -10,18 +10,12 @@ from PySide6 import QtWidgets, QtCore
 from PySide6.QtCore import Qt, QTimer  # pylint: disable=no-name-in-module
 from PySide6.QtMultimedia import QMediaDevices  # pylint: disable=no-name-in-module
 
+from pyremoteplay.device import RPDevice
+from pyremoteplay.profile import Profiles
 from pyremoteplay.receiver import AVReceiver
 from pyremoteplay.const import Resolution, Quality, StreamType, FPS
-from pyremoteplay.oauth import get_login_url, get_user_account
-from pyremoteplay.register import register
-from pyremoteplay.util import (
-    add_profile,
-    add_regist_data,
-    get_options,
-    get_profiles,
-    write_options,
-    write_profiles,
-)
+from pyremoteplay.oauth import get_login_url, get_user_account, format_user_account
+from pyremoteplay.util import get_options, write_options
 
 from .util import label, message, spacer
 from .widgets import AnimatedToggle
@@ -58,7 +52,7 @@ class OptionsWidget(QtWidgets.QWidget):
     register_finished = QtCore.Signal()
 
     def __init__(self, *args, **kwargs):
-        self._profiles = {}
+        self._profiles = RPDevice.get_profiles()
         self._devices = []
         self.audio_output = None
         self.audio_devices = {}
@@ -292,7 +286,7 @@ class OptionsWidget(QtWidgets.QWidget):
     def set_profiles(self):
         """Set Profiles."""
         profile_name = self.selected_profile
-        self._profiles = get_profiles()
+        self._profiles = RPDevice.get_profiles()
         self.accounts.clear()
         self.accounts.setHeaderLabels(["PSN ID", "Active", "Is Registered", "Devices"])
         if not self.profiles:
@@ -437,11 +431,11 @@ class OptionsWidget(QtWidgets.QWidget):
             escape=True,
         )
 
-    def remove_profile(self, name):
+    def remove_profile(self, user: str):
         """Remove profile from config."""
-        self._profiles.pop(name)
-        write_profiles(self.profiles)
-        profile_name = list(self.profiles.keys())[0] if self.profiles else ""
+        self.profiles.remove_user(user)
+        self.profiles.save()
+        profile_name = self.profiles.usernames[0] if self.profiles else ""
         self.set_profiles()
         self._select_profile(profile_name)
         # Select a profile if it exists
@@ -492,27 +486,34 @@ class OptionsWidget(QtWidgets.QWidget):
         if not url:
             return
         account = get_user_account(url)
-        profiles = add_profile(self.profiles, account)
-        if not profiles:
+        user_profile = format_user_account(account)
+        if not user_profile:
             text = "Error getting account data"
             level = "critical"
         else:
-            user_id = account.get("online_id")
-            assert user_id in profiles
-            write_profiles(profiles)
+            self.profiles.update_user(user_profile)
+            self.profiles.save()
             self.set_profiles()
-            text = f"Successfully added PSN account: {user_id}"
+            text = f"Successfully added PSN account: {user_profile.name}"
             level = "info"
         message(self.window(), title, text, level)
 
-    def register(self, host, name):
+    def register(self, device: RPDevice, user: str):
         """Register profile with RP Host."""
-        user_id = self.profiles[name]["id"]
+        user_profile = self.profiles.get_user_profile(user)
+        if not user_profile:
+            message(
+                self.window(),
+                "Profile Error",
+                f"Could not find profile for {user}",
+                "critical",
+            )
+            return
         dialog = QtWidgets.QInputDialog(self)
         dialog.setWindowTitle("Register")
         dialog.setInputMode(QtWidgets.QInputDialog.TextInput)
         dialog.setLabelText(
-            f"On Remote Play host, Login to your PSN Account: {name}\n"
+            f"On Remote Play host, Login to your PSN Account: {user}\n"
             "Then go to Settings -> Remote Play Connection Settings ->\n"
             "Add Device and enter the PIN shown.\n\n"
         )
@@ -526,25 +527,21 @@ class OptionsWidget(QtWidgets.QWidget):
             text = "PIN must be 8 numbers."
             level = "critical"
         else:
-            data = register(host["host-ip"], user_id, pin)
+            data = device.register(user, pin)
             if not data:
                 title = "Error registering"
                 text = (
-                    f"Could not register with device at: {host['host-ip']}.\n"
+                    f"Could not register with device at: {device.ip_address}.\n"
                     "Make sure that you are logged in on your device with\n"
-                    f"PSN account: {name} and that you are entering the PIN correctly."
+                    f"PSN account: {user} and that you are entering the PIN correctly."
                 )
                 level = "critical"
             else:
-                profile = self.profiles[name]
-                profile = add_regist_data(profile, host, data)
-                self._profiles[name] = profile
-                write_profiles(self.profiles)
                 self.set_profiles()
                 title = "Registration Successful"
                 text = (
-                    f"Successfully registered with device at: {host['host-ip']}\n"
-                    f"with PSN Account: {name}."
+                    f"Successfully registered with device at: {device.ip_address}\n"
+                    f"with PSN Account: {user}."
                 )
                 level = "info"
 
@@ -597,6 +594,6 @@ class OptionsWidget(QtWidgets.QWidget):
         return list(self._devices)
 
     @property
-    def profiles(self) -> dict:
+    def profiles(self) -> Profiles:
         """Return profiles."""
-        return dict(self._profiles)
+        return self._profiles

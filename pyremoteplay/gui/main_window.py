@@ -210,7 +210,7 @@ class MainWindow(QtWidgets.QMainWindow):
         devices = self.async_handler.protocol.devices
         self._device_grid.create_grid(devices)
 
-    def check_profile(self, name, device):
+    def check_profile(self, name: str, device: RPDevice):
         """Return profile if profile is registered."""
         if not self._options.profiles:
             message(
@@ -239,7 +239,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Needs Registration",
                 text,
                 "info",
-                callback=lambda: self._options.register(device.status, name),
+                callback=lambda: self._options.register(device, name),
                 escape=True,
             )
             self._device_grid.enable_buttons()
