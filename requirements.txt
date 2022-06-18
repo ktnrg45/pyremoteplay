@@ -4,6 +4,5 @@ cryptography>=3.4.6
 protobuf>=4.21.1
 requests>=2.25.1
 pyee>=8.1.0
-asyncudp>=0.6.0
 pyyaml>=6.0
 netifaces>=0.11.0
