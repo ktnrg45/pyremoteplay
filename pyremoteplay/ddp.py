@@ -359,26 +359,33 @@ async def _async_send_msg(
         sock.sendto(msg.encode(), (host, port))
 
 
-async def _async_recv_msg(host: str, sock: asyncudp.Socket, timeout: float) -> dict:
+async def _async_recv_msg(
+    host: str, sock: asyncudp.Socket, timeout: float, stop: asyncio.Event = None
+) -> dict:
     devices = {}
     start = time.time()
     while time.time() - start < timeout:
         data = addr = response = None
-        remaining = timeout - (time.time() - start)
+        if stop is not None:
+            if stop.is_set():
+                return devices
         try:
-            response = await asyncio.wait_for(sock.recvfrom(), remaining)
-        except ConnectionResetError:
+            response = await asyncio.wait_for(sock.recvfrom(), 0.01)
+        except (ConnectionResetError, asyncio.TimeoutError):
             continue
-        except asyncio.TimeoutError:
-            pass
         if response is not None:
             data, addr = response
         if data is not None and addr is not None:
             data = parse_ddp_response(data)
             ip_address = addr[0]
+            if host != BROADCAST_IP and ip_address != host:
+                continue
             if ip_address not in devices and data:
                 data["host-ip"] = ip_address
                 devices[ip_address] = data
+            if stop is not None:
+                stop.set()
+                return devices
             if host != BROADCAST_IP:
                 break
         await asyncio.sleep(0)
@@ -394,11 +401,18 @@ async def async_search(
 ) -> list[dict]:
     """Return list of discovered devices."""
     close = True
+    stop = None
+    send_host = host
     msg = get_ddp_search_message()
     _LOGGER.debug("Sending search message")
 
+    if sys.platform == "win32" and host != BROADCAST_IP:
+        # Fix for 'WinError 1234'. Occurs when protocol remote address is not Broadcast IP
+        send_host = BROADCAST_IP
+        # Using this to return status as soon as possible since targeting a specific device
+        stop = asyncio.Event()
     if sock is None:
-        if sys.platform == "win32" and host == BROADCAST_IP:
+        if sys.platform == "win32" and send_host == BROADCAST_IP:
             addresses = get_private_addresses()
 
             tasks = [
@@ -412,10 +426,10 @@ async def async_search(
         close = False
 
     for _sock in socks:
-        await _async_send_msg(_sock, host, msg, host_type)
+        await _async_send_msg(_sock, send_host, msg, host_type)
 
     results = await asyncio.gather(
-        *[_async_recv_msg(host, _sock, timeout) for _sock in socks]
+        *[_async_recv_msg(host, _sock, timeout, stop=stop) for _sock in socks]
     )
     devices = {}
     for result in results:
@@ -452,7 +466,7 @@ async def async_wakeup(
     """Wakeup Host."""
     msg = get_ddp_wake_message(credential)
     if sock is None:
-        sock = await _async_get_socket(host, port)
+        sock = await _async_get_socket(port=port)
     await _async_send_msg(sock, host, msg, host_type)
     sock.close()
 
@@ -467,6 +481,6 @@ async def async_launch(
     """Launch."""
     msg = get_ddp_launch_message(credential)
     if sock is None:
-        sock = await _async_get_socket(host, port)
+        sock = await _async_get_socket(port=port)
     await _async_send_msg(sock, host, msg, host_type)
     sock.close()
