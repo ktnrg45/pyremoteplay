@@ -5,8 +5,6 @@ import logging
 from typing import Any, Optional
 import socket
 
-from .const import BROADCAST_IP
-
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -24,7 +22,7 @@ class _AsyncUDPProtocol(asyncio.DatagramProtocol):
     def connection_lost(self, exc: Exception):
         """Connection Lost."""
         if exc:
-            _LOGGER.error("Connection Error: %s", exc)
+            _LOGGER.error("Connection Lost: %s", exc)
         if self._transport:
             self._transport.close()
             self._packets.put_nowait(None)
@@ -141,6 +139,8 @@ async def udp_socket(
 ) -> AsyncUDPSocket:
     """Return UDP Socket."""
     loop = asyncio.get_running_loop()
+    if not hasattr(socket, "SO_REUSEPORT"):
+        reuse_port = None
     _, protocol = await loop.create_datagram_endpoint(
         _AsyncUDPProtocol,
         local_addr=local_addr,
