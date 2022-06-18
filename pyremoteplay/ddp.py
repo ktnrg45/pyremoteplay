@@ -366,16 +366,15 @@ async def _async_send_msg(
         raise ValueError(f"Invalid host type: {host_type}")
 
     for address in addresses:
+        if host == BROADCAST_IP:
+            sock = await _async_get_socket(address, port)
+            sock.set_broadcast(True)
+        else:
+            sock = await _async_get_socket(address, port)
         for _port in remote_ports:
             remote = (host, _port)
-            if host == BROADCAST_IP:
-                sock = await _async_get_socket(address, port)
-                sock.set_broadcast(True)
-            else:
-                sock = await _async_get_socket(address, port, remote)
-
-            sock.sendto(msg.encode(), remote)
-            socks.append(sock)
+        sock.sendto(msg.encode(), remote)
+        socks.append(sock)
     return socks
 
 

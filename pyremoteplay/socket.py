@@ -8,7 +8,7 @@ import socket
 _LOGGER = logging.getLogger(__name__)
 
 
-class _AsyncUDPProtocol(asyncio.DatagramProtocol):
+class AsyncUDPProtocol(asyncio.DatagramProtocol):
     """UDP Protocol."""
 
     def __init__(self):
@@ -86,7 +86,7 @@ class AsyncUDPSocket:
     async def __aexit__(self, *exc_info):
         self.close()
 
-    def __init__(self, protocol: _AsyncUDPProtocol):
+    def __init__(self, protocol: AsyncUDPProtocol):
         self._protocol = protocol
 
     def close(self):
@@ -142,7 +142,7 @@ async def udp_socket(
     if not hasattr(socket, "SO_REUSEPORT"):
         reuse_port = None
     _, protocol = await loop.create_datagram_endpoint(
-        _AsyncUDPProtocol,
+        AsyncUDPProtocol,
         local_addr=local_addr,
         remote_addr=remote_addr,
         reuse_port=reuse_port,
