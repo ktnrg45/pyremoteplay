@@ -10,7 +10,7 @@ import time
 
 from PySide6 import QtCore
 from pyremoteplay.device import RPDevice
-from pyremoteplay.protocol import async_create_ddp_endpoint
+from pyremoteplay.tracker import async_create_ddp_endpoint
 from pyremoteplay.ddp import async_get_status
 
 _LOGGER = logging.getLogger(__name__)
