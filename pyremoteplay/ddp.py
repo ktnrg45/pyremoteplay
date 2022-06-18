@@ -7,8 +7,11 @@ import select
 import socket
 import time
 from typing import Optional, Union
+import ipaddress
+import sys
 
 import asyncudp
+import netifaces
 
 
 from .const import (
@@ -31,6 +34,31 @@ DDP_MSG_TYPES = (DDP_TYPE_SEARCH, DDP_TYPE_LAUNCH, DDP_TYPE_WAKEUP)
 
 STATUS_OK = 200
 STATUS_STANDBY = 620
+
+
+# pylint: disable=c-extension-no-member
+def get_private_addresses() -> list[str]:
+    """Return Private Interface Addresses."""
+    interfaces = []
+    for interface in netifaces.interfaces():
+        addresses = netifaces.ifaddresses(interface).get(netifaces.AF_INET)
+        if not addresses:
+            continue
+        for address in addresses:
+            addr = address.get("addr")
+            if addr:
+                ip_address = ipaddress.IPv4Address(addr)
+                if all(
+                    [
+                        ip_address.is_private,
+                        not ip_address.is_link_local,
+                        not ip_address.is_loopback,
+                        not ip_address.is_multicast,
+                        not ip_address.is_unspecified,
+                    ]
+                ):
+                    interfaces.append(addr)
+    return interfaces
 
 
 def get_host_type(response: dict) -> str:
@@ -117,7 +145,9 @@ def get_ddp_launch_message(credential: str) -> str:
     return get_ddp_message(DDP_TYPE_LAUNCH, data)
 
 
-def get_socket(port: Optional[int] = DEFAULT_UDP_PORT) -> socket.socket:
+def get_socket(
+    address: Optional[str] = UDP_IP, port: Optional[int] = DEFAULT_UDP_PORT
+) -> socket.socket:
     """Return DDP socket object."""
     retries = 0
     sock = None
@@ -129,12 +159,13 @@ def get_socket(port: Optional[int] = DEFAULT_UDP_PORT) -> socket.socket:
                 sock.setsockopt(
                     socket.SOL_SOCKET, socket.SO_REUSEPORT, 1
                 )  # noqa: pylint: disable=no-member
-            sock.bind((UDP_IP, port))
+            sock.bind((address, port))
         except socket.error as error:
             _LOGGER.error("Error getting DDP socket with port: %s: %s", port, error)
             sock = None
             retries += 1
             port = UDP_PORT
+            address = UDP_IP
         else:
             return sock
     return sock
@@ -227,33 +258,52 @@ def search(
 ) -> list:
     """Return list of discovered devices."""
     ps_list = []
+    found = set()
+    close = True
     msg = get_ddp_search_message()
-    start = time.time()
 
     if host is None:
         host = BROADCAST_IP
-    if sock is None:
-        sock = get_socket(port=port)
     _LOGGER.debug("Sending search message")
+    if sock is None:
+        if sys.platform == "win32" and host == BROADCAST_IP:
+            # Windows doesn't seem to send broadcast out over all interfaces
+            addresses = get_private_addresses()
+            socks = [get_socket(address=_address, port=port) for _address in addresses]
+        else:
+            socks = [get_socket(port=port)]
+    else:
+        socks = [sock]
+        close = False
     host_types = [host_type] if host_type else DDP_PORTS.keys()
     for host_type in host_types:
-        _send_msg(host, msg, host_type=host_type, sock=sock, close=False)
+        for _sock in socks:
+            _send_msg(host, msg, host_type=host_type, sock=_sock, close=False)
+
+    start = time.time()
     while time.time() - start < timeout:
-        data = addr = None
-        try:
-            response = _recv_msg(host, msg, sock=sock, close=False)
-        except ConnectionResetError:
-            continue
-        if response is not None:
-            data, addr = response
-        if data is not None and addr is not None:
-            data = parse_ddp_response(data)
-            if data not in ps_list and data:
-                data["host-ip"] = addr[0]
-                ps_list.append(data)
-            if host != BROADCAST_IP:
-                break
-    sock.close()
+        if host != BROADCAST_IP and ps_list:
+            break
+        for _sock in socks:
+            data = addr = None
+            try:
+                response = _recv_msg(host, msg, sock=_sock, close=False)
+            except ConnectionResetError:
+                continue
+            if response is not None:
+                data, addr = response
+            if data is not None and addr is not None:
+                ip_address = addr[0]
+                data = parse_ddp_response(data)
+                if ip_address not in found and data:
+                    found.add(ip_address)
+                    data["host-ip"] = ip_address
+                    ps_list.append(data)
+                if host != BROADCAST_IP:
+                    break
+    if close:
+        for _sock in socks:
+            _sock.close()
     return ps_list
 
 
@@ -284,18 +334,13 @@ def launch(
 
 
 async def _async_get_socket(
-    host: str = BROADCAST_IP, port: int = DEFAULT_UDP_PORT
+    address: str = UDP_IP, port: int = DEFAULT_UDP_PORT
 ) -> asyncudp.Socket:
     try:
-        sock = await asyncudp.create_socket(local_addr=(UDP_IP, port))
+        sock = await asyncudp.create_socket(local_addr=(address, port))
     except OSError:
         _LOGGER.warning("Port %s in use. Using random port", port)
         sock = await asyncudp.create_socket(local_addr=(UDP_IP, UDP_PORT))
-    if host == BROADCAST_IP:
-        # pylint: disable=protected-access
-        sock._transport.get_extra_info("socket").setsockopt(
-            socket.SOL_SOCKET, socket.SO_BROADCAST, 1
-        )
     return sock
 
 
@@ -303,28 +348,20 @@ async def _async_send_msg(
     sock: asyncudp.Socket, host: str, msg: str, host_type: str = ""
 ):
     """Send a ddp message."""
+    if host == BROADCAST_IP:
+        # pylint: disable=protected-access
+        sock._transport.get_extra_info("socket").setsockopt(
+            socket.SOL_SOCKET, socket.SO_BROADCAST, 1
+        )
     host_types = [host_type] if host_type else DDP_PORTS.keys()
     for host_type in host_types:
         port = DDP_PORTS.get(host_type)
         sock.sendto(msg.encode(), (host, port))
 
 
-async def async_search(
-    host: str = BROADCAST_IP,
-    port: int = DEFAULT_UDP_PORT,
-    host_type: str = "",
-    sock: asyncudp.Socket = None,
-    timeout: int = 3,
-) -> list[dict]:
-    """Return list of discovered devices."""
-    device_list = []
-    msg = get_ddp_search_message()
+async def _async_recv_msg(host: str, sock: asyncudp.Socket, timeout: float) -> dict:
+    devices = {}
     start = time.time()
-
-    if sock is None:
-        sock = await _async_get_socket(host, port)
-    _LOGGER.debug("Sending search message")
-    await _async_send_msg(sock, host, msg, host_type)
     while time.time() - start < timeout:
         data = addr = response = None
         remaining = timeout - (time.time() - start)
@@ -338,14 +375,56 @@ async def async_search(
             data, addr = response
         if data is not None and addr is not None:
             data = parse_ddp_response(data)
-            if data not in device_list and data:
-                data["host-ip"] = addr[0]
-                device_list.append(data)
+            ip_address = addr[0]
+            if ip_address not in devices and data:
+                data["host-ip"] = ip_address
+                devices[ip_address] = data
             if host != BROADCAST_IP:
                 break
         await asyncio.sleep(0)
-    sock.close()
-    return device_list
+    return devices
+
+
+async def async_search(
+    host: str = BROADCAST_IP,
+    port: int = DEFAULT_UDP_PORT,
+    host_type: str = "",
+    sock: asyncudp.Socket = None,
+    timeout: int = 3,
+) -> list[dict]:
+    """Return list of discovered devices."""
+    close = True
+    msg = get_ddp_search_message()
+    _LOGGER.debug("Sending search message")
+
+    if sock is None:
+        if sys.platform == "win32" and host == BROADCAST_IP:
+            addresses = get_private_addresses()
+
+            tasks = [
+                _async_get_socket(address=_address, port=port) for _address in addresses
+            ]
+        else:
+            tasks = [_async_get_socket(port=port)]
+        socks = await asyncio.gather(*tasks)
+    else:
+        socks = [sock]
+        close = False
+
+    for _sock in socks:
+        await _async_send_msg(_sock, host, msg, host_type)
+
+    results = await asyncio.gather(
+        *[_async_recv_msg(host, _sock, timeout) for _sock in socks]
+    )
+    devices = {}
+    for result in results:
+        if result:
+            devices.update(result)
+    if close:
+        for _sock in socks:
+            _sock.close()
+    return list(devices.values())
 
 
 async def async_get_status(
