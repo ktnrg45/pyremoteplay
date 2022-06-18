@@ -7,6 +7,7 @@ Welcome to pyremoteplay's documentation!
    :caption: Table of Contents:
 
    readme
+   registering
    examples/examples
    reference/modules
  

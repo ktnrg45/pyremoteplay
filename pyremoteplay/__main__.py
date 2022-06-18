@@ -12,7 +12,7 @@ import atexit
 
 from .ddp import search
 from .oauth import prompt as oauth_prompt
-from .profile import Profiles
+from .profile import Profiles, format_user_account
 from .device import RPDevice
 
 NEW_PROFILE = "New Profile"
@@ -142,11 +142,15 @@ def register_profile(device: RPDevice):
         user = select_profile(profiles, False, True)
     if user == NEW_PROFILE or not profiles:
         try:
-            user_profile = oauth_prompt()
+            account_data = oauth_prompt()
         except (KeyboardInterrupt, EOFError):
             print("")
             sys.exit()
         print("")
+        if not account_data:
+            print("Could not get PSN account data")
+            sys.exit()
+        user_profile = format_user_account(account_data)
         if user_profile is None:
             print("Error: Could not get user profile.")
             sys.exit()

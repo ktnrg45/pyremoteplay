@@ -4,12 +4,13 @@ from __future__ import annotations
 import logging
 from enum import IntEnum, auto
 from typing import Union
+
+import pygame
 from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtCore import Qt  # pylint: disable=no-name-in-module
 from pyremoteplay.util import get_mapping, write_mapping
 from pyremoteplay.gamepad import Gamepad, DEFAULT_DEADZONE
 from pyremoteplay.gamepad.mapping import HatType, rp_map_keys
-import pygame
 
 from .util import message, format_qt_key
 from .widgets import AnimatedToggle, LabeledWidget
@@ -769,7 +770,7 @@ class ControlsWidget(QtWidgets.QWidget):
             )
         self._instructions.setText(text)
 
-    def _map_type_changed(self, *args):
+    def _map_type_changed(self, *_):
         self._click_cancel()
         if self._input_selector.currentText() == INPUT_KEYBOARD:
             self._gamepad_selector.parent().hide()
@@ -782,7 +783,7 @@ class ControlsWidget(QtWidgets.QWidget):
             self._gamepad_changed()
         self._set_instructions()
 
-    def _gamepad_changed(self, *args):
+    def _gamepad_changed(self, *_):
         _LOGGER.debug("Current Gamepad: %s", self._gamepad_selector.currentText())
         if self._input_selector.currentText() == INPUT_GAMEPAD:
             if self._gamepad_selector.currentText():
@@ -828,9 +829,11 @@ class ControlsWidget(QtWidgets.QWidget):
                 self._gamepad_changed()
 
     def _gamepad_event(self, event: pygame.event.Event):
+        # pylint: disable=no-member
         if event.type not in (pygame.JOYDEVICEADDED, pygame.JOYDEVICEREMOVED):
             return
 
+        # pylint: disable=no-member
         if event.type == pygame.JOYDEVICEREMOVED:
             self._remove_gamepad(event.instance_id)
         else:

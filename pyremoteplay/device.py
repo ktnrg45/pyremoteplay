@@ -95,7 +95,8 @@ class RPDevice:
     def get_profiles(path: str = "") -> Profiles:
         """Return Profiles.
 
-        :param path: Path to file to load profiles. If not given, will load profiles from default path.
+        :param path: Path to file to load profiles.
+            If not given, will load profiles from default path.
         """
         return Profiles.load(path)
 
@@ -145,10 +146,11 @@ class RPDevice:
 
         See:
         :meth:`pyremoteplay.oauth.get_user_account() <pyremoteplay.oauth.get_user_account>`
-        :meth:`pyremoteplay.oauth.format_user_account() <pyremoteplay.oauth.format_user_account>`
+        :meth:`pyremoteplay.profile.format_user_account() <pyremoteplay.profile.format_user_account>`
 
         :param user: Username of user
-        :param profiles: dict of all user profiles. If None, profiles will be retrieved from default location. Optional.
+        :param profiles: dict of all user profiles.
+            If None, profiles will be retrieved from default location. Optional.
         """
         users = self.get_users(profiles)
         if user not in users:

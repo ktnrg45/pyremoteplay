@@ -11,10 +11,10 @@ from PySide6.QtCore import Qt, QTimer  # pylint: disable=no-name-in-module
 from PySide6.QtMultimedia import QMediaDevices  # pylint: disable=no-name-in-module
 
 from pyremoteplay.device import RPDevice
-from pyremoteplay.profile import Profiles
+from pyremoteplay.profile import Profiles, format_user_account
 from pyremoteplay.receiver import AVReceiver
 from pyremoteplay.const import Resolution, Quality, StreamType, FPS
-from pyremoteplay.oauth import get_login_url, get_user_account, format_user_account
+from pyremoteplay.oauth import get_login_url, get_user_account
 from pyremoteplay.util import get_options, write_options
 
 from .util import label, message, spacer

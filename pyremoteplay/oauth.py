@@ -4,11 +4,13 @@ import base64
 import logging
 from urllib.parse import parse_qs, urlparse
 import requests
+from typing import TYPE_CHECKING
 
 import aiohttp
 from Cryptodome.Hash import SHA256
 
-from .profile import UserProfile
+if TYPE_CHECKING:
+    from .profile import UserProfile
 
 __CLIENT_ID = "ba495a24-818c-472b-b12d-ff231c1b5745"
 __CLIENT_SECRET = "bXZhaVprUnNBc0kxSUJrWQ=="
@@ -46,9 +48,9 @@ def get_login_url() -> str:
 
 def get_user_account(redirect_url: str) -> dict:
     """Return user account.
-    
+
     Account should be formatted with \
-        :meth:`pyremoteplay.oauth.format_user_account() <pyremoteplay.oauth.format_user_account>` before use.
+        :meth:`format_user_account() <pyremoteplay.profile.format_user_account>` before use.
 
     :param redirect_url: Redirect url found after logging in
     """
@@ -66,7 +68,7 @@ async def async_get_user_account(redirect_url: str) -> dict:
     """Return user account. Async.
 
     Account should be formatted with \
-        :meth:`pyremoteplay.oauth.format_user_account() <pyremoteplay.oauth.format_user_account>` before use.
+        :meth:`format_user_account() <pyremoteplay.profile.format_user_account>` before use.
 
     :param redirect_url: Redirect url found after logging in
     """
@@ -191,25 +193,7 @@ def _format_user_id(user_id: str, encoding="base64"):
     return user_id
 
 
-def format_user_account(user_data: dict) -> UserProfile:
-    """Format account data to user profile. Return user profile.
-
-    :param user_data: User data. \
-        See :meth:`pyremoteplay.oauth.get_user_account() <pyremoteplay.oauth.get_user_account>`
-    """
-    user_id = user_data.get("user_rpid")
-    if not isinstance(user_id, str) and not user_id:
-        _LOGGER.error("Invalid user id or user id not found")
-        return None
-    name = user_data["online_id"]
-    data = {
-        "id": user_id,
-        "hosts": {},
-    }
-    return UserProfile(name, data)
-
-
-def prompt() -> UserProfile:
+def prompt() -> dict:
     """Prompt for input and return account info."""
     msg = (
         "\r\n\r\nGo to the url below in a web browser, "
@@ -221,5 +205,5 @@ def prompt() -> UserProfile:
     redirect_url = input(msg)
     if redirect_url is not None:
         account_info = get_user_account(redirect_url)
-        return format_user_account(account_info)
+        return account_info
     return None

@@ -113,6 +113,7 @@ def get_launch_spec(
     return launch_spec
 
 
+# pylint: disable=invalid-name
 class StickState:
     """State of a single stick."""
 

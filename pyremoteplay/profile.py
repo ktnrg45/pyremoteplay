@@ -10,8 +10,30 @@ and
 from __future__ import annotations
 from collections import UserDict
 from typing import Union
+import logging
 
+from pyremoteplay.oauth import get_user_account
 from .util import get_profiles, write_profiles, get_users, add_regist_data
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def format_user_account(user_data: dict) -> UserProfile:
+    """Format account data to user profile. Return user profile.
+
+    :param user_data: User data. \
+        See :meth:`pyremoteplay.oauth.get_user_account() <pyremoteplay.oauth.get_user_account>`
+    """
+    user_id = user_data.get("user_rpid")
+    if not isinstance(user_id, str) and not user_id:
+        _LOGGER.error("Invalid user id or user id not found")
+        return None
+    name = user_data["online_id"]
+    data = {
+        "id": user_id,
+        "hosts": {},
+    }
+    return UserProfile(name, data)
 
 
 class HostProfile(UserDict):
@@ -82,7 +104,8 @@ class UserProfile(UserDict):
         """Add regist data to user profile.
 
         :param host_status: Status from device. \
-            See :meth:`pyremoteplay.device.RPDevice.get_status() <pyremoteplay.device.RPDevice.get_status>`
+            See :meth:`pyremoteplay.device.RPDevice.get_status() \
+                <pyremoteplay.device.RPDevice.get_status>`
         :param data: Data from registering. \
             See :func:`pyremoteplay.register.register() <pyremoteplay.register.register>`
         """
@@ -130,11 +153,32 @@ class Profiles(UserDict):
     def load(cls, path: str = "") -> Profiles:
         """Load profiles from file.
 
-        :param path: Path to file. If not given will use default path.
+        :param path: Path to file.
+            If not given will use \
+                :meth:`default_path() <pyremoteplay.profile.Profiles.default_path>`.
             File will be created automatically if it does not exist.
         """
         path = cls.__DEFAULT_PATH if not path else path
         return cls(get_profiles(path))
+
+    def new_user(self, redirect_url: str, save=True) -> UserProfile:
+        """Create New PSN user.
+
+        See :func:`pyremoteplay.oauth.get_login_url() <pyremoteplay.oauth.get_login_url>`.
+
+        :param redirect_url: URL from signing in with PSN account at the login url
+        :param save: Save profiles to file if True
+        """
+        account_data = get_user_account(redirect_url)
+        if not account_data:
+            return None
+        profile = format_user_account(account_data)
+        if not profile:
+            return None
+        self.update_user(profile)
+        if save:
+            self.save()
+        return profile
 
     def update_user(self, user_profile: UserProfile):
         """Update stored User Profile.
