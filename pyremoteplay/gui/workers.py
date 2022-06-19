@@ -10,7 +10,7 @@ import time
 
 from PySide6 import QtCore
 from pyremoteplay.device import RPDevice
-from pyremoteplay.tracker import async_create_ddp_endpoint
+from pyremoteplay.tracker import DeviceTracker
 from pyremoteplay.ddp import async_get_status
 
 _LOGGER = logging.getLogger(__name__)
@@ -102,7 +102,7 @@ class AsyncHandler(QtCore.QObject):
     def __init__(self):
         super().__init__()
         self.loop = None
-        self.protocol = None
+        self.tracker = None
         self.rp_worker = RPWorker()
         self.__task = None
         self._thread = QtCore.QThread()
@@ -119,37 +119,37 @@ class AsyncHandler(QtCore.QObject):
         self.loop = asyncio.new_event_loop()
         self.rp_worker.setLoop(self.loop)
         self.__task = self.loop.create_task(self.run())
-        self.loop.run_until_complete(self.__task)
-        self.loop.run_forever()
+        try:
+            self.loop.run_until_complete(self.__task)
+        except asyncio.CancelledError:
+            pass
 
     def poll(self):
         """Start polling."""
-        if self.protocol:
-            self.protocol.start()
+        if self.tracker:
+            self.tracker.start()
 
     def stop_poll(self):
         """Stop Polling."""
-        if self.protocol:
-            self.protocol.stop()
+        if self.tracker:
+            self.tracker.stop()
 
     def shutdown(self):
         """Shutdown handler."""
         self.stop_poll()
-        self.protocol.shutdown()
-        if self.__task is not None:
-            self.__task.cancel()
+        self.tracker.shutdown()
         _LOGGER.debug("Shutting down async event loop")
-        self.loop.stop()
         start = time.time()
         while self.loop.is_running():
             if time.time() - start > 5:
                 break
+        _LOGGER.debug("Loop stopped")
         self._thread.quit()
 
     async def run(self):
         """Start poll service."""
-        self.protocol = await async_create_ddp_endpoint(self.status_updated.emit)
-        await self.protocol.run()
+        self.tracker = await DeviceTracker.create(self.status_updated.emit)
+        await self.tracker.run()
 
     async def _manual_search(self, host: str):
         """Search for device."""

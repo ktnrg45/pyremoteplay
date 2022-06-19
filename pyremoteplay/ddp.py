@@ -13,17 +13,9 @@ import sys
 import netifaces
 
 from .socket import AsyncUDPSocket, udp_socket
-from .const import (
-    TYPE_PS4,
-    UDP_PORT,
-    DDP_PORTS,
-    DEFAULT_UDP_PORT,
-    BROADCAST_IP,
-)
+from .const import TYPE_PS4, UDP_PORT, DDP_PORTS, DEFAULT_UDP_PORT, BROADCAST_IP, UDP_IP
 
 _LOGGER = logging.getLogger(__name__)
-
-UDP_IP = "0.0.0.0"
 
 DDP_VERSION = "00030010"
 DDP_TYPE_SEARCH = "SRCH"
@@ -36,7 +28,7 @@ STATUS_STANDBY = 620
 
 
 # pylint: disable=c-extension-no-member
-def get_private_addresses() -> list[str]:
+def _get_private_addresses() -> list[str]:
     """Return Private Interface Addresses."""
     interfaces = []
     for interface in netifaces.interfaces():
@@ -145,28 +137,27 @@ def get_ddp_launch_message(credential: str) -> str:
 
 
 def get_socket(
-    address: Optional[str] = UDP_IP, port: Optional[int] = DEFAULT_UDP_PORT
+    local_address: Optional[str] = UDP_IP, local_port: Optional[int] = DEFAULT_UDP_PORT
 ) -> socket.socket:
     """Return DDP socket object."""
-    retries = 0
-    sock = None
-    while retries <= 1:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(0)
-        try:
-            if hasattr(socket, "SO_REUSEPORT"):
-                sock.setsockopt(
-                    socket.SOL_SOCKET, socket.SO_REUSEPORT, 1
-                )  # noqa: pylint: disable=no-member
-            sock.bind((address, port))
-        except socket.error as error:
-            _LOGGER.error("Error getting DDP socket with port: %s: %s", port, error)
-            sock = None
-            retries += 1
-            port = UDP_PORT
-            address = UDP_IP
-        else:
-            return sock
+
+    def _create_socket(address: str, port: int) -> socket.socket:
+        _sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        _sock.settimeout(0)
+        if hasattr(socket, "SO_REUSEPORT"):
+            _sock.setsockopt(
+                socket.SOL_SOCKET, socket.SO_REUSEPORT, 1
+            )  # noqa: pylint: disable=no-member
+        _sock.bind((address, port))
+        return _sock
+
+    try:
+        sock = _create_socket(local_address, local_port)
+    except socket.error as error:
+        _LOGGER.error("Error getting DDP socket with port: %s: %s", local_port, error)
+    else:
+        sock = _create_socket(UDP_IP, UDP_PORT)
+        _LOGGER.debug("Created socket with random port")
     return sock
 
 
@@ -250,7 +241,7 @@ def send_search_msg(host: str, host_type: str = TYPE_PS4, sock: socket.socket = 
 
 def search(
     host: str = BROADCAST_IP,
-    port: int = UDP_PORT,
+    local_port: int = UDP_PORT,
     host_type: str = "",
     sock: socket.socket = None,
     timeout: int = 3,
@@ -265,12 +256,15 @@ def search(
         host = BROADCAST_IP
     _LOGGER.debug("Sending search message")
     if sock is None:
-        if sys.platform == "win32" and host == BROADCAST_IP:
+        if sys.platform == "win32":  # and host == BROADCAST_IP:
             # Windows doesn't seem to send broadcast out over all interfaces
-            addresses = get_private_addresses()
-            socks = [get_socket(address=_address, port=port) for _address in addresses]
+            addresses = _get_private_addresses()
+            socks = [
+                get_socket(local_address=_address, local_port=local_port)
+                for _address in addresses
+            ]
         else:
-            socks = [get_socket(port=port)]
+            socks = [get_socket(local_port=local_port)]
     else:
         socks = [sock]
         close = False
@@ -307,56 +301,94 @@ def search(
 
 
 def get_status(
-    host: str, port: int = UDP_PORT, host_type: str = "", sock: socket.socket = None
+    host: str,
+    local_port: int = UDP_PORT,
+    host_type: str = "",
+    sock: socket.socket = None,
 ):
     """Return status dict."""
-    ps_list = search(host=host, port=port, host_type=host_type, sock=sock)
+    ps_list = search(host=host, local_port=local_port, host_type=host_type, sock=sock)
     if not ps_list:
         return None
     return ps_list[0]
 
 
 def wakeup(
-    host: str, credential: str, host_type: str = TYPE_PS4, sock: socket.socket = None
+    host: str,
+    credential: str,
+    local_port: int = DEFAULT_UDP_PORT,
+    host_type: str = TYPE_PS4,
+    sock: socket.socket = None,
 ):
     """Wakeup Host."""
+    close = False
+    if not sock:
+        sock = get_socket(local_port=local_port)
+        close = True
     msg = get_ddp_wake_message(credential)
     _send_msg(host, msg, host_type=host_type, sock=sock)
+    if close:
+        sock.close()
 
 
 def launch(
-    host: str, credential: str, host_type: str = TYPE_PS4, sock: socket.socket = None
+    host: str,
+    credential: str,
+    local_port: int = DEFAULT_UDP_PORT,
+    host_type: str = TYPE_PS4,
+    sock: socket.socket = None,
 ):
     """Launch."""
+    close = False
+    if not sock:
+        sock = get_socket(local_port=local_port)
+        close = True
     msg = get_ddp_launch_message(credential)
     _send_msg(host, msg, host_type=host_type, sock=sock)
+    if close:
+        sock.close()
 
 
-async def _async_get_socket(
-    address: str = UDP_IP,
-    port: int = DEFAULT_UDP_PORT,
-    remote_addr: tuple[str, int] = None,
+async def async_get_socket(
+    local_address: str = UDP_IP, local_port: int = UDP_PORT
 ) -> AsyncUDPSocket:
-    try:
-        sock = await udp_socket(
-            local_addr=(address, port), remote_addr=remote_addr, reuse_port=True
-        )
-    except OSError:
-        _LOGGER.warning("Port %s in use. Using random port", port)
-        sock = await udp_socket(local_addr=(UDP_IP, UDP_PORT), remote_addr=remote_addr)
-    return sock
+    """Return socket."""
+    sock = get_socket(local_address, local_port)
+    return await udp_socket(sock=sock)
 
 
-async def _async_send_msg(
-    addresses: list[str],
-    port: int,
-    host: str,
-    msg: str,
-    host_type: str = "",
+async def async_get_sockets(
+    host: str = BROADCAST_IP, local_port: int = UDP_PORT
 ) -> list[AsyncUDPSocket]:
+    """Return list of sockets needed.
+
+    Mainly needed for broadcasts on Windows since packets don't
+    seem to be sent out on all interfaces.
+    """
+    addresses = []
+    if sys.platform == "win32":
+        if host == BROADCAST_IP:
+            addresses = _get_private_addresses()
+
+    if not addresses:
+        addresses = [UDP_IP]
+
+    socks = []
+    for address in addresses:
+        if host == BROADCAST_IP:
+            sock = await async_get_socket(address, local_port)
+            sock.set_broadcast(True)
+        else:
+            sock = await async_get_socket(address, local_port)
+        socks.append(sock)
+    return socks
+
+
+async def async_send_msg(
+    sock: AsyncUDPSocket, host: str, msg: str, host_type: str = ""
+):
     """Send a ddp message."""
     remote_ports = []
-    socks = []
     host_types = [host_type] if host_type else DDP_PORTS.keys()
     for host_type in host_types:
         _port = DDP_PORTS.get(host_type)
@@ -365,27 +397,23 @@ async def _async_send_msg(
     if not remote_ports:
         raise ValueError(f"Invalid host type: {host_type}")
 
-    for address in addresses:
-        if host == BROADCAST_IP:
-            sock = await _async_get_socket(address, port)
-            sock.set_broadcast(True)
-        else:
-            sock = await _async_get_socket(address, port)
-        for _port in remote_ports:
-            remote = (host, _port)
+    for _port in remote_ports:
+        remote = (host, _port)
         sock.sendto(msg.encode(), remote)
-        socks.append(sock)
-    return socks
+        if len(remote_ports) > 1:
+            # Device will not respond sometimes if sent packets to quickly
+            await asyncio.sleep(0.5)
 
 
 async def _async_recv_search_msg(
-    host: str, sock: AsyncUDPSocket, timeout: float, stop: asyncio.Event
+    sock: AsyncUDPSocket, host: str, timeout: float, stop_event: asyncio.Event
 ) -> dict:
     devices = {}
     start = time.time()
+    stop_event.clear()
     while time.time() - start < timeout:
         data = addr = response = None
-        if stop.is_set():
+        if stop_event.is_set():
             return devices
         response = await sock.recv(0.01)
         if response is not None:
@@ -399,7 +427,7 @@ async def _async_recv_search_msg(
                 data["host-ip"] = ip_address
                 devices[ip_address] = data
             if host != BROADCAST_IP:
-                stop.set()
+                stop_event.set()
                 return devices
         await asyncio.sleep(0)
     return devices
@@ -407,31 +435,28 @@ async def _async_recv_search_msg(
 
 async def async_search(
     host: str = BROADCAST_IP,
-    port: int = DEFAULT_UDP_PORT,
+    local_port: int = DEFAULT_UDP_PORT,
     host_type: str = "",
+    socks: Union[AsyncUDPSocket, list[AsyncUDPSocket]] = None,
     timeout: int = 3,
 ) -> list[dict]:
     """Return list of discovered devices."""
-    addresses = []
     msg = get_ddp_search_message()
     _LOGGER.debug("Sending search message")
 
-    if sys.platform == "win32":
-        if host == BROADCAST_IP:
-            addresses = get_private_addresses()
-
-    if not addresses:
-        addresses = [UDP_IP]
     # Using this to return status as soon as possible if targeting a specific device
     stop = asyncio.Event()
-
-    socks = await _async_send_msg(addresses, port, host, msg, host_type)
-
+    if not socks:
+        socks = await async_get_sockets(host, local_port)
+    if isinstance(socks, AsyncUDPSocket):
+        socks = [socks]
     if not socks:
         raise RuntimeError("Could not get async sockets")
+    for _sock in socks:
+        await async_send_msg(_sock, host, msg, host_type)
 
     results = await asyncio.gather(
-        *[_async_recv_search_msg(host, _sock, timeout, stop) for _sock in socks]
+        *[_async_recv_search_msg(_sock, host, timeout, stop) for _sock in socks]
     )
     devices = {}
     for result in results:
@@ -444,13 +469,13 @@ async def async_search(
 
 async def async_get_status(
     host: str,
-    port: int = DEFAULT_UDP_PORT,
+    local_port: int = DEFAULT_UDP_PORT,
     host_type: str = "",
 ):
-    """Return status dict."""
+    """Return status dict. Async."""
     device_list = await async_search(
         host=host,
-        port=port,
+        local_port=local_port,
         host_type=host_type,
     )
     if not device_list:
@@ -461,26 +486,40 @@ async def async_get_status(
 async def async_wakeup(
     host: str,
     credential: str,
-    port: int = DEFAULT_UDP_PORT,
+    local_port: int = DEFAULT_UDP_PORT,
     host_type: str = "",
-    address: str = UDP_IP,
+    sock: AsyncUDPSocket = None,
 ):
-    """Wakeup Host."""
+    """Wakeup Host. Async."""
     msg = get_ddp_wake_message(credential)
-    socks = await _async_send_msg([address], port, host, msg, host_type)
-    for sock in socks:
+    close = True
+    if sock is not None:
+        if not isinstance(sock, AsyncUDPSocket):
+            raise TypeError(f"Expected instance of {AsyncUDPSocket}. Got: {type(sock)}")
+        close = False
+    else:
+        sock = await async_get_socket(UDP_IP, local_port)
+    await async_send_msg(sock, host, msg, host_type)
+    if close:
         sock.close()
 
 
 async def async_launch(
     host: str,
     credential: str,
-    port: int = DEFAULT_UDP_PORT,
+    local_port: int = DEFAULT_UDP_PORT,
     host_type: str = "",
-    address: str = UDP_IP,
+    sock: AsyncUDPSocket = None,
 ):
-    """Launch."""
+    """Launch. Async."""
     msg = get_ddp_launch_message(credential)
-    socks = await _async_send_msg([address], port, host, msg, host_type)
-    for sock in socks:
+    close = True
+    if sock is not None:
+        if not isinstance(sock, AsyncUDPSocket):
+            raise TypeError(f"Expected instance of {AsyncUDPSocket}. Got: {type(sock)}")
+        close = False
+    else:
+        sock = await async_get_socket(UDP_IP, local_port)
+    await async_send_msg(sock, host, msg, host_type)
+    if close:
         sock.close()

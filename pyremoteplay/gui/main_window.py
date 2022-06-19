@@ -153,13 +153,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def add_devices(self):
         """Add devices to grid."""
         for host in self._options.devices:
-            if host not in self.async_handler.protocol.devices:
-                self.async_handler.protocol.add_device(host)
+            if host not in self.async_handler.tracker.devices:
+                self.async_handler.tracker.add_device(host)
 
     @QtCore.Slot(str)
     def remove_device(self, host: str):
         """Remove Device from grid."""
-        self.async_handler.protocol.remove_device(host)
+        self.async_handler.tracker.remove_device(host)
         self._event_status_updated()
 
     def standby(self, device: RPDevice):
@@ -207,7 +207,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _event_status_updated(self):
         """Callback for status updates."""
-        devices = self.async_handler.protocol.devices
+        devices = self.async_handler.tracker.devices
         self._device_grid.create_grid(devices)
 
     def check_profile(self, name: str, device: RPDevice):

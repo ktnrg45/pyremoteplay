@@ -3,9 +3,9 @@ from __future__ import annotations
 import base64
 import logging
 from urllib.parse import parse_qs, urlparse
-import requests
 from typing import TYPE_CHECKING
 
+import requests
 import aiohttp
 from Cryptodome.Hash import SHA256
 

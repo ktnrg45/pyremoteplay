@@ -2,7 +2,7 @@
 from __future__ import annotations
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, Callable, Union
 import socket
 
 _LOGGER = logging.getLogger(__name__)
@@ -11,9 +11,14 @@ _LOGGER = logging.getLogger(__name__)
 class AsyncUDPProtocol(asyncio.DatagramProtocol):
     """UDP Protocol."""
 
+    def __del__(self):
+        self.close()
+
     def __init__(self):
+        super().__init__()
         self._packets = asyncio.Queue()
         self._transport = None
+        self._callback = None
 
     def connection_made(self, transport: asyncio.DatagramTransport):
         """Connection Made."""
@@ -23,21 +28,41 @@ class AsyncUDPProtocol(asyncio.DatagramProtocol):
         """Connection Lost."""
         if exc:
             _LOGGER.error("Connection Lost: %s", exc)
-        if self._transport:
-            self._transport.close()
-            self._packets.put_nowait(None)
+        self.close()
+        self._packets.put_nowait(None)
 
     def datagram_received(self, data: bytes, addr: tuple[str, int]):
         """Datagram Received."""
-        self._packets.put_nowait((data, addr))
+        item = (data, addr)
+        if self.has_callback:
+            self._callback(*item)
+        else:
+            self._packets.put_nowait(item)
 
     def error_received(self, exc: Exception):
         """Error Received."""
-        _LOGGER.error("Socket received error: %s", exc)
+        _LOGGER.error("Socket at: %s received error: %s", self.sock.getsockname(), exc)
+
+    def set_callback(
+        self, callback: Union[Callable[[bytes, tuple[str, int]], None], None]
+    ):
+        """Set callback for datagram received.
+
+        Setting this will flush packet received packet queue.
+        :meth:`recv() <pyremoteplay.socket.AsyncUDPProtocol.recv>`
+        will always return None.
+
+        :param callback: callback for data received
+        """
+        if callback is not None:
+            if not isinstance(callback, Callable):
+                raise TypeError(f"Expected callable. Got: {type(callback)}")
+            self._packets = asyncio.Queue()
+        self._callback = callback
 
     def close(self):
         """Close transport."""
-        if self._transport:
+        if not self.closed:
             self._transport.close()
             self._packets.put_nowait(None)
 
@@ -45,6 +70,8 @@ class AsyncUDPProtocol(asyncio.DatagramProtocol):
         self, timeout: float = None
     ) -> Optional[tuple[bytes, tuple[str, int]]]:
         """Return received data."""
+        if self.has_callback:
+            return None
         try:
             return await asyncio.wait_for(self._packets.get(), timeout=timeout)
         except (asyncio.TimeoutError, asyncio.CancelledError):
@@ -58,6 +85,11 @@ class AsyncUDPProtocol(asyncio.DatagramProtocol):
     def get_extra_info(self, name: str, default: Any = None) -> Any:
         """Return Extra Info."""
         return self._transport.get_extra_info(name, default)
+
+    @property
+    def has_callback(self):
+        """Return True if callback is set."""
+        return self._callback is not None
 
     @property
     def opened(self) -> bool:
@@ -84,6 +116,9 @@ class AsyncUDPSocket:
         return self
 
     async def __aexit__(self, *exc_info):
+        self.close()
+
+    def __del__(self):
         self.close()
 
     def __init__(self, protocol: AsyncUDPProtocol):
@@ -117,6 +152,19 @@ class AsyncUDPSocket:
             socket.SOL_SOCKET, socket.SO_BROADCAST, int(enabled)
         )
 
+    def set_callback(
+        self, callback: Union[Callable[[bytes, tuple[str, int]], None], None]
+    ):
+        """Set callback for datagram received.
+
+        Setting this will flush packet received packet queue.
+        :meth:`recv() <pyremoteplay.socket.AsyncUDPSocket.recv>`
+        will always return None.
+
+        :param callback: callback for data received
+        """
+        self._protocol.set_callback(callback)
+
     @property
     def opened(self) -> bool:
         """Return True if opened."""
@@ -126,6 +174,11 @@ class AsyncUDPSocket:
     def closed(self) -> bool:
         """Return True if closed."""
         return self._protocol.closed
+
+    @property
+    def sock(self) -> socket.socket:
+        """Return socket."""
+        return self._protocol.sock
 
 
 async def udp_socket(
