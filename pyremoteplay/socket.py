@@ -112,6 +112,36 @@ class AsyncUDPProtocol(asyncio.DatagramProtocol):
 class AsyncUDPSocket:
     """Async UDP socket."""
 
+    @classmethod
+    async def create(
+        cls,
+        local_addr: tuple[str, int] = None,
+        remote_addr: tuple[str, int] = None,
+        *,
+        reuse_port: bool = None,
+        allow_broadcast: bool = None,
+        sock: socket.socket = None,
+        **kwargs,
+    ) -> AsyncUDPSocket:
+        """Create and return UDP Socket."""
+        _local_addr = local_addr
+        if sock is not None:
+            local_addr = remote_addr = None
+        loop = asyncio.get_running_loop()
+        if not hasattr(socket, "SO_REUSEPORT"):
+            reuse_port = None
+        _, protocol = await loop.create_datagram_endpoint(
+            AsyncUDPProtocol,
+            local_addr=local_addr,
+            remote_addr=remote_addr,
+            reuse_port=reuse_port,
+            allow_broadcast=allow_broadcast,
+            sock=sock,
+            **kwargs,
+        )
+
+        return cls(protocol, _local_addr)
+
     async def __aenter__(self):
         return self
 
@@ -121,8 +151,9 @@ class AsyncUDPSocket:
     def __del__(self):
         self.close()
 
-    def __init__(self, protocol: AsyncUDPProtocol):
+    def __init__(self, protocol: AsyncUDPProtocol, local_addr: tuple[str, int] = None):
         self._protocol = protocol
+        self._ip_address = local_addr[0] if local_addr else None
 
     def close(self):
         """Close the socket."""
@@ -180,28 +211,10 @@ class AsyncUDPSocket:
         """Return socket."""
         return self._protocol.sock
 
-
-async def udp_socket(
-    local_addr: tuple[str, int] = None,
-    remote_addr: tuple[str, int] = None,
-    *,
-    reuse_port: bool = None,
-    allow_broadcast: bool = None,
-    sock: socket.socket = None,
-    **kwargs,
-) -> AsyncUDPSocket:
-    """Return UDP Socket."""
-    loop = asyncio.get_running_loop()
-    if not hasattr(socket, "SO_REUSEPORT"):
-        reuse_port = None
-    _, protocol = await loop.create_datagram_endpoint(
-        AsyncUDPProtocol,
-        local_addr=local_addr,
-        remote_addr=remote_addr,
-        reuse_port=reuse_port,
-        allow_broadcast=allow_broadcast,
-        sock=sock,
-        **kwargs,
-    )
-
-    return AsyncUDPSocket(protocol)
+    @property
+    def local_addr(self) -> tuple[str, int]:
+        """Return local address."""
+        addr = self.sock.getsockname()
+        if self._ip_address:
+            return (self._ip_address, addr[1])
+        return addr
