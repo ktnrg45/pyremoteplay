@@ -85,6 +85,7 @@ def main():
 
 def show_devices():
     """Print all devices."""
+    print("\nSearching for devices...")
     devices = search()
     print(f"\nFound {len(devices)} devices:\n")
     for device in devices:
