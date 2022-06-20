@@ -100,6 +100,7 @@ class StreamWindow(QtWidgets.QWidget):
         self._input_map_kb = input_map_kb
         self._input_options_kb = input_options_kb
         self._gamepad = gamepad
+        self._started = False
 
         super().__init__()
         self.hide()
@@ -187,6 +188,7 @@ class StreamWindow(QtWidgets.QWidget):
         else:
             self.show()
         self._center_text.move(0, self.contentsRect().center().y())
+        QtCore.QTimer.singleShot(5000, self._startup_check)
 
     def move_stick(self, stick: str, point: QtCore.QPointF):
         """Move Stick."""
@@ -252,6 +254,12 @@ class StreamWindow(QtWidgets.QWidget):
         )
         return receiver
 
+    def _startup_check(self):
+        if not self._started:
+            if not self.device.session.error:
+                self.device.session.error = "Session timed out. Unknown Error."
+                self._rp_worker.stop()
+
     def _show_message(self):
         key_name = ""
         for key, button in self._input_map_kb.items():
@@ -265,6 +273,7 @@ class StreamWindow(QtWidgets.QWidget):
 
     def _show_video(self):
         """Show Video Output."""
+        self._started = True
         self._show_message()
         self._video_output.show()
         show_left = show_right = True
