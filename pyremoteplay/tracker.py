@@ -4,9 +4,9 @@ import asyncio
 import logging
 import time
 from typing import Callable
+import sys
 
 from .const import (
-    UDP_PORT,
     DDP_PORTS,
     DEFAULT_UDP_PORT,
     BROADCAST_IP,
@@ -19,45 +19,38 @@ from .ddp import (
     parse_ddp_response,
     async_get_sockets,
     async_send_msg,
+    async_get_status,
     STATUS_OK,
     STATUS_STANDBY,
 )
-from .socket import AsyncUDPSocket
 
 _LOGGER = logging.getLogger(__name__)
+
+DEFAULT_PORT = DEFAULT_UDP_PORT + 1
 
 
 class DeviceTracker:
     """Async Device Tracker."""
 
-    @classmethod
-    async def create(
-        cls, callback: Callable = None, port: int = DEFAULT_UDP_PORT
-    ) -> DeviceTracker:
-        """Create and return Tracker."""
-        socks = await async_get_sockets(local_port=port)
-        if not socks:
-            raise RuntimeError("Could not get sockets")
-        return cls(socks, callback, port)
-
     def __init__(
         self,
-        socks: list[AsyncUDPSocket],
         default_callback: Callable = None,
         max_polls: int = DEFAULT_POLL_COUNT,
+        local_port: int = DEFAULT_PORT,
+        directed: bool = False,
     ):
         super().__init__()
-        self._socks = socks
+        self._socks = []
+        self._tasks = set()
+        self._directed = directed
         self._devices_data = {}
         self._max_polls = max_polls
-        self._local_port = UDP_PORT
+        self._local_port = local_port
         self._default_callback = default_callback
         self._message = get_ddp_search_message()
         self._event_stop = asyncio.Event()
         self._event_shutdown = asyncio.Event()
-
-        for sock in self._socks:
-            sock.set_callback(self.datagram_received)
+        self._event_shutdown.set()
 
     def __repr__(self):
         return (
@@ -81,7 +74,7 @@ class DeviceTracker:
             host = device.host
             host_type = device.host_type
         for sock in self._socks:
-            await async_send_msg(sock, host, message, host_type)
+            async_send_msg(sock, host, message, host_type, directed=self._directed)
             if device:
                 break
 
@@ -90,11 +83,21 @@ class DeviceTracker:
         if data is not None:
             self._handle(data, addr)
 
-    def _handle(self, data: bytes, addr: tuple):
-        data = parse_ddp_response(data)
-        data["host-ip"] = addr[0]
-        address = addr[0]
+    def _handle_windows_get_status(self, future: asyncio.Future):
+        """Custom handler for Windows."""
+        # TODO: Fix so that this isn't needed
+        self._tasks.discard(future)
+        status = future.result()
+        if status:
+            self._update_device(status)
 
+    def _handle(self, data: bytes, addr: tuple):
+        status = parse_ddp_response(data)
+        status["host-ip"] = addr[0]
+        self._update_device(status)
+
+    def _update_device(self, status: dict):
+        address = status["host-ip"]
         if address in self._devices_data:
             device_data = self._devices_data[address]
         else:
@@ -110,12 +113,13 @@ class DeviceTracker:
         ):
             device_data["standby_start"] = time.time()
         device_data["poll_count"] = 0
-        device_data["device"]._set_status(data)  # pylint: disable=protected-access
+        device._set_status(status)  # pylint: disable=protected-access
 
     def close(self):
         """Close all sockets."""
         for sock in self._socks:
             sock.close()
+        self._socks = []
 
     def add_device(
         self, host: str, callback: Callable = None, discovered: bool = False
@@ -176,10 +180,35 @@ class DeviceTracker:
             if not device_data["discovered"]:
                 # Explicitly poll device in case it cannot be reached by broadcast.
                 if not device_data["polls_disabled"]:
-                    await self.send_msg(device)
+                    if sys.platform == "win32":
+                        # TODO: Hack to avoid Windows closing socket.
+                        task = asyncio.create_task(
+                            async_get_status(device.host, host_type=device.host_type)
+                        )
+                        task.add_done_callback(self._handle_windows_get_status)
+                        self._tasks.add(task)
+                    else:
+                        await self.send_msg(device)
+
+    async def _setup(self, port: int):
+        """Setup Tracker."""
+        socks = await async_get_sockets(local_port=port, directed=self._directed)
+        if not socks:
+            raise RuntimeError("Could not get sockets")
+        self._socks = socks
+        for sock in self._socks:
+            sock.set_callback(self.datagram_received)
+            sock.set_broadcast(True)
 
     async def run(self, interval=1):
         """Run polling."""
+        if not self._event_shutdown.is_set():
+            return
+        if not self._socks:
+            await self._setup(self._local_port)
+        self._event_shutdown.clear()
+        self._event_stop.clear()
+        await asyncio.sleep(1)  # Wait for sockets to get setup
         while not self._event_shutdown.is_set():
             if not self._event_stop.is_set():
                 await self._poll()

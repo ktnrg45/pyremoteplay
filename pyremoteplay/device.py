@@ -166,7 +166,7 @@ class RPDevice:
 
     async def async_get_status(self):
         """Return status. Async."""
-        status = async_get_status(self.host)
+        status = await async_get_status(self.host)
         self._set_status(status)
         return status
 

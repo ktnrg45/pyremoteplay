@@ -268,12 +268,6 @@ def _recv_msg(host: str, msg: str, sock: socket.socket = None, close: bool = Tru
     )
 
 
-def send_search_msg(host: str, host_type: str = TYPE_PS4, sock: socket.socket = None):
-    """Send SRCH message only."""
-    msg = get_ddp_search_message()
-    return _send_msg(host, msg, host_type=host_type, sock=sock)
-
-
 def search(
     host: str = BROADCAST_IP,
     local_port: int = DEFAULT_UDP_PORT,
@@ -294,7 +288,7 @@ def search(
     ps_list = []
     addresses = []
     found = set()
-    close = False
+    close = not sock
     if directed is None:
         directed = True if sys.platform == "win32" and host == BROADCAST_IP else False
     if directed:
@@ -306,7 +300,6 @@ def search(
     _LOGGER.debug("Sending search message")
     if not sock:
         socks, addresses = get_sockets(local_port, directed)
-        close = True
     else:
         socks = [socks]
     if not socks:
@@ -428,15 +421,25 @@ async def async_get_sockets(
     return socks
 
 
-async def async_send_msg(
-    sock: AsyncUDPSocket, host: str, msg: str, host_type: str = ""
+def async_send_msg(
+    sock: AsyncUDPSocket,
+    host: str,
+    msg: str,
+    host_type: str = "",
+    directed: bool = False,
 ):
     """Send a ddp message."""
-    port = DDP_PORTS.get(host_type)
-    if port is None:
-        raise ValueError(f"Invalid host type: {host_type}")
+    if host == BROADCAST_IP:
+        sock.set_broadcast(True)
+        if directed:
+            host = _get_broadcast(sock.local_addr[0])
+    host_types = [host_type] if host_type else DDP_PORTS.keys()
+    for host_type in host_types:
+        port = DDP_PORTS.get(host_type)
+        if port is None:
+            raise ValueError(f"Invalid host type: {host_type}")
 
-    sock.sendto(msg.encode(), (host, port))
+        sock.sendto(msg.encode(), (host, port))
 
 
 async def _async_recv_search_msg(
@@ -484,7 +487,7 @@ async def async_search(
     :param timeout: Timeout in seconds.
     :param directed: If True will use directed broadcast with all local interfaces. Sock will be ignored.
     """
-    close = False
+    close = not sock
     if directed is None:
         directed = True if sys.platform == "win32" and host == BROADCAST_IP else False
     if directed:
@@ -496,7 +499,6 @@ async def async_search(
     stop = asyncio.Event()
     if not sock:
         socks = await async_get_sockets(local_port, directed)
-        close = True
     else:
         socks = [sock]
     if not socks:
@@ -504,14 +506,8 @@ async def async_search(
     host_types = [host_type] if host_type else DDP_PORTS.keys()
     for host_type in host_types:
         for _sock in socks:
-            if host == BROADCAST_IP:
-                _sock.set_broadcast(True)
-            if directed:
-                _host = _get_broadcast(_sock.local_addr[0])
-            else:
-                _host = host
             _LOGGER.debug("Using Socket: %s", _sock.local_addr)
-            await async_send_msg(_sock, _host, msg, host_type)
+            async_send_msg(_sock, host, msg, host_type, directed=directed)
 
     results = await asyncio.gather(
         *[_async_recv_search_msg(_sock, host, timeout, stop) for _sock in socks]

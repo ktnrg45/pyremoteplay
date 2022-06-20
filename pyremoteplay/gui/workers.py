@@ -148,7 +148,9 @@ class AsyncHandler(QtCore.QObject):
 
     async def run(self):
         """Start poll service."""
-        self.tracker = await DeviceTracker.create(self.status_updated.emit)
+        self.tracker = DeviceTracker(
+            default_callback=self.status_updated.emit, directed=True
+        )
         await self.tracker.run()
 
     async def _manual_search(self, host: str):
