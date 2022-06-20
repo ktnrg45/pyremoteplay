@@ -63,8 +63,12 @@ class AsyncUDPProtocol(asyncio.DatagramProtocol):
     def close(self):
         """Close transport."""
         if not self.closed:
-            self._transport.close()
             self._packets.put_nowait(None)
+            try:
+                self._transport.close()
+            # pylint: disable=broad-except
+            except Exception:
+                self.sock.close()
 
     async def recv(
         self, timeout: float = None
