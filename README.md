@@ -5,6 +5,7 @@ Python PlayStation Remote Play API
 This project provides an API to programmatically connect to and control Remote Play hosts (PS4 and PS5). In addition it includes an optional GUI, allowing to view the live stream and control the host through keyboard/mouse input. This library is based on the C/C++ project [Chiaki](https://github.com/thestr4ng3r/chiaki).
 
 ## Features ##
+- API to programatically control host and expose live audio/video stream
 - Registering client for Remote Play on the host 
 - Interface for controlling the host, which emulates a DualShock controller
 - Ability to power off/on the host if standby is enabled
@@ -16,6 +17,10 @@ This project provides an API to programmatically connect to and control Remote P
 - OS: Linux, Windows 10
 
 - Note: Untested on MacOS
+
+## Network Requirements ##
+This project will only work with local devices; devices on the same local network.
+You may be able to connect with devices on different subnets, but this is not guaranteed.
 
 ## GUI Dependencies ##
 The GUI requires dependencies that may be complex to install.
@@ -90,6 +95,5 @@ The CLI instance runs at 5-10% CPU usage with around 50Mb memory usage according
 
 ## Known Issues/To Do ##
 - Text sending functions
-- Congestion Control
 - Add support for HDR
 - Audio stutters
