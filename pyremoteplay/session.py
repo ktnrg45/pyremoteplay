@@ -31,7 +31,7 @@ from .const import (
     Quality,
 )
 from .crypt import SessionCipher
-from .ddp import async_get_status, async_wakeup
+from .ddp import async_get_status, wakeup
 from .errors import RemotePlayError, RPErrorHandler
 from .keys import (
     SESSION_KEY_0_PS4,
@@ -552,10 +552,10 @@ class Session:
         _LOGGER.info("Sending Standby")
         self.stop()
 
-    async def wakeup(self):
+    def _send_wakeup(self):
         """Wakeup Host."""
         regist_key = format_regist_key(self._regist_key)
-        await async_wakeup(self.host, regist_key, host_type=self.type)
+        wakeup(self.host, regist_key, host_type=self.type)
 
     async def start(self, wakeup=True, autostart=True) -> bool:
         """Start Session/RP Session."""
@@ -577,7 +577,7 @@ class Session:
             return False
         if not status[1]:
             if wakeup:
-                await self.wakeup()
+                self._send_wakeup()
                 self.error = "Host is in Standby. Attempting to wakeup."
             return False
         if not await self._run_io(self._connect):
