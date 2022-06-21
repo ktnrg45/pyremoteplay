@@ -31,7 +31,7 @@ from .const import (
     Quality,
 )
 from .crypt import SessionCipher
-from .ddp import async_get_status, wakeup
+from .ddp import async_get_status, wakeup as ddp_wakeup
 from .errors import RemotePlayError, RPErrorHandler
 from .keys import (
     SESSION_KEY_0_PS4,
@@ -555,7 +555,7 @@ class Session:
     def _send_wakeup(self):
         """Wakeup Host."""
         regist_key = format_regist_key(self._regist_key)
-        wakeup(self.host, regist_key, host_type=self.type)
+        ddp_wakeup(self.host, regist_key, host_type=self.type)
 
     async def start(self, wakeup=True, autostart=True) -> bool:
         """Start Session/RP Session."""

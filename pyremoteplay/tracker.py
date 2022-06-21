@@ -1,4 +1,4 @@
-"""Async DDP Protocol."""
+"""Async Device Tracker."""
 from __future__ import annotations
 import asyncio
 import logging
@@ -92,8 +92,7 @@ class DeviceTracker:
             self._update_device(status)
 
     def _handle(self, data: bytes, addr: tuple):
-        status = parse_ddp_response(data)
-        status["host-ip"] = addr[0]
+        status = parse_ddp_response(data, addr[0])
         self._update_device(status)
 
     def _update_device(self, status: dict):

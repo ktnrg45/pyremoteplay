@@ -1,4 +1,8 @@
-"""Device Discovery Protocol for RP Hosts."""
+"""Device Discovery Protocol for RP Hosts.
+
+    This module contains lower-level functions which don't
+    need to be called directly.
+"""
 from __future__ import annotations
 import asyncio
 import logging
@@ -70,12 +74,19 @@ def _get_private_addresses() -> list[str]:
 
 
 def get_host_type(response: dict) -> str:
-    """Return host type."""
+    """Return host type.
+
+    :param response: Response dict from host
+    """
     return response.get("host-type")
 
 
 def get_ddp_message(msg_type: str, data: dict = None):
-    """Get DDP message."""
+    """Get DDP message.
+
+    :param msg_type: Message Type
+    :param data: Extra data to add
+    """
     if msg_type not in DDP_MSG_TYPES:
         raise TypeError(f"DDP MSG type: '{msg_type}' is not a valid type")
     msg = f"{msg_type} * HTTP/1.1\n"
@@ -86,22 +97,26 @@ def get_ddp_message(msg_type: str, data: dict = None):
     return msg
 
 
-def parse_ddp_response(rsp: Union[str, bytes]):
-    """Parse the response."""
+def parse_ddp_response(response: Union[str, bytes], remote_address: str):
+    """Parse the response.
+
+    :param response: Raw response from host
+    :param remote_address: Remote address of host
+    """
     data = {}
-    if not isinstance(rsp, str):
-        if not isinstance(rsp, bytes):
+    if not isinstance(response, str):
+        if not isinstance(response, bytes):
             raise ValueError("Expected str or bytes")
         try:
-            rsp = rsp.decode("utf-8")
+            response = response.decode("utf-8")
         except UnicodeDecodeError:
-            _LOGGER.debug("DDP message is not utf-8: %s", rsp)
+            _LOGGER.debug("DDP message is not utf-8: %s", response)
             return data
-    if DDP_TYPE_SEARCH in rsp:
+    if DDP_TYPE_SEARCH in response:
         _LOGGER.info("Received %s message", DDP_TYPE_SEARCH)
         return data
     app_name = None
-    for line in rsp.splitlines():
+    for line in response.splitlines():
         if "running-app-name" in line:
             app_name = line
             app_name = app_name.replace("running-app-name:", "")
@@ -117,12 +132,15 @@ def parse_ddp_response(rsp: Union[str, bytes]):
             values = line.split(":")
             if len(values) != 2:
                 _LOGGER.debug(
-                    "Line: %s; does not contain key, value. Response: %s", line, rsp
+                    "Line: %s; does not contain key, value. Response: %s",
+                    line,
+                    response,
                 )
                 continue
             data[values[0]] = values[1]
     if app_name is not None:
         data["running-app-name"] = app_name
+    data["host-ip"] = remote_address
     return data
 
 
@@ -132,7 +150,10 @@ def get_ddp_search_message() -> str:
 
 
 def get_ddp_wake_message(credential: str) -> str:
-    """Get DDP wake message."""
+    """Get DDP wake message.
+
+    :param credential: User Credential from User Profile
+    """
     data = {
         "user-credential": credential,
         "client-type": "vr",
@@ -144,7 +165,10 @@ def get_ddp_wake_message(credential: str) -> str:
 
 
 def get_ddp_launch_message(credential: str) -> str:
-    """Get DDP launch message."""
+    """Get DDP launch message.
+
+    :param credential: User Credential from User Profile
+    """
     data = {
         "user-credential": credential,
         "client-type": "a",
@@ -156,7 +180,11 @@ def get_ddp_launch_message(credential: str) -> str:
 def get_socket(
     local_address: Optional[str] = UDP_IP, local_port: Optional[int] = DEFAULT_UDP_PORT
 ) -> socket.socket:
-    """Return DDP socket object."""
+    """Return DDP socket.
+
+    :param local_address: Local address to use
+    :param local_port: Local port to use
+    """
 
     def _create_socket(address: str, port: int) -> socket.socket:
         _sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -181,7 +209,11 @@ def get_socket(
 def get_sockets(
     local_port: int = UDP_PORT, directed: bool = None
 ) -> tuple[list[socket.socket], list[str]]:
-    """Return list of sockets needed."""
+    """Return list of sockets needed.
+
+    :param local_port: Local port to use
+    :param directed: If True will use directed broadcast with all local interfaces.
+    """
     if directed is None:
         directed = True if sys.platform == "win32" else False
 
@@ -283,7 +315,8 @@ def search(
     :param host_type: Host type. Specific host type to search for.
     :param sock: Socket. Socket will not be closed if specified.
     :param timeout: Timeout in seconds.
-    :param directed: If True will use directed broadcast with all local interfaces. Sock will be ignored.
+    :param directed: If True will use directed broadcast with all local interfaces.
+    Sock will be ignored.
     """
     ps_list = []
     addresses = []
@@ -332,10 +365,9 @@ def search(
                 data, addr = response
             if data is not None and addr is not None:
                 ip_address = addr[0]
-                data = parse_ddp_response(data)
+                data = parse_ddp_response(data, ip_address)
                 if ip_address not in found and data:
                     found.add(ip_address)
-                    data["host-ip"] = ip_address
                     ps_list.append(data)
                 if host != BROADCAST_IP:
                     break
@@ -350,8 +382,14 @@ def get_status(
     local_port: int = DEFAULT_UDP_PORT,
     host_type: str = "",
     sock: socket.socket = None,
-):
-    """Return status dict."""
+) -> dict:
+    """Return host status dict.
+
+    :param host: Host address
+    :param local_port: Local port to use
+    :param host_type: Host type to use
+    :param sock: Socket to use
+    """
     ps_list = search(host=host, local_port=local_port, host_type=host_type, sock=sock)
     if not ps_list:
         return None
@@ -365,7 +403,14 @@ def wakeup(
     host_type: str = TYPE_PS4,
     sock: socket.socket = None,
 ):
-    """Wakeup Host."""
+    """Wakeup Host.
+
+    :param host: Host address
+    :param credential: User Credential from User Profile
+    :param local_port: Local port to use
+    :param host_type: Host type to use
+    :param sock: Socket to use
+    """
     close = False
     if not sock:
         sock = get_socket(local_port=local_port)
@@ -383,7 +428,14 @@ def launch(
     host_type: str = TYPE_PS4,
     sock: socket.socket = None,
 ):
-    """Launch."""
+    """Send Launch message.
+
+    :param host: Host address
+    :param credential: User Credential from User Profile
+    :param local_port: Local port to use
+    :param host_type: Host type to use
+    :param sock: Socket to use
+    """
     close = False
     if not sock:
         sock = get_socket(local_port=local_port)
@@ -397,7 +449,11 @@ def launch(
 async def async_get_socket(
     local_address: str = UDP_IP, local_port: int = UDP_PORT
 ) -> AsyncUDPSocket:
-    """Return socket."""
+    """Return async socket.
+
+    :param local_address: Local address to use
+    :param local_port: Local port to use
+    """
     sock = get_socket(local_address, local_port)
     return await AsyncUDPSocket.create(
         local_addr=(local_address, local_port), sock=sock
@@ -407,7 +463,11 @@ async def async_get_socket(
 async def async_get_sockets(
     local_port: int = UDP_PORT, directed: bool = False
 ) -> list[AsyncUDPSocket]:
-    """Return list of sockets needed."""
+    """Return list of sockets needed.
+
+    :param local_port: Local port to use
+    :param directed: If True will use directed broadcast with all local interfaces.
+    """
     addresses = []
     if directed:
         addresses = _get_private_addresses()
@@ -428,7 +488,13 @@ def async_send_msg(
     host_type: str = "",
     directed: bool = False,
 ):
-    """Send a ddp message."""
+    """Send a ddp message using async socket.
+    :param sock: Socket to use.
+    :param host: Remote host to send message to.
+    :param msg: Message to send.
+    :param host_type: Host type.
+    :param directed: If True will use directed broadcast with all local interfaces
+    """
     if host == BROADCAST_IP:
         sock.set_broadcast(True)
         if directed:
@@ -456,12 +522,11 @@ async def _async_recv_search_msg(
         if response is not None:
             data, addr = response
         if data is not None and addr is not None:
-            data = parse_ddp_response(data)
             ip_address = addr[0]
-            if host != BROADCAST_IP and ip_address != host:
+            data = parse_ddp_response(data, ip_address)
+            if host not in (BROADCAST_IP, ip_address):
                 continue
             if ip_address not in devices and data:
-                data["host-ip"] = ip_address
                 devices[ip_address] = data
             if host != BROADCAST_IP:
                 stop_event.set()
@@ -485,7 +550,8 @@ async def async_search(
     :param host_type: Host type. Specific host type to search for.
     :param sock: Socket. Socket will not be closed if specified.
     :param timeout: Timeout in seconds.
-    :param directed: If True will use directed broadcast with all local interfaces. Sock will be ignored.
+    :param directed: If True will use directed broadcast with all local interfaces.
+    Sock will be ignored.
     """
     close = not sock
     if directed is None:
@@ -528,7 +594,13 @@ async def async_get_status(
     host_type: str = "",
     sock: AsyncUDPSocket = None,
 ) -> dict:
-    """Return status dict. Async."""
+    """Return host status dict. Async.
+
+    :param host: Host address
+    :param local_port: Local port to use
+    :param host_type: Host type to use
+    :param sock: Socket to use
+    """
     device_list = []
 
     if sys.platform == "win32":
