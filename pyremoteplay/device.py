@@ -313,7 +313,7 @@ class RPDevice:
                 _LOGGER.error("Error connecting")
                 return False
             try:
-                await asyncio.wait_for(self.session.stream_ready_event.wait(), 5)
+                await asyncio.wait_for(self.session.ready_event.wait(), 5)
             except asyncio.TimeoutError:
                 _LOGGER.error("Timed out waiting for stream to start")
                 return False

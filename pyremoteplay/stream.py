@@ -150,7 +150,8 @@ class RPStream:
         """Notify Session that stream is ready."""
         _LOGGER.debug("Stream Ready")
         self._state = RPStream.STATE_READY
-        self._session.stream_ready_event.set()
+        # pylint: disable=protected-access
+        self._session._set_ready()
 
     def advance_sequence(self):
         """Advance SCTP sequence number."""

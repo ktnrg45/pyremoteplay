@@ -59,7 +59,8 @@ class Controller:
         while self.running:
             try:
                 self._should_send.acquire(timeout=Controller.STATE_INTERVAL_MAX_MS)
-                self.update_sticks()
+                if self.ready:
+                    self.update_sticks()
             except Exception as error:  # pylint: disable=broad-except
                 _LOGGER.error("Error in controller thread: %s", error)
                 if _LOGGER.level == logging.DEBUG:
@@ -114,11 +115,9 @@ class Controller:
         Will be called automatically if controller has been started with
         :meth:`start() <pyremoteplay.controller.Controller.start>`.
         """
-        if (
-            self.session is None
-            or self.session.is_stopped
-            or self.stick_state == self._last_state
-        ):
+        if not self._check_session():
+            return
+        if self.stick_state == self._last_state:
             return
         self._last_state.left = self.stick_state.left
         self._last_state.right = self.stick_state.right
@@ -129,8 +128,6 @@ class Controller:
 
     def _send_event(self):
         """Send controller button event."""
-        if self.session is None or self.session.is_stopped:
-            return
         data = b"".join(self._event_buf)
         if not data:
             return
@@ -162,6 +159,8 @@ class Controller:
         :param action: One of `press`, `release`, `tap`, or `Controller.ButtonAction`.
         :param delay: Delay between press and release. Only used when action is `tap`.
         """
+        if not self._check_session():
+            return
         if isinstance(action, self.ButtonAction):
             _action = action
         else:
@@ -256,6 +255,18 @@ class Controller:
             self._stick_state.right = state
         self._should_send.release()
 
+    def _check_session(self) -> bool:
+        if self.session is None:
+            _LOGGER.error("Controller has no session")
+            return False
+        if self.session.is_stopped:
+            _LOGGER.error("Session is stopped")
+            return False
+        if not self.session.is_ready:
+            _LOGGER.error("Session is not ready")
+            return False
+        return True
+
     @property
     def sequence_event(self) -> int:
         """Return Sequence Number for events."""
@@ -272,6 +283,13 @@ class Controller:
         if not self._session:
             return False
         return not self._session.is_stopped and not self._stop_event.is_set()
+
+    @property
+    def ready(self) -> bool:
+        """Return True if controller can be used"""
+        if not self.session:
+            return False
+        return self.session.is_ready
 
     @property
     def session(self) -> Session:

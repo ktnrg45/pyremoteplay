@@ -7,7 +7,7 @@ import time
 from typing import Union
 from base64 import b64decode, b64encode
 from concurrent.futures import ThreadPoolExecutor
-from enum import IntEnum
+from enum import IntEnum, auto
 from functools import partial
 from struct import pack_into
 
@@ -184,10 +184,15 @@ class Session:
     :param hdr: Uses HDR if True. Has no effect if codec is 'h264'
     """
 
-    STATE_INIT = "init"
-    STATE_READY = "ready"
-    STATE_STOP = "stop"
     HEADER_LENGTH = 8
+
+    class State(IntEnum):
+        """State Enums."""
+
+        INIT = auto()
+        RUNNING = auto()
+        READY = auto()
+        STOP = auto()
 
     class MessageType(IntEnum):
         """Enum for Message Types."""
@@ -266,7 +271,7 @@ class Session:
         self._sock = None
         self._hb_last = 0
         self._cipher = None
-        self._state = Session.STATE_INIT
+        self._state = Session.State.INIT
         self._stream = None
         self._receiver = None
         self._events = ExecutorEventEmitter()
@@ -278,7 +283,7 @@ class Session:
 
         self._ready_event = None
         self._stop_event = None
-        self._stream_ready_event = None
+        self._ready_event = None
 
         self._quality = Quality.parse(quality)
         self._fps = FPS.parse(fps)
@@ -562,7 +567,7 @@ class Session:
         _LOGGER.info("Session Started")
         self._ready_event = asyncio.Event()
         self._stop_event = asyncio.Event()
-        self._stream_ready_event = asyncio.Event()
+        self._ready_event = asyncio.Event()
 
         self.events.on("av_ready", self._init_av_handler)
 
@@ -586,7 +591,7 @@ class Session:
                 self.error = "Auth Failed."
             return False
         _LOGGER.info("Session Auth Success")
-        self._state = Session.STATE_READY
+        self._state = Session.State.RUNNING
         _, self._protocol = await self.loop.connect_accepted_socket(
             lambda: Session.Protocol(self), self._sock
         )
@@ -597,7 +602,7 @@ class Session:
 
     def stop(self):
         """Stop Session."""
-        if self.state == Session.STATE_STOP:
+        if self.state == Session.State.STOP:
             _LOGGER.debug("Session already stopping")
             return
         _LOGGER.debug("Session Received Stop Signal")
@@ -636,6 +641,10 @@ class Session:
         if old_receiver:
             old_receiver.close()
 
+    def _set_ready(self):
+        self.ready_event.set()
+        self._state = Session.State.READY
+
     @property
     def host(self) -> str:
         """Return host address."""
@@ -652,18 +661,23 @@ class Session:
         if self._stop_event is None:
             return self._state
         if self._stop_event.is_set():
-            return Session.STATE_STOP
+            return Session.State.STOP
         return self._state
+
+    @property
+    def is_ready(self) -> bool:
+        """Return True if ready for user interaction."""
+        return self.state == Session.State.READY
 
     @property
     def is_running(self) -> bool:
         """Return True if running."""
-        return self.state == Session.STATE_READY
+        return self.state in (Session.State.READY, Session.State.RUNNING)
 
     @property
     def is_stopped(self) -> bool:
         """Return True if stopped."""
-        return self.state == Session.STATE_STOP
+        return self.state == Session.State.STOP
 
     @property
     def session_id(self) -> bytes:
@@ -671,19 +685,19 @@ class Session:
         return self._session_id
 
     @property
-    def stream(self):
+    def stream(self) -> RPStream:
         """Return Stream."""
         return self._stream
 
     @property
-    def stop_event(self):
+    def stop_event(self) -> asyncio.Event:
         """Return Stop Event."""
         return self._stop_event
 
     @property
-    def stream_ready_event(self) -> asyncio.Event:
-        """Return Stream Ready Event."""
-        return self._stream_ready_event
+    def ready_event(self) -> asyncio.Event:
+        """Return Ready Event."""
+        return self._ready_event
 
     @property
     def resolution(self) -> Resolution:
