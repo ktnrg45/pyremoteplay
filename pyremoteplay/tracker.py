@@ -93,10 +93,13 @@ class DeviceTracker:
 
     def _handle(self, data: bytes, addr: tuple):
         status = parse_ddp_response(data, addr[0])
-        self._update_device(status)
+        if status:
+            self._update_device(status)
 
     def _update_device(self, status: dict):
-        address = status["host-ip"]
+        address = status.get("host-ip")
+        if not address:
+            return
         if address in self._devices_data:
             device_data = self._devices_data[address]
         else:
