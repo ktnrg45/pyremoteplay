@@ -8,6 +8,7 @@ from typing import Iterable, TYPE_CHECKING, Union
 from collections import deque
 from enum import IntEnum, auto
 import time
+import asyncio
 
 from .stream_packets import FeedbackEvent, FeedbackHeader, ControllerState, StickState
 
@@ -47,6 +48,7 @@ class Controller:
         self._should_send = threading.Semaphore()
         self._stop_event = threading.Event()
         self._thread: threading.Thread = None
+
         self._last_state = ControllerState()
         self._stick_state = ControllerState()
 
@@ -145,6 +147,38 @@ class Controller:
         event.pack(buf)
         self._event_buf.appendleft(buf)
 
+    def _button(
+        self,
+        name: FeedbackEvent.Type,
+        action: ButtonAction,
+    ) -> tuple[FeedbackEvent.Type, ButtonAction]:
+        if not self._check_session():
+            return None
+        if isinstance(action, self.ButtonAction):
+            _action = action
+        else:
+            try:
+                _action = self.ButtonAction[action.upper()]
+            except KeyError:
+                _LOGGER.error("Invalid Action: %s", action)
+                return
+        if isinstance(name, FeedbackEvent.Type):
+            button = name
+        else:
+            try:
+                button = FeedbackEvent.Type[name.upper()]
+            except KeyError:
+                _LOGGER.error("Invalid button: %s", name)
+                return None
+
+        if _action == self.ButtonAction.PRESS:
+            self._add_event_buffer(FeedbackEvent(button, is_active=True))
+        elif _action == self.ButtonAction.RELEASE:
+            self._add_event_buffer(FeedbackEvent(button, is_active=False))
+        elif _action == self.ButtonAction.TAP:
+            self._add_event_buffer(FeedbackEvent(button, is_active=True))
+        return button, _action
+
     def button(
         self,
         name: Union[str, FeedbackEvent.Type],
@@ -159,34 +193,39 @@ class Controller:
         :param action: One of `press`, `release`, `tap`, or `Controller.ButtonAction`.
         :param delay: Delay between press and release. Only used when action is `tap`.
         """
-        if not self._check_session():
+        data = self._button(name, action)
+        if not data:
             return
-        if isinstance(action, self.ButtonAction):
-            _action = action
-        else:
-            try:
-                _action = self.ButtonAction[action.upper()]
-            except KeyError:
-                _LOGGER.error("Invalid Action: %s", action)
-                return
-        if isinstance(name, FeedbackEvent.Type):
-            button = int(name)
-        else:
-            try:
-                button = int(FeedbackEvent.Type[name.upper()])
-            except KeyError:
-                _LOGGER.error("Invalid button: %s", name)
-                return
-
-        if _action == self.ButtonAction.PRESS:
-            self._add_event_buffer(FeedbackEvent(button, is_active=True))
-        elif _action == self.ButtonAction.RELEASE:
-            self._add_event_buffer(FeedbackEvent(button, is_active=False))
-        elif _action == self.ButtonAction.TAP:
-            self._add_event_buffer(FeedbackEvent(button, is_active=True))
+        button, _action = data
+        if _action == self.ButtonAction.TAP:
             self._send_event()
             time.sleep(delay)
-            self.button(name, self.ButtonAction.RELEASE)
+            self.button(button, self.ButtonAction.RELEASE)
+            return
+        self._send_event()
+
+    async def async_button(
+        self,
+        name: Union[str, FeedbackEvent.Type],
+        action: Union[str, ButtonAction] = "tap",
+        delay=0.1,
+    ):
+        """Emulate pressing or releasing button. Async.
+
+        If action is `tap` this coroutine will sleep by delay.
+
+        :param name: The name of button. Use buttons() to show valid buttons.
+        :param action: One of `press`, `release`, `tap`, or `Controller.ButtonAction`.
+        :param delay: Delay between press and release. Only used when action is `tap`.
+        """
+        data = self._button(name, action)
+        if not data:
+            return
+        button, _action = data
+        if _action == self.ButtonAction.TAP:
+            self._send_event()
+            await asyncio.sleep(delay)
+            await self.async_button(button, self.ButtonAction.RELEASE)
             return
         self._send_event()
 
@@ -257,13 +296,13 @@ class Controller:
 
     def _check_session(self) -> bool:
         if self.session is None:
-            _LOGGER.error("Controller has no session")
+            _LOGGER.warning("Controller has no session")
             return False
         if self.session.is_stopped:
-            _LOGGER.error("Session is stopped")
+            _LOGGER.warning("Session is stopped")
             return False
         if not self.session.is_ready:
-            _LOGGER.error("Session is not ready")
+            _LOGGER.warning("Session is not ready")
             return False
         return True
 

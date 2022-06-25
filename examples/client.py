@@ -15,10 +15,8 @@ def stop(device, thread):
     print("stopped")
 
 
-def worker(device, user):
+def worker(device):
     loop = asyncio.new_event_loop()
-    receiver = QueueReceiver()
-    device.create_session(user, receiver=receiver, loop=loop)
     task = loop.create_task(device.connect())
     loop.run_until_complete(task)
     loop.run_forever()
@@ -35,7 +33,9 @@ def start(ip_address):
         print("No users registered")
         return None
     user = users[0]  # Gets first user name
-    thread = threading.Thread(target=worker, args=(device, user), daemon=True)
+    receiver = QueueReceiver()
+    device.create_session(user, receiver=receiver)
+    thread = threading.Thread(target=worker, args=(device,), daemon=True)
     thread.start()
     atexit.register(
         lambda: stop(device, thread)
