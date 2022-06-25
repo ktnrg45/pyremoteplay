@@ -3,6 +3,7 @@
 import asyncio
 import threading
 import atexit
+
 from pyremoteplay import RPDevice
 from pyremoteplay.receiver import QueueReceiver
 
@@ -40,6 +41,9 @@ def start(ip_address):
     atexit.register(
         lambda: stop(device, thread)
     )  # Make sure we stop the thread on exit.
+
+    # Wait for session to be ready
+    device.session.wait()
     return device
 
 
@@ -67,3 +71,8 @@ def start(ip_address):
 # Move Left stick diagonally left and down halfway
 # >> device.controller.stick("left", point=(-0.5, 0.5))
 #
+# Standby; Only when connected:
+# >> device.session.standby()
+#
+# Wakeup using first user found:
+# >> device.wakeup(device.get_users[0])

@@ -17,6 +17,7 @@ from pyee import ExecutorEventEmitter
 
 from pyremoteplay.receiver import AVReceiver
 from .const import (
+    DEFAULT_SESSION_TIMEOUT,
     FPS,
     OS_TYPE,
     RP_CRYPT_SIZE,
@@ -551,7 +552,8 @@ class Session:
 
     def standby(self):
         """Set host to standby."""
-
+        if not self.is_ready:
+            raise RemotePlayError("Session is not ready")
         msg = self._build_msg(Session.MessageType.STANDBY)
         self._send(msg)
         _LOGGER.info("Sending Standby")
@@ -644,6 +646,39 @@ class Session:
     def _set_ready(self):
         self.ready_event.set()
         self._state = Session.State.READY
+
+    def wait(self, timeout: Union[float, int] = DEFAULT_SESSION_TIMEOUT) -> bool:
+        """Wait for session to be ready. Return True if session becomes ready.
+
+        Blocks until timeout exceeded or when session is ready.
+
+        :param timeout: Timeout in seconds.
+        """
+        start = time.time()
+        while not self.is_ready:
+            if self.is_stopped:
+                return False
+            if time.time() - start > timeout:
+                return False
+            time.sleep(0.01)
+        return self.is_ready
+
+    async def async_wait(
+        self, timeout: Union[float, int] = DEFAULT_SESSION_TIMEOUT
+    ) -> bool:
+        """Wait for session to be ready. Return True if session becomes ready.
+
+        Waits until timeout exceeded or when session is ready.
+
+        :param timeout: Timeout in seconds.
+        """
+        if self.is_stopped:
+            return False
+        try:
+            await asyncio.wait_for(self.ready_event.wait(), timeout)
+        except asyncio.TimeoutError:
+            pass
+        return self.is_ready
 
     @property
     def host(self) -> str:
