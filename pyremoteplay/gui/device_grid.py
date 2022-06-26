@@ -231,14 +231,13 @@ class DeviceGridWidget(QtWidgets.QWidget):
         """Create Button Grid."""
         for widget in self.buttons():
             widget.update_state()
-            if widget.device.ip_address in devices:
-                devices.pop(widget.device.ip_address)
         if devices:
-            count = self.layout().count()
-            for index, device in enumerate(devices.values()):
-                if not device.status:
+            cur_index = len(self.buttons()) - 1
+            current = [button.device.host for button in self.buttons()]
+            for ip_address, device in devices.items():
+                if ip_address in current:
                     continue
-                cur_index = index + count
+                cur_index += 1
                 col = cur_index % self.MAX_COLS
                 row = cur_index // self.MAX_COLS
                 button = DeviceButton(device)
