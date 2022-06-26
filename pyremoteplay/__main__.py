@@ -393,3 +393,7 @@ class CLIInstance:
         self._loop.call_soon_threadsafe(self._loop.stop)
         curses.endwin()
         sys.exit()
+
+
+if __name__ == "__main__":
+    main()
