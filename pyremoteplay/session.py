@@ -231,7 +231,11 @@ class Session:
 
         def close(self):
             """Close Transport."""
-            self._transport.close()
+            try:
+                self._transport.close()
+            # pylint: disable=broad-except
+            except Exception as error:
+                _LOGGER.warning("Session Transport did not close; Error: %s", error)
 
         @property
         def transport(self) -> asyncio.BaseTransport:
@@ -240,7 +244,9 @@ class Session:
 
     def __repr__(self):
         return (
-            f"<RP Session host={self._host} "
+            f"{str(self.__class__)[:-1]} "
+            f"host={self.host} "
+            f"state={self.state.name} "
             f"resolution={self.resolution} "
             f"fps={self.fps}>"
         )
@@ -569,7 +575,6 @@ class Session:
         _LOGGER.info("Session Started")
         self._ready_event = asyncio.Event()
         self._stop_event = asyncio.Event()
-        self._ready_event = asyncio.Event()
 
         self.events.on("av_ready", self._init_av_handler)
 
@@ -608,10 +613,10 @@ class Session:
             _LOGGER.debug("Session already stopping")
             return
         _LOGGER.debug("Session Received Stop Signal")
-        if self._stream:
-            self._stream.stop()
         if self._stop_event:
             self._stop_event.set()
+        if self._stream:
+            self._stream.stop()
         if self._tasks:
             for task in self._tasks:
                 task.cancel()
@@ -644,7 +649,6 @@ class Session:
             old_receiver.close()
 
     def _set_ready(self):
-        self.ready_event.set()
         self._state = Session.State.READY
 
     def wait(self, timeout: Union[float, int] = DEFAULT_SESSION_TIMEOUT) -> bool:
@@ -655,10 +659,8 @@ class Session:
         :param timeout: Timeout in seconds.
         """
         start = time.time()
-        while not self.is_ready:
+        while time.time() - start > timeout and not self.is_ready:
             if self.is_stopped:
-                return False
-            if time.time() - start > timeout:
                 return False
             time.sleep(0.01)
         return self.is_ready
@@ -672,12 +674,11 @@ class Session:
 
         :param timeout: Timeout in seconds.
         """
-        if self.is_stopped:
-            return False
-        try:
-            await asyncio.wait_for(self.ready_event.wait(), timeout)
-        except asyncio.TimeoutError:
-            pass
+        start = time.time()
+        while time.time() - start < timeout and not self.is_ready:
+            if self.is_stopped:
+                return False
+            await asyncio.sleep(0.01)
         return self.is_ready
 
     @property
@@ -691,7 +692,7 @@ class Session:
         return self._type
 
     @property
-    def state(self) -> str:
+    def state(self) -> State:
         """Return State."""
         if self._stop_event is None:
             return self._state
@@ -728,11 +729,6 @@ class Session:
     def stop_event(self) -> asyncio.Event:
         """Return Stop Event."""
         return self._stop_event
-
-    @property
-    def ready_event(self) -> asyncio.Event:
-        """Return Ready Event."""
-        return self._ready_event
 
     @property
     def resolution(self) -> Resolution:

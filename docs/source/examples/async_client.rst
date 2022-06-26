@@ -1,8 +1,6 @@
-Examples
+Async Client
 ===============================================================================================
-.. toctree::
-   :maxdepth: 2
 
-   client
-   async_client
-   gamepad
+.. literalinclude:: ../../../examples/async_client.py
+   :language: python
+

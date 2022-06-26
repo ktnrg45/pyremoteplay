@@ -1,4 +1,7 @@
-"""Example of running client. We are assuming that we have already linked a PSN profile to our Remote Play device."""
+"""Example of running client.
+
+We are assuming that we have already linked a PSN profile to our Remote Play device.
+"""
 
 import asyncio
 import threading
@@ -43,7 +46,7 @@ def start(ip_address):
     )  # Make sure we stop the thread on exit.
 
     # Wait for session to be ready
-    device.session.wait()
+    device.wait_for_session()
     return device
 
 
@@ -71,8 +74,8 @@ def start(ip_address):
 # Move Left stick diagonally left and down halfway
 # >> device.controller.stick("left", point=(-0.5, 0.5))
 #
-# Standby; Only when connected:
+# Standby; Only available when session is connected:
 # >> device.session.standby()
 #
-# Wakeup using first user found:
+# Wakeup/turn on using first user:
 # >> device.wakeup(device.get_users[0])

@@ -7,6 +7,7 @@ from typing import Callable, Union
 import socket
 from functools import wraps
 import inspect
+import time
 
 import aiohttp
 from aiohttp.client_exceptions import ContentTypeError
@@ -15,6 +16,7 @@ from pyps4_2ndscreen.media_art import async_search_ps_store, ResultItem
 from pyremoteplay.receiver import AVReceiver
 from .const import (
     DEFAULT_POLL_COUNT,
+    DEFAULT_SESSION_TIMEOUT,
     DDP_PORTS,
     Quality,
     Resolution,
@@ -112,6 +114,8 @@ class RPDevice:
         hosts = await async_search()
         return _status_to_device(hosts)
 
+    WAKEUP_TIMEOUT = 60.0
+
     def __init__(self, host: str):
         socket.gethostbyname(host)  # Raise Exception if invalid
 
@@ -129,7 +133,7 @@ class RPDevice:
         self._media_info = None
         self._image = None
         self._session = None
-        self._controller = None
+        self._controller = Controller()
 
     @_load_profiles
     def get_users(self, profiles: Profiles = None) -> list[str]:
@@ -240,7 +244,7 @@ class RPDevice:
         hdr: bool = False,
     ) -> Union[Session, None]:
         """Return initialized session if session created else return None.
-        Also connects a controller.
+        Also connects a controller to session.
 
         See :class:`Session <pyremoteplay.session.Session>`  for param details.
 
@@ -249,7 +253,7 @@ class RPDevice:
         """
         if self.session:
             if not self.session.is_stopped:
-                _LOGGER.error("Device session already exists. Disconnect first.")
+                _LOGGER.error("Running session already exists. Disconnect first.")
                 return None
             self.disconnect()  # Cleanup session
         profile = self.get_profile(user, profiles)
@@ -267,7 +271,8 @@ class RPDevice:
             codec=codec,
             hdr=hdr,
         )
-        self.controller = Controller(self.session)
+        self.controller.disconnect()
+        self.controller.connect(self.session)
         return self._session
 
     async def connect(self) -> bool:
@@ -285,7 +290,6 @@ class RPDevice:
         if self.session:
             if self.connected:
                 self.session.stop()
-            del self._session
         self._session = None
 
     async def standby(self, user="", profiles: Profiles = None) -> bool:
@@ -342,6 +346,56 @@ class RPDevice:
             key = profile["hosts"][self.mac_address]["data"]["RegistKey"]
         regist_key = format_regist_key(key)
         wakeup(self.host, regist_key, host_type=self.host_type)
+
+    def wait_for_wakeup(self, timeout: float = WAKEUP_TIMEOUT) -> bool:
+        """Wait for device to wakeup. Blocks until device is on or for timeout.
+
+        :param timeout: Timeout in seconds
+        """
+        start = time.time()
+        while time.time() - start < timeout and not self.is_on:
+            self.get_status()
+            time.sleep(1)
+        return self.is_on
+
+    async def async_wait_for_wakeup(self, timeout: float = WAKEUP_TIMEOUT) -> bool:
+        """Wait for device to wakeup. Wait until device is on or for timeout.
+
+        :param timeout: Timeout in seconds
+        """
+        start = time.time()
+        while time.time() - start < timeout and not self.is_on:
+            await self.async_get_status()
+            await asyncio.sleep(1)
+        return self.is_on
+
+    def wait_for_session(
+        self, timeout: Union[float, int] = DEFAULT_SESSION_TIMEOUT
+    ) -> bool:
+        """Wait for session to be ready. Return True if session becomes ready.
+
+        Blocks until timeout exceeded or when session is ready.
+
+        :param timeout: Timeout in seconds.
+        """
+        if not self.session:
+            _LOGGER.error("Device has no session")
+            return False
+        return self.session.wait(timeout)
+
+    async def async_wait_for_session(
+        self, timeout: Union[float, int] = DEFAULT_SESSION_TIMEOUT
+    ) -> bool:
+        """Wait for session to be ready. Return True if session becomes ready.
+
+        Waits until timeout exceeded or when session is ready.
+
+        :param timeout: Timeout in seconds.
+        """
+        if not self.session:
+            _LOGGER.error("Device has no session")
+            return False
+        return await self.session.async_wait(timeout)
 
     @_load_profiles
     def register(
@@ -454,9 +508,7 @@ class RPDevice:
     @property
     def is_on(self) -> bool:
         """Return True if device is on."""
-        if self.status.get("status-code") == STATUS_OK:
-            return True
-        return False
+        return self.status.get("status-code") == STATUS_OK
 
     @property
     def app_name(self) -> str:
@@ -497,9 +549,9 @@ class RPDevice:
 
     @controller.setter
     def controller(self, controller: Controller):
-        """Set Controller. Also stops previously connected controller."""
+        """Set Controller. Also stops and disconnects the current controller."""
         if not isinstance(controller, Controller):
             raise ValueError(f"Expected an instance of {Controller}")
         if self.controller:
-            self.controller.stop()
+            self.controller.disconnect()
         self._controller = controller

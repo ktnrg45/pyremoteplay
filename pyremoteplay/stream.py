@@ -51,7 +51,7 @@ class RPStream:
     STATE_INIT = "init"
     STATE_READY = "ready"
 
-    class Protocol(asyncio.Protocol):
+    class Protocol(asyncio.DatagramProtocol):
         """Protocol for stream."""
 
         def __init__(self, stream):
@@ -73,7 +73,11 @@ class RPStream:
 
         def close(self):
             """Close Protocol"""
-            self.transport.close()
+            try:
+                self.transport.close()
+            # pylint: disable=broad-except
+            except Exception as error:
+                _LOGGER.warning("Stream Transport did not close; Error: %s", error)
 
         @property
         def socket(self):
@@ -146,7 +150,7 @@ class RPStream:
         """Add Receiver."""
         self._av_handler.add_receiver(receiver)
 
-    def ready(self):
+    def _set_ready(self):
         """Notify Session that stream is ready."""
         _LOGGER.debug("Stream Ready")
         self._state = RPStream.STATE_READY
@@ -364,7 +368,7 @@ class RPStream:
         if not self._ecdh.set_secret(ecdh_pub_key, ecdh_sig):
             self._stop_event.set()
         self._cipher = self._ecdh.init_ciphers()
-        self.ready()
+        self._set_ready()
         if self._av_handler.has_receiver:
             self._av_handler.set_cipher(self._cipher)
 
@@ -378,13 +382,14 @@ class RPStream:
 
     def stop(self):
         """Stop Stream."""
-        _LOGGER.debug("Stopping Stream")
-        self._stop_event.set()
-        if self._protocol:
-            self._disconnect()
-            self._protocol.close()
-        if self._cb_stop is not None:
-            self._cb_stop()
+        if not self.stop_event.is_set():
+            _LOGGER.debug("Stopping Stream")
+            self._stop_event.set()
+            if self._protocol:
+                self._disconnect()
+                self._protocol.close()
+            if self._cb_stop is not None:
+                self._cb_stop()
 
     def recv_stream_info(self, info: dict):
         """Receive stream info."""
@@ -394,7 +399,6 @@ class RPStream:
     def recv_bang(self, accepted: bool, ecdh_pub_key: bytes, ecdh_sig: bytes):
         """Receive Bang Payload."""
         if self._is_test and self._test:
-            self.ready()
             self._test.run_rtt()
         else:
             if accepted:

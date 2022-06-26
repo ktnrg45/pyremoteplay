@@ -4,16 +4,15 @@ import logging
 import threading
 import sys
 import traceback
-from typing import Iterable, TYPE_CHECKING, Union
+from typing import Iterable, Union
 from collections import deque
 from enum import IntEnum, auto
 import time
 import asyncio
 
 from .stream_packets import FeedbackEvent, FeedbackHeader, ControllerState, StickState
-
-if TYPE_CHECKING:
-    from .session import Session
+from .errors import RemotePlayError
+from .session import Session
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,23 +36,32 @@ class Controller:
         """Return list of valid buttons."""
         return [button.name for button in FeedbackEvent.Type]
 
-    def __init__(self, session=None, **kwargs):
+    def __init__(self, session=None):
         self._session = session
         self._sequence_event = 0
         self._sequence_state = 0
         self._event_buf = deque([], Controller.MAX_EVENTS)
-        self._buttons = {}
-        self._params = kwargs
-        self._started = False
+        self._last_state = ControllerState()
+        self._stick_state = ControllerState()
+
         self._should_send = threading.Semaphore()
         self._stop_event = threading.Event()
         self._thread: threading.Thread = None
 
+    def __del__(self):
+        self.disconnect()
+
+    def __reset_session(self):
+        self._sequence_event = 0
+        self._sequence_state = 0
+        self._event_buf = deque([], Controller.MAX_EVENTS)
         self._last_state = ControllerState()
         self._stick_state = ControllerState()
 
-    def __del__(self):
-        self.disconnect()
+    def __reset_worker(self):
+        self._should_send = threading.Semaphore()
+        self._stop_event = threading.Event()
+        self._thread = None
 
     def __worker(self):
         """Worker for sending feedback packets. Run in thread."""
@@ -70,34 +78,39 @@ class Controller:
                     traceback.print_exception(
                         exc_type, exc_value, exc_traceback, file=sys.stdout
                     )
-        self._session = None
-        self._thread = None
-        self._stop_event.clear()
-        self._should_send = threading.Semaphore()
+        self.__reset_worker()
         _LOGGER.info("Controller stopped")
 
     def connect(self, session: Session):
         """Connect controller to session."""
-        if not isinstance(session, Session):
-            raise TypeError(f"Expected instance of {Session}")
         if self._session is not None:
-            _LOGGER.warning("Controller already connected. Call disconnect first")
+            _LOGGER.warning("Controller already connected. Call `disconnect()` first")
             return
+
+        if session is not None:
+            if not isinstance(session, Session):
+                raise TypeError(f"Expected {Session}. Got {type(session)}")
+            if session.is_running:
+                raise RemotePlayError("Cannot set a running session")
+            if session.is_stopped:
+                raise RemotePlayError("Cannot set a stopped session")
+
+        self.__reset_session()
         self._session = session
 
     def start(self):
         """Start Controller.
 
-        This starts the controller worker which listens for when the sticks changes and sends the state to the host.
-        If this is not called, the
+        This starts the controller worker which listens for when the sticks move
+        and sends the state to the host. If this is not called, the
         :meth:`update_sticks() <pyremoteplay.controller.Controller.update_sticks>`
         method needs to be called for the host to receive the state.
         """
         if self._thread is not None:
-            _LOGGER.warning("Controller is running. Call stop first")
+            _LOGGER.warning("Controller is running. Call `stop()` first")
             return
         if self._session is None:
-            _LOGGER.warning("Controller has no session. Call connect first")
+            _LOGGER.warning("Controller has no session. Call `connect()` first")
             return
         self._thread = threading.Thread(target=self.__worker, daemon=True)
         self._thread.start()
@@ -107,8 +120,9 @@ class Controller:
         self._stop_event.set()
 
     def disconnect(self):
-        """Stop and Disconnect Controller."""
+        """Stop and Disconnect Controller. Must be called to change session."""
         self.stop()
+        self.__reset_session()
         self._session = None
 
     def update_sticks(self):
@@ -134,7 +148,7 @@ class Controller:
         if not data:
             return
         self._session.stream.send_feedback(
-            FeedbackHeader.Type.EVENT, self.sequence_event, data=data
+            FeedbackHeader.Type.EVENT, self._sequence_event, data=data
         )
         self._sequence_event += 1
 
@@ -161,7 +175,7 @@ class Controller:
                 _action = self.ButtonAction[action.upper()]
             except KeyError:
                 _LOGGER.error("Invalid Action: %s", action)
-                return
+                return None
         if isinstance(name, FeedbackEvent.Type):
             button = name
         else:
@@ -177,6 +191,7 @@ class Controller:
             self._add_event_buffer(FeedbackEvent(button, is_active=False))
         elif _action == self.ButtonAction.TAP:
             self._add_event_buffer(FeedbackEvent(button, is_active=True))
+        self._send_event()
         return button, _action
 
     def button(
@@ -198,11 +213,8 @@ class Controller:
             return
         button, _action = data
         if _action == self.ButtonAction.TAP:
-            self._send_event()
             time.sleep(delay)
             self.button(button, self.ButtonAction.RELEASE)
-            return
-        self._send_event()
 
     async def async_button(
         self,
@@ -223,11 +235,8 @@ class Controller:
             return
         button, _action = data
         if _action == self.ButtonAction.TAP:
-            self._send_event()
             await asyncio.sleep(delay)
             await self.async_button(button, self.ButtonAction.RELEASE)
-            return
-        self._send_event()
 
     def stick(
         self,
@@ -305,11 +314,6 @@ class Controller:
             _LOGGER.warning("Session is not ready")
             return False
         return True
-
-    @property
-    def sequence_event(self) -> int:
-        """Return Sequence Number for events."""
-        return self._sequence_event
 
     @property
     def stick_state(self) -> ControllerState:
