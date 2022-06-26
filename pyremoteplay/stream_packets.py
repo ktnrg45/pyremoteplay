@@ -26,52 +26,53 @@ class UnexpectedData(Exception):
     """Data incorrect or not expected."""
 
 
-LAUNCH_SPEC = {
-    "sessionId": "sessionId4321",
-    "streamResolutions": [
-        {"resolution": {"width": None, "height": None}, "maxFps": None, "score": 10}
-    ],
-    "network": {
-        "bwKbpsSent": None,
-        "bwLoss": 0.001000,
-        "mtu": None,
-        "rtt": None,
-        "ports": [53, 2053],
-    },
-    "slotId": 1,
-    "appSpecification": {
-        "minFps": 30,
-        "minBandwidth": 0,
-        "extTitleId": "ps3",
-        "version": 1,
-        "timeLimit": 1,
-        "startTimeout": 100,
-        "afkTimeout": 100,
-        "afkTimeoutDisconnect": 100,
-    },
-    "konan": {"ps3AccessToken": "accessToken", "ps3RefreshToken": "refreshToken"},
-    "requestGameSpecification": {
-        "model": "bravia_tv",
-        "platform": "android",
-        "audioChannels": "5.1",
-        "language": "sp",
-        "acceptButton": "X",
-        "connectedControllers": ["xinput", "ds3", "ds4"],
-        "yuvCoefficient": "bt709",  # Changed from bt601
-        "videoEncoderProfile": "hw4.1",
-        "audioEncoderProfile": "audio1",
-    },
-    "userProfile": {
-        "onlineId": "psnId",
-        "npId": "npId",
-        "region": "US",
-        "languagesUsed": ["en", "jp"],
-    },
-    "adaptiveStreamMode": "resize",
-    "videoCodec": "",
-    "dynamicRange": "",
-    "handshakeKey": None,
-}
+def __get_launch_spec() -> dict:
+    return {
+        "sessionId": "sessionId4321",
+        "streamResolutions": [
+            {"resolution": {"width": None, "height": None}, "maxFps": None, "score": 10}
+        ],
+        "network": {
+            "bwKbpsSent": None,
+            "bwLoss": 0.001000,
+            "mtu": None,
+            "rtt": None,
+            "ports": [53, 2053],
+        },
+        "slotId": 1,
+        "appSpecification": {
+            "minFps": 30,
+            "minBandwidth": 0,
+            "extTitleId": "ps3",
+            "version": 1,
+            "timeLimit": 1,
+            "startTimeout": 100,
+            "afkTimeout": 100,
+            "afkTimeoutDisconnect": 100,
+        },
+        "konan": {"ps3AccessToken": "accessToken", "ps3RefreshToken": "refreshToken"},
+        "requestGameSpecification": {
+            "model": "bravia_tv",
+            "platform": "android",
+            "audioChannels": "5.1",
+            "language": "sp",
+            "acceptButton": "X",
+            "connectedControllers": ["xinput", "ds3", "ds4"],
+            "yuvCoefficient": "bt709",  # Changed from bt601
+            "videoEncoderProfile": "hw4.1",
+            "audioEncoderProfile": "audio1",
+        },
+        "userProfile": {
+            "onlineId": "psnId",
+            "npId": "npId",
+            "region": "US",
+            "languagesUsed": ["en", "jp"],
+        },
+        "adaptiveStreamMode": "resize",
+        "videoCodec": "",
+        "dynamicRange": "",
+        "handshakeKey": None,
+    }
 
 
 def get_launch_spec(
@@ -94,7 +95,7 @@ def get_launch_spec(
     codec = StreamType.preset(stream_type)
     hdr = stream_type == StreamType.HEVC_HDR
     _LOGGER.info("Using bitrate: %s kbps", bitrate)
-    launch_spec = LAUNCH_SPEC
+    launch_spec = __get_launch_spec()
     launch_spec["streamResolutions"][0]["resolution"]["width"] = resolution["width"]
     launch_spec["streamResolutions"][0]["resolution"]["height"] = resolution["height"]
     launch_spec["streamResolutions"][0]["maxFps"] = fps
