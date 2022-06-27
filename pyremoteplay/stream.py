@@ -23,7 +23,7 @@ from .stream_packets import (
     Packet,
     get_launch_spec,
 )
-from .util import listener
+from .util import listener, log_bytes
 
 if TYPE_CHECKING:
     from .session import Session
@@ -333,7 +333,7 @@ class RPStream:
             ecdh_pub_key=ecdh_pub_key,
             ecdh_sig=ecdh_sig,
         )
-        # log_bytes("Big Payload", data)
+        log_bytes("Big Payload", data)
         self.send_data(data, chunk_flag, channel)
 
     def _format_launch_spec(self, handshake_key: bytes, format_type=None) -> bytes:
@@ -363,14 +363,14 @@ class RPStream:
         launch_spec_b64 = base64.b64encode(launch_spec_xor)
         return launch_spec_b64
 
-    def set_ciphers(self, ecdh_pub_key: bytes, ecdh_sig: bytes):
+    def set_ciphers(self, ecdh_pub_key: bytes, ecdh_sig: bytes) -> bool:
         """Set Ciphers."""
         if not self._ecdh.set_secret(ecdh_pub_key, ecdh_sig):
-            self._stop_event.set()
+            self._session.error = "Stream Handshake failed"
+            # self._stop_event.set()
+            return False
         self._cipher = self._ecdh.init_ciphers()
-        self._set_ready()
-        if self._av_handler.has_receiver:
-            self._av_handler.set_cipher(self._cipher)
+        return True
 
     def _disconnect(self):
         """Disconnect Stream."""
@@ -401,11 +401,21 @@ class RPStream:
         if self._is_test and self._test:
             self._test.run_rtt()
         else:
-            if accepted:
-                self.set_ciphers(ecdh_pub_key, ecdh_sig)
+            if not accepted:
+                _LOGGER.error("RP Big Payload not accepted")
+
+            if self.set_ciphers(ecdh_pub_key, ecdh_sig):
+                if self._av_handler.has_receiver:
+                    self._av_handler.set_cipher(self._cipher)
+                self._set_ready()
             else:
-                _LOGGER.error("RP Launch Spec not accepted")
                 self._session.stop()
+
+            # if accepted:
+            #     self.set_ciphers(ecdh_pub_key, ecdh_sig)
+            # else:
+            #     _LOGGER.error("RP Launch Spec not accepted")
+            #     self._session.stop()
 
     def wait_for_ack(self, tsn: int, callback: callable):
         """Wait for ack received."""

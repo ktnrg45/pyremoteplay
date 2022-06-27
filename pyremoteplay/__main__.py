@@ -104,7 +104,7 @@ def select_profile(profiles: Profiles, use_single: bool, get_new: bool) -> str:
     if names == 1 and use_single:
         name = names[0]
         return name
-    print("Found Profiles")
+    print("\nFound Profiles")
     if get_new:
         names.append(NEW_PROFILE)
     names.append(CANCEL)

@@ -17,7 +17,7 @@ from .errors import CryptError
 from .keys import HMAC_KEY_PS4, HMAC_KEY_PS5
 from .const import TYPE_PS5
 
-from .util import from_b, to_b
+from .util import from_b, to_b, log_bytes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -426,7 +426,7 @@ class StreamECDH:
     def get_handshake_key(handshake: bytes = None):
         """Return random key for ECDH."""
         handshake_key = handshake or get_random_bytes(16)
-        # log_bytes("Handshake Key", handshake_key)
+        log_bytes("Handshake Key", handshake_key)
         return handshake_key
 
     @staticmethod
@@ -469,7 +469,7 @@ class StreamECDH:
         )
         remote_key.public_numbers()
         secret = local_key.exchange(ec.ECDH(), remote_key)
-        # log_bytes("Secret", secret)
+        log_bytes("Secret", secret)
         return secret
 
     def __init__(self, handshake: bytes = None, private_key: bytes = None):
@@ -494,13 +494,15 @@ class StreamECDH:
         """Return True if Remote Signature is valid."""
         hmac = HMAC.new(key=self.handshake_key, msg=remote_key, digestmod=SHA256)
         _remote_sig = hmac.digest()
-        # log_bytes("Public Key Remote", remote_key)
-        # log_bytes("Public Key Sig", _remote_sig)
+        log_bytes("Local Public Key", self.public_key)
+        log_bytes("Local Public Sig", self.public_sig)
+        log_bytes("Remote Public Key", remote_key)
+        log_bytes("Remote Public Sig", _remote_sig)
         if _remote_sig == remote_sig:
             _LOGGER.debug("Remote Signature Verified")
             return True
         _LOGGER.error("Remote Signature Invalid")
-        # log_bytes("Expected Sig", remote_sig)
+        log_bytes("Expected Sig", remote_sig)
         return False
 
     def set_secret(self, remote_key: bytes, remote_sig: bytes):

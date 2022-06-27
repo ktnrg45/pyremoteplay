@@ -41,7 +41,7 @@ from .keys import (
     SESSION_KEY_1_PS5,
 )
 from .stream import RPStream
-from .util import format_regist_key
+from .util import format_regist_key, log_bytes
 from .profile import UserProfile
 
 _LOGGER = logging.getLogger(__name__)
@@ -427,7 +427,7 @@ class Session:
             for char in session_id:
                 new_id.append(chr(char).encode())
             new_id = b"".join(new_id)
-            # log_bytes("New Session ID", new_id)
+            log_bytes("New Session ID", new_id)
             return new_id
 
         # log_bytes("Session RECV Data", data)
@@ -439,7 +439,7 @@ class Session:
             msg_type = Session.MessageType(data[5])
             _LOGGER.debug("RECV %s", Session.MessageType(msg_type).name)
         except ValueError:
-            _LOGGER.debug("Session RECV invalid Message Type: %s", data[5])
+            _LOGGER.debug("Session RECV unknown Message Type: %s", data[5])
             return
         if msg_type == Session.MessageType.HEARTBEAT_REQUEST:
             self._hb_last = time.time()
@@ -451,7 +451,7 @@ class Session:
                 _LOGGER.warning("RECV Session ID again")
                 return
             session_id = payload[2:]
-            # log_bytes("Session ID", session_id)
+            log_bytes("Session ID", session_id)
             try:
                 session_id.decode()
             except UnicodeDecodeError:
