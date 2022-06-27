@@ -272,7 +272,7 @@ class RPDevice:
             hdr=hdr,
         )
         self.controller.disconnect()
-        self.controller.connect(self.session)
+        self.controller = Controller(self.session)
         return self._session
 
     async def connect(self) -> bool:

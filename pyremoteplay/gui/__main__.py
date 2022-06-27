@@ -1,6 +1,7 @@
 """GUI Main Methods for pyremoteplay."""
 import sys
 import logging
+
 from PySide6 import QtCore, QtWidgets
 
 from .main_window import MainWindow

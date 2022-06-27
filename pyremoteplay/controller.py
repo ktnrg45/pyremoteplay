@@ -163,8 +163,8 @@ class Controller:
 
     def _button(
         self,
-        name: FeedbackEvent.Type,
-        action: ButtonAction,
+        name: Union[str, FeedbackEvent.Type],
+        action: Union[str, ButtonAction],
     ) -> tuple[FeedbackEvent.Type, ButtonAction]:
         if not self._check_session():
             return None
