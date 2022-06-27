@@ -543,6 +543,13 @@ class RPDevice:
         return False
 
     @property
+    def ready(self) -> bool:
+        """Return True if session is ready."""
+        if self.session is not None and self.session.is_ready:
+            return True
+        return False
+
+    @property
     def controller(self) -> Controller:
         """Return Controller."""
         return self._controller
