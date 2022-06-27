@@ -14,6 +14,7 @@ from .ddp import search
 from .oauth import prompt as oauth_prompt
 from .profile import Profiles, format_user_account
 from .device import RPDevice
+from .__version__ import VERSION
 
 NEW_PROFILE = "New Profile"
 CANCEL = "Cancel"
@@ -24,51 +25,51 @@ _LOGGER = logging.getLogger(__name__)
 
 def main():
     """Main entrypoint."""
-    logging.basicConfig(level=logging.WARNING)
     if "-l" in sys.argv or "--list" in sys.argv:
         show_devices()
+        return
+    if "-v" in sys.argv or "--version" in sys.argv:
+        print(VERSION)
         return
     parser = argparse.ArgumentParser(description="Start Remote Play.")
     parser.add_argument(
         "host", type=str, default="", help="IP address of Remote Play host"
     )
-    # parser.add_argument(
-    #     "-r",
-    #     "--resolution",
-    #     default="720p",
-    #     type=str,
-    #     choices=RESOLUTIONS,
-    #     help="Resolution to use",
-    # )
-    # parser.add_argument(
-    #     "-f",
-    #     "--fps",
-    #     default="high",
-    #     type=str,
-    #     choices=FPS_CHOICES,
-    #     help="Max FPS to use",
-    # )
 
-    # Just to show in help
+    parser.add_argument(
+        "-r", "--register", action="store_true", help="Register with Remote Play host"
+    )
+
+    parser.add_argument(
+        "-t",
+        "--test",
+        action="store_true",
+        help="Test connecting to device with verbose logging",
+    )
+
+    ######## Just to show in help
     parser.add_argument(
         "-l",
         "--list",
         action="store_true",
         help="List Devices",
     )
+
     parser.add_argument(
-        "--register", action="store_true", help="Register with Remote Play host."
+        "-v",
+        "--version",
+        action="store_true",
+        help="Print Version",
     )
+    ########
 
     args = parser.parse_args()
     host = args.host
     should_register = args.register
-    # resolution = "360p"
-    # fps = 30
-    # resolution = args.resolution
-    # fps = args.fps
-    # if fps.isnumeric():
-    #     fps = int(fps)
+    test = args.test
+
+    level = logging.DEBUG if test else logging.WARNING
+    logging.basicConfig(level=level)
 
     try:
         socket.gethostbyname(host)
@@ -80,7 +81,7 @@ def main():
     if should_register:
         register_profile(device)
         return
-    cli(device)
+    cli(device, test)
 
 
 def show_devices():
@@ -196,7 +197,7 @@ def link_profile(device: RPDevice, user: str):
         sys.exit()
 
 
-def cli(device: RPDevice):
+def cli(device: RPDevice, test: bool = False):
     """Start CLI."""
     status = device.get_status()
     if not status:
@@ -208,7 +209,9 @@ def cli(device: RPDevice):
         if user not in device.get_users():
             print(f"User: {user} not registered with this device.\n")
             link_profile(device, user)
-        setup_worker(device, user)
+        if test:
+            print("Starting test...\n")
+        setup_worker(device, user, test)
     else:
         try:
             selection = input("No Profiles Found. Enter 'Y' to create profile.\n>> ")
@@ -230,12 +233,20 @@ def worker(device: RPDevice, user: str, event: threading.Event):
     loop.run_forever()
 
 
-def setup_worker(device: RPDevice, user: str):
+def setup_worker(device: RPDevice, user: str, test: bool):
     """Sync method for starting session."""
     event = threading.Event()
     thread = threading.Thread(target=worker, args=(device, user, event), daemon=True)
     thread.start()
-    curses.wrapper(start, device, event)
+    event.wait(timeout=5)
+    if not test:
+        curses.wrapper(start, device)
+    else:
+        result = "Pass" if device.session.is_ready else "Fail"
+        loop = device.session.loop
+        device.disconnect()
+        loop.stop()
+        print(f"\nTest Result: {result}\n")
 
 
 async def async_start(device: RPDevice, event: threading.Event):
@@ -244,16 +255,18 @@ async def async_start(device: RPDevice, event: threading.Event):
     started = await device.connect()
     if not started:
         loop.stop()
+        print(f"Session Failed to Start: {device.session.error}")
+    ready = await device.async_wait_for_session()
+    if not ready:
+        print("Timed out waiting for session to start")
     event.set()
 
 
-def start(stdscr, device: RPDevice, event: threading.Event):
+def start(stdscr, device: RPDevice):
     """Start Instance."""
-    event.wait(timeout=5)
     instance = CLIInstance(device)
-    if not device.session.is_running:
+    if not device.session.is_ready:
         curses.endwin()
-        print(f"Session Failed to Start: {device.session.error}")
         return
     instance.run(stdscr)
 
