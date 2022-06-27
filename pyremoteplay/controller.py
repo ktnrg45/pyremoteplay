@@ -96,6 +96,7 @@ class Controller:
                 raise RemotePlayError("Cannot set a stopped session")
 
         self.__reset_session()
+        self.__reset_worker()
         self._session = session
 
     def start(self):
