@@ -116,6 +116,14 @@ class RPDevice:
 
     WAKEUP_TIMEOUT = 60.0
 
+    def __repr__(self):
+        return (
+            f"{str(self.__class__)[:-1]} "
+            f"host={self.host} "
+            f"type={self.host_type} "
+            f"name={self.host_name}>"
+        )
+
     def __init__(self, host: str):
         socket.gethostbyname(host)  # Raise Exception if invalid
 
