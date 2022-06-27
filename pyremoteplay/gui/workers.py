@@ -116,6 +116,15 @@ class AsyncHandler(QtCore.QObject):
         """Start and run polling."""
         if sys.platform == "win32":
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        else:
+            try:
+                import uvloop
+
+                asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+                _LOGGER.info("Using uvloop")
+            except ModuleNotFoundError:
+                pass
+
         self.loop = asyncio.new_event_loop()
         self.rp_worker.setLoop(self.loop)
         self.__task = self.loop.create_task(self.run())
