@@ -28,6 +28,8 @@ Below is a list of such dependencies.
 - pyav (May require FFMPEG to be installed)
 - PySide6
 
+`uvloop` is supported for the GUI and will be used if installed.
+
 ## Installation ##
 It is recommended to install in a virtual environment.
 
