@@ -1,8 +1,14 @@
 # pyremoteplay #
+[![PyPi](https://img.shields.io/pypi/v/pyremoteplay.svg)](https://pypi.org/project/pyremoteplay/)
+[![Build Status](https://github.com/ktnrg45/pyremoteplay/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/ktnrg45/pyremoteplay/actions/?query=workflow%3Abuild)
+[![Documentation Status](https://readthedocs.org/projects/pyremoteplay/badge/?version=latest)](https://pyremoteplay.readthedocs.io/en/latest/?badge=latest)
+
 Python PlayStation Remote Play API
 
+[Documentation](https://pyremoteplay.readthedocs.io/en/latest)
+
 ## About ##
-This project provides an API to programmatically connect to and control Remote Play hosts (PS4 and PS5). In addition it includes an optional GUI, allowing to view the live stream and control the host through keyboard/mouse input. This library is based on the C/C++ project [Chiaki](https://github.com/thestr4ng3r/chiaki).
+This project provides an API to programmatically connect to and control Remote Play hosts (PS4 and PS5). The low-level networking internals is written using the Asyncio framework. In addition it includes an optional GUI, allowing to view the live stream and control the host through keyboard/mouse input. This library is based on the C/C++ project [Chiaki](https://github.com/thestr4ng3r/chiaki).
 
 ## Features ##
 - API to programatically control host and expose live audio/video stream
