@@ -62,7 +62,7 @@ class AVHandler:
                 self._send_corrupt,
             )
             self._receiver.get_audio_config(a_header)
-            self._schedule_congestion()
+            # self._schedule_congestion()
 
     def add_packet(self, msg: bytes):
         """Add Packet."""
@@ -114,6 +114,7 @@ class AVHandler:
         self._session.loop.call_later(0.5, self._send_congestion)
 
     def _send_congestion(self):
+        # TODO: Crashes remote play in game
         now = time.time()
         if now - self._last_congestion > 0.2 and not self._session.is_stopped:
             self._session._sync_run_io(  # pylint: disable=protected-access
