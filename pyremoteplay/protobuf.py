@@ -1,11 +1,15 @@
 # pylint: disable=no-member
 """Protobuf methods."""
-
+from __future__ import annotations
 import logging
+from typing import TYPE_CHECKING
 
 from google.protobuf.message import DecodeError
 from .takion_pb2 import SenkushaPayload, TakionMessage
 from .util import log_bytes
+
+if TYPE_CHECKING:
+    from .stream import RPStream
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -109,7 +113,7 @@ class ProtoHandler:
         data = msg.SerializeToString()
         return data
 
-    def __init__(self, stream):
+    def __init__(self, stream: RPStream):
         self._stream = stream
         self._recv_bang = False
         self._recv_info = False
@@ -182,6 +186,8 @@ class ProtoHandler:
 
         elif p_type == "DISCONNECT":
             _LOGGER.info("Host Disconnected; Reason: %s", msg.disconnect_payload.reason)
+            # pylint: disable=protected-access
+            self._stream._session.disconnect_reason = msg.disconnect_payload.reason
             self._stream.stop_event.set()
 
         # Test Packets

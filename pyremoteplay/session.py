@@ -267,6 +267,7 @@ class Session:
         hdr: bool = False,
     ):
         self.error = ""
+        self.disconnect_reason = ""
         self._host = host
         self._profile = profile
         self._regist_data = {}
@@ -556,14 +557,34 @@ class Session:
             self._thread_executor, partial(func, *args, **kwargs)
         )
 
-    def standby(self):
-        """Set host to standby."""
+    def _send_standby(self):
         if not self.is_ready:
             raise RemotePlayError("Session is not ready")
         msg = self._build_msg(Session.MessageType.STANDBY)
         self._send(msg)
         _LOGGER.info("Sending Standby")
-        self.stop()
+
+    def standby(self, timeout=3.0) -> bool:
+        """Set host to standby. Blocking. Return True if successful.
+
+        :param timeout: Timeout in seconds
+        """
+        self._send_standby()
+        start = time.time()
+        while time.time() - start > timeout and not self.is_stopped:
+            time.sleep(0.01)
+        return self.disconnect_reason != "" and self.is_stopped
+
+    async def async_standby(self, timeout=3.0) -> bool:
+        """Set host to standby. Return True if successful.
+
+        :param timeout: Timeout in seconds
+        """
+        self._send_standby()
+        start = time.time()
+        while time.time() - start > timeout and not self.is_stopped:
+            await asyncio.sleep(0.01)
+        return self.disconnect_reason != "" and self.is_stopped
 
     def _send_wakeup(self):
         """Wakeup Host."""
