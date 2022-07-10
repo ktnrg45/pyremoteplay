@@ -315,7 +315,7 @@ def search(
     :param host_type: Host type. Specific host type to search for.
     :param sock: Socket. Socket will not be closed if specified.
     :param timeout: Timeout in seconds.
-    :param directed: If True will use directed broadcast with all local interfaces.
+    :param directed: If True will use directed broadcast with all local interfaces. \
     Sock will be ignored.
     """
     ps_list = []
@@ -489,6 +489,7 @@ def async_send_msg(
     directed: bool = False,
 ):
     """Send a ddp message using async socket.
+
     :param sock: Socket to use.
     :param host: Remote host to send message to.
     :param msg: Message to send.
@@ -550,7 +551,7 @@ async def async_search(
     :param host_type: Host type. Specific host type to search for.
     :param sock: Socket. Socket will not be closed if specified.
     :param timeout: Timeout in seconds.
-    :param directed: If True will use directed broadcast with all local interfaces.
+    :param directed: If True will use directed broadcast with all local interfaces. \
     Sock will be ignored.
     """
     close = not sock
