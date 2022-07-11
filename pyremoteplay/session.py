@@ -212,6 +212,14 @@ class Session:
         KEYBOARD_TEXT_CHANGE_RES = 0x24
         KEYBOARD_CLOSE_REQ = 0x25
 
+    class ServerType(IntEnum):
+        """Server Type Enum."""
+
+        UNKNOWN = -1
+        PS4 = 0
+        PS4_PRO = 1
+        PS5 = 2
+
     class Protocol(asyncio.Protocol):
         """Protocol for session."""
 
@@ -272,7 +280,7 @@ class Session:
         self._profile = profile
         self._regist_data = {}
         self._session_id = b""
-        self._server_type = None
+        self._server_type = Session.ServerType.UNKNOWN
         self._type = ""
         self._regist_key = None
         self._rp_key = None
@@ -403,9 +411,14 @@ class Session:
         server_type = response.headers.get("RP-Server-Type")
         if response.status_code != 200 or server_type is None:
             return False
-        self._server_type = int.from_bytes(
+        _server_type = int.from_bytes(
             self._cipher.decrypt(b64decode(server_type)), "little"
         )
+        try:
+            self._server_type = Session.ServerType(_server_type)
+        except ValueError:
+            _LOGGER.error("Unknown Server Type: %s", _server_type)
+
         _LOGGER.debug("Server Type: %s", self._server_type)
         self._sock = socket.fromfd(
             response.raw.fileno(), socket.AF_INET, socket.SOCK_STREAM
@@ -754,6 +767,12 @@ class Session:
     @property
     def resolution(self) -> Resolution:
         """Return resolution."""
+        if (
+            self.server_type == Session.ServerType.PS4
+            and self._resolution == Resolution.RESOLUTION_1080P
+        ):
+            # Downgrade resolution to 720p if PS4
+            return Resolution.RESOLUTION_720P
         return self._resolution
 
     @property
@@ -782,6 +801,11 @@ class Session:
         if self.type == TYPE_PS4:
             return StreamType.H264
         return self._stream_type
+
+    @property
+    def server_type(self) -> ServerType:
+        """Return Server Type."""
+        return self._server_type
 
     @property
     def receiver(self) -> AVReceiver:
