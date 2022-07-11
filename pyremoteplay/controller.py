@@ -27,7 +27,7 @@ class Controller:
         RELEASE = auto()
         TAP = auto()
 
-    MAX_EVENTS = 16
+    MAX_EVENTS = 5
     STATE_INTERVAL_MAX_MS = 0.200
     STATE_INTERVAL_MIN_MS = 0.100
 

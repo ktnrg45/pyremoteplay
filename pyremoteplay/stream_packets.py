@@ -1,11 +1,14 @@
 """Stream Packets for pyremoteplay."""
+from __future__ import annotations
 import abc
 import json
 import logging
 from base64 import b64encode
+import dataclasses
 from enum import IntEnum
 from struct import pack, pack_into, unpack_from
 from typing import Iterable, Union
+from math import sqrt
 
 from .const import Quality, Resolution, FPS, StreamType
 from .crypt import StreamCipher
@@ -16,6 +19,9 @@ STREAM_START = b"\x00\x00\x00\x40\x01\x00\x00"
 A_RWND = 0x019000
 OUTBOUND_STREAMS = 0x64
 INBOUND_STREAMS = 0x64
+
+
+_I_SQRT = 1 / sqrt(2)
 
 
 class UnexpectedMessage(Exception):
@@ -161,6 +167,75 @@ class StickState:
         self._y = self.__scale_normalize(value)
 
 
+class MotionState:
+    """Controller Motion State."""
+
+    @dataclasses.dataclass(repr=True)
+    class GyroState:
+        """Gyro State."""
+
+        x: float = 0.0
+        y: float = 0.0
+        z: float = 0.0
+
+        def values(self) -> tuple[float]:
+            """Return values."""
+            return dataclasses.astuple(self)
+
+        def max(self) -> float:
+            """Return max value."""
+            return 30.0
+
+    @dataclasses.dataclass(repr=True)
+    class AccelState:
+        """Accel State"""
+
+        x: float = 0.0
+        y: float = 1.0
+        z: float = 0.0
+
+        def values(self) -> tuple[float]:
+            """Return values."""
+            return dataclasses.astuple(self)
+
+        def max(self) -> float:
+            """Return max value."""
+            return 5.0
+
+    @dataclasses.dataclass(repr=True)
+    class OrientState:
+        """Orient State."""
+
+        x: float = 0.0
+        y: float = 0.0
+        z: float = 0.0
+        w: float = 1.0
+
+        def values(self) -> tuple[float]:
+            """Return values."""
+            return dataclasses.astuple(self)
+
+    def __init__(self):
+        self._gyro = self.GyroState()
+        self._accel = self.AccelState()
+        self._orient = self.OrientState()
+
+    @property
+    def gyro(self) -> GyroState:
+        """Return Gyro State."""
+        return self._gyro
+
+    @property
+    def accel(self) -> AccelState:
+        """Return Accel State."""
+        return self._accel
+
+    @property
+    def orient(self) -> OrientState:
+        """Return Orient State."""
+        return self._orient
+
+
 class ControllerState:
     """State of both controller sticks."""
 
@@ -183,6 +258,7 @@ class ControllerState:
     ):
         self._left: StickState = self.__state_setter(left)
         self._right: StickState = self.__state_setter(right)
+        self._motion: MotionState = MotionState()
 
     def __state_setter(
         self, state: Union[StickState, Iterable[Union[int, float]], None]
@@ -219,6 +295,11 @@ class ControllerState:
     def right(self, state: Union[StickState, Iterable[Union[int, float]], None]):
         """Set right State."""
         self._right = self.__state_setter(state)
+
+    @property
+    def motion(self) -> MotionState:
+        """Return motion state."""
+        return self._motion
 
 
 class PacketSection(abc.ABC):
@@ -781,29 +862,16 @@ class FeedbackHeader(PacketSection):
 class FeedbackState(PacketSection):
     """Feedback Event."""
 
-    LENGTH = 25
+    LENGTH = 28
+    _MOTION_LENGTH = 17
 
-    PREFIX = bytes(
-        [
-            0xA0,
-            0xFF,
-            0x7F,
-            0xFF,
-            0x7F,
-            0xFF,
-            0x7F,
-            0xFF,
-            0x7F,
-            0x99,
-            0x99,
-            0xFF,
-            0x7F,
-            0xFE,
-            0xF7,
-            0xEF,
-            0x1F,
-        ]
-    )
+    # fmt: off
+    _MOTION_IDLE = bytes([
+        0xA0, 0xFF, 0x7F, 0xFF, 0x7F, 0xFF, 0x7F, 0xFF,
+        0x7F, 0x99, 0x99, 0xFF, 0x7F, 0xFE, 0xF7, 0xEF,
+        0x1F,
+    ])
+    # fmt: on
 
     class Type(IntEnum):
         """Enums for State."""
@@ -817,17 +885,54 @@ class FeedbackState(PacketSection):
         super().__init__(state_type)
         self.state: ControllerState = kwargs.get("state") or ControllerState()
 
+    def _get_quaternion(self) -> int:
+        values = self.state.motion.orient.values()
+        abs_values = [abs(val) for val in values]
+        largest_index = abs_values.index(max(abs_values))
+        largest = values[largest_index]
+        result = 1 if largest < 0.0 else 0
+        result |= largest_index << 1
+        for index, value in enumerate(values):
+            if index == largest_index:
+                continue
+            if value < -_I_SQRT:
+                value = -_I_SQRT
+            elif value > _I_SQRT:
+                value = _I_SQRT
+            value += _I_SQRT
+            value *= 0x01FF / (2.0 * _I_SQRT)
+            result |= int(value) << (3 + index * 9)
+        return result
+
+    def _pack_motion_state(self) -> bytes:
+        buf = bytearray(self._MOTION_LENGTH)
+        offset = 0
+        pack_into("<B", buf, offset, 0xA0)
+        offset += 1
+        states = [self.state.motion.gyro, self.state.motion.accel]
+        for state in states:
+            max_val = state.max()
+            for value in state.values():
+                val = int(0xFFFF * (value + max_val) / (max_val + max_val))
+                pack_into("<H", buf, offset, val)
+                offset += 2
+        pack_into("<I", buf, offset, self._get_quaternion())
+        return bytes(buf)
+
     def pack(self, buf: bytearray):
         """Pack compiled bytes."""
         pack_into(
-            "!17shhhh",
+            f"!{self._MOTION_LENGTH}shhhhhB",
             buf,
             FeedbackHeader.LENGTH,
-            self.PREFIX,
+            # self._pack_motion_state(), # TODO: implement
+            self._MOTION_IDLE,
             self.state.left.x,
             self.state.left.y,
             self.state.right.x,
             self.state.right.y,
+            0,
+            1,  # 1 DS4; 0 DualSense
         )
 
 

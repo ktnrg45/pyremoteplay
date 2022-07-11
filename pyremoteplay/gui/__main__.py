@@ -6,11 +6,15 @@ from PySide6 import QtCore, QtWidgets
 
 from .main_window import MainWindow
 
-logging.basicConfig(level=logging.INFO)
-
 
 def main():
     """Run GUI."""
+    if "-v" in sys.argv:
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+    logging.basicConfig(level=level)
+
     QtWidgets.QApplication.setHighDpiScaleFactorRoundingPolicy(
         QtCore.Qt.HighDpiScaleFactorRoundingPolicy.Floor
     )
