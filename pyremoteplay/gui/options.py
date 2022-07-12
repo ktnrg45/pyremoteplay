@@ -3,7 +3,9 @@
 from __future__ import annotations
 import socket
 from dataclasses import dataclass, asdict, field
+import logging
 
+import av
 import sounddevice
 
 from PySide6 import QtWidgets, QtCore
@@ -12,13 +14,45 @@ from PySide6.QtMultimedia import QMediaDevices  # pylint: disable=no-name-in-mod
 
 from pyremoteplay.device import RPDevice
 from pyremoteplay.profile import Profiles, format_user_account
-from pyremoteplay.receiver import AVReceiver
 from pyremoteplay.const import Resolution, Quality, StreamType, FPS
 from pyremoteplay.oauth import get_login_url, get_user_account
 from pyremoteplay.util import get_options, write_options
 
 from .util import label, message, spacer
 from .widgets import AnimatedToggle
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _find_video_decoder(codec_name="h264", use_hw=False):
+    """Return all decoders found."""
+    found = []
+    decoders = (
+        ("amf", "AMD"),
+        ("cuvid", "Nvidia"),
+        ("qsv", "Intel"),
+        ("videotoolbox", "Apple"),
+        (codec_name, "CPU"),
+    )
+
+    decoder = None
+    _LOGGER.debug("Using HW: %s", use_hw)
+    if not use_hw:
+        _LOGGER.debug("%s - %s - %s", codec_name, use_hw, decoders)
+        return [(codec_name, "CPU")]
+    for decoder in decoders:
+        if decoder[0] == codec_name:
+            name = codec_name
+        else:
+            name = f"{codec_name}_{decoder[0]}"
+        try:
+            av.codec.Codec(name, "r")
+        except (av.codec.codec.UnknownCodecError, av.error.PermissionError):
+            _LOGGER.debug("Could not find Decoder: %s", name)
+            continue
+        found.append((name, decoder[1]))
+        _LOGGER.debug("Found Decoder: %s", name)
+    return found
 
 
 @dataclass
@@ -179,7 +213,7 @@ class OptionsWidget(QtWidgets.QWidget):
     def get_decoder(self) -> list:
         """Return HW decoder or CPU if not found."""
         decoders = []
-        found = AVReceiver.find_video_decoder(codec_name="h264", use_hw=True)
+        found = _find_video_decoder(codec_name="h264", use_hw=True)
         for decoder, alias in found:
             decoder = decoder.replace("h264", "").replace("_", "")
             if alias == "CPU":

@@ -77,37 +77,6 @@ class AVReceiver(abc.ABC):
         return frame
 
     @staticmethod
-    def find_video_decoder(codec_name="h264", use_hw=False):
-        """Return all decoders found."""
-        found = []
-        decoders = (
-            ("amf", "AMD"),
-            ("cuvid", "Nvidia"),
-            ("qsv", "Intel"),
-            ("videotoolbox", "Apple"),
-            (codec_name, "CPU"),
-        )
-
-        decoder = None
-        _LOGGER.debug("Using HW: %s", use_hw)
-        if not use_hw:
-            _LOGGER.debug("%s - %s - %s", codec_name, use_hw, decoders)
-            return [(codec_name, "CPU")]
-        for decoder in decoders:
-            if decoder[0] == codec_name:
-                name = codec_name
-            else:
-                name = f"{codec_name}_{decoder[0]}"
-            try:
-                av.codec.Codec(name, "r")
-            except (av.codec.codec.UnknownCodecError, av.error.PermissionError):
-                _LOGGER.debug("Could not find Decoder: %s", name)
-                continue
-            found.append((name, decoder[1]))
-            _LOGGER.debug("Found Decoder: %s", name)
-        return found
-
-    @staticmethod
     def video_codec(codec_name: str):
         """Return Video Codec Context."""
         try:
