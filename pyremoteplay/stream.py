@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.strxor import strxor
 
+from pyremoteplay.const import TYPE_PS5
+
 from .av import AVHandler
 from .crypt import StreamECDH
 from .protobuf import ProtoHandler
@@ -217,7 +219,13 @@ class RPStream:
 
     def send_feedback(self, feedback_type: int, sequence: int, data=b"", state=None):
         """Send feedback packet."""
-        msg = FeedbackPacket(feedback_type, sequence=sequence, data=data, state=state)
+        msg = FeedbackPacket(
+            feedback_type,
+            sequence=sequence,
+            data=data,
+            state=state,
+            host_type=self._session.type,
+        )
         self.send(msg.bytes(self._cipher, True))
 
     def send_congestion(self, received: int, lost: int):
@@ -320,12 +328,14 @@ class RPStream:
     def _send_big(self):
         chunk_flag = channel = 1
         if not self._is_test:
+            version = 12 if self._session.type == TYPE_PS5 else 9
+            _LOGGER.debug("Using Version: %s", version)
             self._ecdh = StreamECDH()
             launch_spec = self._format_launch_spec(self._ecdh.handshake_key)
             encrypted_key = bytes(4)
             ecdh_pub_key = self._ecdh.public_key
             ecdh_sig = self._ecdh.public_sig
-            client_version = 9
+            client_version = version
         else:
             launch_spec = b""
             encrypted_key = b""

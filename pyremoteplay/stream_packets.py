@@ -10,7 +10,7 @@ from struct import pack, pack_into, unpack_from
 from typing import Iterable, Union
 from math import sqrt
 
-from .const import TYPE_PS5, Quality, Resolution, FPS, StreamType
+from .const import TYPE_PS4, TYPE_PS5, Quality, Resolution, FPS, StreamType
 from .crypt import StreamCipher
 
 _LOGGER = logging.getLogger(__name__)
@@ -888,6 +888,7 @@ class FeedbackState(PacketSection):
     def __init__(self, state_type, **kwargs):
         super().__init__(state_type)
         self.state: ControllerState = kwargs.get("state") or ControllerState()
+        self.host_type = kwargs.get("host_type") or TYPE_PS4
 
     def _get_quaternion(self) -> int:
         values = self.state.motion.orient.values()
@@ -926,7 +927,7 @@ class FeedbackState(PacketSection):
     def pack(self, buf: bytearray):
         """Pack compiled bytes."""
         pack_into(
-            f"!{self._MOTION_LENGTH}shhhhhB",
+            f"!{self._MOTION_LENGTH}shhhh",
             buf,
             FeedbackHeader.LENGTH,
             # self._pack_motion_state(), # TODO: implement
@@ -935,9 +936,19 @@ class FeedbackState(PacketSection):
             self.state.left.y,
             self.state.right.x,
             self.state.right.y,
-            0,
-            1,  # 1 DS4; 0 DualSense
         )
+        if self.host_type == TYPE_PS5:
+            pack_into(
+                "!hB",
+                buf,
+                FeedbackState.LENGTH - 3,
+                0,
+                1,  # 1 DS4; 0 DualSense
+            )
+
+    @property
+    def length(self) -> int:
+        return self.LENGTH if self.host_type == TYPE_PS5 else self.LENGTH - 3
 
 
 class FeedbackEvent(PacketSection):
@@ -1032,7 +1043,7 @@ class FeedbackPacket(AbstractPacket):
         data_length = (
             len(self.data)
             if self.header.type == FeedbackHeader.Type.EVENT
-            else FeedbackState.LENGTH
+            else self.chunk.length  # Feedback STATE
         )
         length = data_length + FeedbackHeader.LENGTH
         buf = bytearray(length)

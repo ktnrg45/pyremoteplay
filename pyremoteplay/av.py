@@ -114,7 +114,7 @@ class AVHandler:
         self._session.loop.call_later(0.5, self._send_congestion)
 
     def _send_congestion(self):
-        # TODO: Crashes remote play in game
+        # TODO: Use or don't use?
         now = time.time()
         if now - self._last_congestion > 0.2 and not self._session.is_stopped:
             self._session._sync_run_io(  # pylint: disable=protected-access

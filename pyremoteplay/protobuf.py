@@ -176,6 +176,7 @@ class ProtoHandler:
             self._stream.recv_bang(accepted, ecdh_pub_key, ecdh_sig)
 
         elif p_type == "BIG":
+            _LOGGER.debug("RECV BIG")
             return
 
         elif p_type == "HEARTBEAT":
