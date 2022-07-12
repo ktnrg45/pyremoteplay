@@ -593,13 +593,14 @@ class Packet(AbstractPacket):
         return 0
 
     @staticmethod
-    def parse(buf: bytes, params=None):
+    def parse(buf: bytes, params: Union[dict, None] = None):
         """Return new instance from bytes.
 
         Params is updated when parsing each section.
         """
         buf = bytearray(buf)
-        params = {}
+        if params is None:
+            params = {}
         av_mask = Packet.is_av(buf[:1])
         if av_mask:
             return AVPacket(av_mask, buf, **params)
@@ -677,6 +678,7 @@ class AVPacket(AbstractPacket):
     # pylint: disable=unused-argument
     def __init__(self, av_type: int, buf: bytearray, **kwargs):
         super().__init__(av_type)
+        self._host_type = kwargs.get("host_type") or TYPE_PS4
         self._has_nalu = (unpack_from("!B", buf, 0)[0] >> 4) & 1 != 0
         self._index = unpack_from("!H", buf, 1)[0]
         self._frame_index = unpack_from("!H", buf, 3)[0]
@@ -701,6 +703,9 @@ class AVPacket(AbstractPacket):
             # Unknown ushort at 18
             self._nalu = buf[18 + offset + 1 : 18 + offset + 3]
             offset += 3
+
+        if self.type == Header.Type.AUDIO and self._host_type == TYPE_PS5:
+            offset += 1
         self._data = buf[18 + offset :]
 
         self._get_frame_meta()

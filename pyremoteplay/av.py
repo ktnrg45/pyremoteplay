@@ -66,7 +66,7 @@ class AVHandler:
 
     def add_packet(self, msg: bytes):
         """Add Packet."""
-        packet = Packet.parse(msg)
+        packet = Packet.parse(msg, {"host_type": self._session.type})
         if len(self._queue) >= self._queue.maxlen:
             self._queue.clear()
             self._waiting = True
