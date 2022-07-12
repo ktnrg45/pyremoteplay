@@ -232,6 +232,14 @@ class Session:
             _LOGGER.debug("Connected")
             self._transport = transport
 
+        def connection_lost(self, exc: Exception):
+            error = ""
+            if not self._session.is_stopped and not self._session.error:
+                error = str(exc) if exc else "Session disconnected unexpectedly"
+                self._session.error = error
+            _LOGGER.debug("Session Connection Lost; error: %s", error)
+            self._session.stop()
+
         def data_received(self, data: bytes):
             """Callback for data received."""
             # pylint: disable=protected-access

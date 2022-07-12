@@ -67,6 +67,9 @@ class RPStream:
             """Callback for data received"""
             self.stream.handle(data)
 
+        def error_received(self, exc):
+            _LOGGER.error("Stream Protocol Error: %s", exc)
+
         def sendto(self, data, addr):
             """Send data."""
             self.transport.sendto(data, addr)
@@ -209,6 +212,7 @@ class RPStream:
             tag=self._tag_local,
             tsn=ack_tsn,
         )
+        _LOGGER.debug("Sent Data ACK: %s", ack_tsn)
         self.send(msg.bytes(self._cipher, False, DATA_ACK_LENGTH))
 
     def send_feedback(self, feedback_type: int, sequence: int, data=b"", state=None):
@@ -266,7 +270,9 @@ class RPStream:
             key_pos = packet.header.key_pos
             packet.header.gmac = packet.header.key_pos = 0
             if self._verify_gmac:
-                gmac = self._cipher.verify_gmac(packet.bytes(), key_pos, _gmac)
+                verified = self._cipher.verify_gmac(packet.bytes(), key_pos, _gmac)
+                if not verified:
+                    _LOGGER.error("GMAC Mismatch")
 
         if packet.chunk.type == Chunk.Type.INIT_ACK:
             self._recv_init(packet)
@@ -276,6 +282,8 @@ class RPStream:
             self._recv_data_ack(packet)
         elif packet.chunk.type == Chunk.Type.DATA:
             self._recv_data(packet)
+        else:
+            _LOGGER.debug("RECV Unhandled chunk type: %s", packet.chunk.type)
 
     def _recv_init(self, packet: Packet):
         """Handle Init."""
@@ -339,6 +347,7 @@ class RPStream:
     def _format_launch_spec(self, handshake_key: bytes, format_type=None) -> bytes:
         launch_spec = get_launch_spec(
             handshake_key=handshake_key,
+            host_type=self._session.type,
             resolution=self._session.resolution,
             fps=self._session.fps,
             quality=self._session.quality,

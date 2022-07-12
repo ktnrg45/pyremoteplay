@@ -182,6 +182,7 @@ class ProtoHandler:
             channel = 1
             msg = ProtoHandler.message()
             msg.type = msg.PayloadType.HEARTBEAT
+            _LOGGER.debug("Sent HEARTBEAT ACK")
             self._ack(msg, channel)
 
         elif p_type == "DISCONNECT":

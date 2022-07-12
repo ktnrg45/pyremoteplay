@@ -101,7 +101,7 @@ class AVHandler:
         _LOGGER.debug("AV Receiver Closed")
 
     def _handle(self, packet: AVPacket):
-        _LOGGER.debug(packet)
+        # _LOGGER.debug(packet)
         if not self._receiver:
             return
         if packet.type == AVPacket.Type.VIDEO:
@@ -193,7 +193,7 @@ class AVStream:
         self._packets = []
         self._frame = packet.frame_index
         self._last_unit = -1
-        _LOGGER.debug("Started New Frame: %s", self.frame)
+        # _LOGGER.debug("Started New Frame: %s", self.frame)
 
     def _handle_missing_packet(self, index: int, unit_index: int):
         """Mark missing unit indexes as missing. Write null placeholder bytes for each."""

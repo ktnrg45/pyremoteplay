@@ -10,7 +10,7 @@ from struct import pack, pack_into, unpack_from
 from typing import Iterable, Union
 from math import sqrt
 
-from .const import Quality, Resolution, FPS, StreamType
+from .const import TYPE_PS5, Quality, Resolution, FPS, StreamType
 from .crypt import StreamCipher
 
 _LOGGER = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ def __get_launch_spec() -> dict:
             "language": "sp",
             "acceptButton": "X",
             "connectedControllers": ["xinput", "ds3", "ds4"],
-            "yuvCoefficient": "bt709",  # Changed from bt601
+            "yuvCoefficient": "bt601",
             "videoEncoderProfile": "hw4.1",
             "audioEncoderProfile": "audio1",
         },
@@ -74,7 +74,6 @@ def __get_launch_spec() -> dict:
             "region": "US",
             "languagesUsed": ["en", "jp"],
         },
-        "adaptiveStreamMode": "resize",
         "videoCodec": "",
         "dynamicRange": "",
         "handshakeKey": None,
@@ -83,6 +82,7 @@ def __get_launch_spec() -> dict:
 
 def get_launch_spec(
     handshake_key: bytes,
+    host_type: str,
     resolution: Resolution,
     fps: FPS,
     quality: Quality,
@@ -111,6 +111,10 @@ def get_launch_spec(
     launch_spec["videoCodec"] = "hevc" if codec == "hevc" else "avc"
     launch_spec["dynamicRange"] = "HDR" if hdr else "SDR"
     launch_spec["handshakeKey"] = b64encode(handshake_key).decode()
+
+    if host_type == TYPE_PS5:
+        launch_spec["requestGameSpecification"]["adaptiveStreamMode"] = "resize"
+
     launch_spec = json.dumps(launch_spec)
     launch_spec = launch_spec.replace(" ", "")  # minify
     launch_spec = launch_spec.replace(":0.001,", ":0.001000,")  # Add three zeros
