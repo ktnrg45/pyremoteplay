@@ -492,7 +492,8 @@ class Gamepad:
                 f"Expected instance of {Controller}; Got type {type(controller)}"
             )
         self._controller = controller
-        self._controller.rumble_callback = self._rumble_event
+        if self._controller:
+            self._controller.rumble_callback = self._rumble_event
 
     @property
     def deadzone(self) -> float:
