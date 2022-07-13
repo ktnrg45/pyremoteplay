@@ -472,6 +472,13 @@ class Gamepad:
             "hat": self._joystick.get_numhats(),
         }
 
+    def _rumble_event(self, left: int, right: int):
+        if left == 0 and right == 0:
+            self._joystick.stop_rumble()
+        else:
+            max_val = 0xFF
+            self._joystick.rumble(left / max_val, right / max_val, 0)
+
     @property
     def controller(self) -> Controller:
         """Return Controller."""
@@ -485,6 +492,7 @@ class Gamepad:
                 f"Expected instance of {Controller}; Got type {type(controller)}"
             )
         self._controller = controller
+        self._controller.rumble_callback = self._rumble_event
 
     @property
     def deadzone(self) -> float:

@@ -449,6 +449,11 @@ class Header(PacketSection):
 class Chunk(PacketSection):
     """RP Chunk.Type. Very similar to SCTP."""
 
+    class DataType(IntEnum):
+        """Data Type enum."""
+
+        RUMBLE = 0x07
+
     class Type(IntEnum):
         """Enums for Chunks."""
 
@@ -469,7 +474,8 @@ class Chunk(PacketSection):
                 params.pop("payload")
                 params["tsn"] = unpack_from("!I", payload, 0)[0]
                 params["channel"] = unpack_from("!H", payload, 4)[0]
-                # Padding 3 Bytes?
+                # Padding 2 Bytes?
+                params["data_type"] = unpack_from("!B", payload, 8)[0]
                 params["data"] = bytes(payload[9:])
                 return None
         tsn = kwargs.get("tsn")

@@ -4,7 +4,7 @@ import logging
 import threading
 import sys
 import traceback
-from typing import Iterable, Union
+from typing import Callable, Iterable, Union
 from collections import deque
 from enum import IntEnum, auto
 import time
@@ -36,8 +36,8 @@ class Controller:
         """Return list of valid buttons."""
         return [button.name for button in FeedbackEvent.Type]
 
-    def __init__(self, session=None):
-        self._session = session
+    def __init__(self, session: Session = None):
+        self._session: Session = None
         self._sequence_event = 0
         self._sequence_state = 0
         self._event_buf = deque([], Controller.MAX_EVENTS)
@@ -47,6 +47,11 @@ class Controller:
         self._should_send = threading.Semaphore()
         self._stop_event = threading.Event()
         self._thread: threading.Thread = None
+
+        self._rumble_callback: Callable = None
+
+        if session:
+            self.connect(session)
 
     def __del__(self):
         self.disconnect()
@@ -98,6 +103,8 @@ class Controller:
         self.__reset_session()
         self.__reset_worker()
         self._session = session
+        # pylint: disable=protected-access
+        self._session._set_rumble_callback(self._rumble_event)
 
     def start(self):
         """Start Controller.
@@ -316,6 +323,12 @@ class Controller:
             return False
         return True
 
+    def _rumble_event(self, left: int, right: int):
+        _LOGGER.debug("Rumble: Left: %s, Right: %s", left, right)
+        if self.rumble_callback:
+            # pylint: disable=not-callable
+            self.rumble_callback(left, right)
+
     @property
     def stick_state(self) -> ControllerState:
         """Return stick state."""
@@ -339,3 +352,15 @@ class Controller:
     def session(self) -> Session:
         """Return Session."""
         return self._session
+
+    @property
+    def rumble_callback(self) -> Callable[[int, int], None]:
+        """Return Rumble Callback."""
+        return self._rumble_callback
+
+    @rumble_callback.setter
+    def rumble_callback(self, callback: Callable[[int, int], None]):
+        """Set Rumble Callback."""
+        if not isinstance(callback, Callable):
+            raise ValueError("Expected callable")
+        self._rumble_callback = callback

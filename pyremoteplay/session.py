@@ -4,7 +4,7 @@ import asyncio
 import logging
 import socket
 import time
-from typing import Union
+from typing import Callable, Union
 from base64 import b64decode, b64encode
 from concurrent.futures import ThreadPoolExecutor
 from enum import IntEnum, auto
@@ -302,6 +302,7 @@ class Session:
         self._loop = loop
         self._protocol = None
         self._transport = None
+        self._rumble_callback = None
         self._tasks = []
         self._thread_executor = ThreadPoolExecutor()
 
@@ -722,6 +723,15 @@ class Session:
                 return False
             await asyncio.sleep(0.01)
         return self.is_ready
+
+    def _rumble_event(self, left: int, right: int):
+        if self._rumble_callback:
+            self._rumble_callback(left, right)
+
+    def _set_rumble_callback(self, callback: Callable[[int, int], None]):
+        if not isinstance(callback, Callable):
+            raise ValueError("Expected callable")
+        self._rumble_callback = callback
 
     @property
     def host(self) -> str:

@@ -260,13 +260,14 @@ class RPStream:
                 else:
                     self._test.recv_mtu(msg)
         else:
-            if not self._av_handler.has_receiver:
-                self._handle_later(msg)
-            else:
-                # Run in Executor if processing av.
-                self._session._sync_run_io(  # pylint: disable=protected-access
-                    self._handle_later, msg
-                )
+            self._handle_later(msg)
+            # if not self._av_handler.has_receiver:
+            #     self._handle_later(msg)
+            # else:
+            #     # Run in Executor if processing av.
+            #     self._session._sync_run_io(  # pylint: disable=protected-access
+            #         self._handle_later, msg
+            #     )
 
     def _handle_later(self, msg: bytes):
         packet = Packet.parse(msg)
@@ -307,7 +308,16 @@ class RPStream:
         """Handle Data."""
         params = packet.params
         self._send_data_ack(params["tsn"])
-        self._proto.handle(params["data"])
+        data = params["data"]
+        if params["data_type"] == Chunk.DataType.RUMBLE:
+            if len(data) < 3:
+                return
+            left = data[1]
+            right = data[2]
+            # pylint: disable=protected-access
+            self._session._rumble_event(left, right)
+        else:
+            self._proto.handle(data)
 
     def _recv_data_ack(self, packet: Packet):
         """Handle data ack."""
