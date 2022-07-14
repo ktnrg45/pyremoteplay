@@ -14,7 +14,7 @@ A generic receiver is provided in this library with the :class:`QueueReceiver <p
 Usage
 +++++++++++++++++++++++++++++++++++++++++++++
 To use a receiver, the receiver must be passed as a keyword argument to the 
-:meth:`RPDevice.create_session <pyremoteplay.RPDevice.create_session>`
+:meth:`RPDevice.create_session() <pyremoteplay.device.RPDevice.create_session>`
 method like in the example below.
 
 ::

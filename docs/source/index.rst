@@ -9,6 +9,7 @@ Welcome to pyremoteplay's documentation!
    readme
    registering
    live_stream
+   session
    examples/examples
    reference/modules
  

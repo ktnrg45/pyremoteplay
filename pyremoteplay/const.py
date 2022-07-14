@@ -64,7 +64,10 @@ class StreamType(IntEnum):
 
 
 class Quality(IntEnum):
-    """Enums for quality. Value represents video bitrate."""
+    """Enums for quality. Value represents video bitrate.
+
+    Using `DEFAULT` will automatically find the appropriate bitrate for a specific resolution.
+    """
 
     DEFAULT = 0
     VERY_LOW = 2000
