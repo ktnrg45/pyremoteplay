@@ -6,9 +6,12 @@ from struct import unpack_from
 import warnings
 import logging
 from collections import deque
-from typing import Sequence
+from typing import Sequence, TYPE_CHECKING
 
 from pyremoteplay.const import FFMPEG_PADDING
+
+if TYPE_CHECKING:
+    from pyremoteplay.session import Session
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,7 +42,7 @@ class AVReceiver(abc.ABC):
     }
 
     @staticmethod
-    def audio_frame(buf: bytes, codec_ctx: av.CodecContext):
+    def audio_frame(buf: bytes, codec_ctx: av.CodecContext) -> av.AudioFrame:
         """Return decoded audio frame."""
         packet = av.packet.Packet(buf)
         frames = codec_ctx.decode(packet)
@@ -49,7 +52,9 @@ class AVReceiver(abc.ABC):
         return frame
 
     @staticmethod
-    def video_frame(buf: bytes, codec_ctx: av.CodecContext, video_format="rgb24"):
+    def video_frame(
+        buf: bytes, codec_ctx: av.CodecContext, video_format="rgb24"
+    ) -> av.VideoFrame:
         """Decode H264 Frame to raw image.
         Return AV Frame.
 
@@ -77,7 +82,7 @@ class AVReceiver(abc.ABC):
         return frame
 
     @staticmethod
-    def video_codec(codec_name: str):
+    def video_codec(codec_name: str) -> av.CodecContext:
         """Return Video Codec Context."""
         try:
             codec_ctx = av.codec.Codec(codec_name, "r").create()
@@ -95,22 +100,22 @@ class AVReceiver(abc.ABC):
         return codec_ctx
 
     @staticmethod
-    def audio_codec(codec_name: str = "opus"):
+    def audio_codec(codec_name: str = "opus") -> av.CodecContext:
         """Return Audio Codec Context."""
         codec_ctx = av.codec.Codec(codec_name, "r").create()
         codec_ctx.format = "s16"
         return codec_ctx
 
     def __init__(self):
-        self._session = None
+        self._session: Session = None
         self._video_format = "rgb24"
         self.video_decoder = None
         self.audio_decoder = None
         self.audio_resampler = None
         self.audio_config = {}
 
-    def get_audio_config(self, header: bytes):
-        """Get Audio config from header."""
+    def _get_audio_codec(self, header: bytes):
+        """Get Audio config from header. Get Audio codec."""
         self.audio_config = {
             "channels": header[0],
             "bits": header[1],
@@ -134,8 +139,8 @@ class AVReceiver(abc.ABC):
             )
             self._session.events.emit("audio_config")
 
-    def get_video_codec(self):
-        """Get Codec Context."""
+    def _get_video_codec(self):
+        """Get Video Codec Context."""
         codec_name = self._session.codec
         self.video_decoder = AVReceiver.video_codec(codec_name)
         try:
@@ -149,7 +154,7 @@ class AVReceiver(abc.ABC):
                 self._session.error = msg
                 self._session.stop()
 
-    def set_session(self, session):
+    def set_session(self, session: Session):
         """Set Session."""
         self._session = session
 

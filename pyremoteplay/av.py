@@ -39,7 +39,8 @@ class AVHandler:
         if receiver is not None:
             self._receiver = receiver
             self._receiver.set_session(self._session)
-            self._receiver.get_video_codec()
+            # pylint: disable=protected-access
+            self._receiver._get_video_codec()
 
     def set_cipher(self, cipher):
         """Set cipher. Schedules handler to run."""
@@ -61,7 +62,8 @@ class AVHandler:
                 self._receiver.handle_audio_data,
                 self._send_corrupt,
             )
-            self._receiver.get_audio_config(a_header)
+            # pylint: disable=protected-access
+            self._receiver._get_audio_codec(a_header)
             # self._schedule_congestion()
 
     def add_packet(self, msg: bytes):
