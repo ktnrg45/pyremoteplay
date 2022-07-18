@@ -62,7 +62,7 @@ The only required argument is `user`. The remaining arguments should be passed a
 
    * - **resolution**
      - :class:`Resolution <pyremoteplay.const.Resolution>` or :class:`str <str>` or :class:`int <int>`
-     - `360p`
+     - `720p`
      - | The resolution to use for video stream.
        | Must be one of 
        | ["360p", "540p", "720p", "1080p"].
@@ -76,7 +76,7 @@ The only required argument is `user`. The remaining arguments should be passed a
 
    * - **quality**
      - :class:`Quality <pyremoteplay.const.Quality>` or :class:`str <str>` or :class:`int <int>`
-     - `very_low`
+     - `default`
      - | The quality of the video stream. 
        | Represents the bitrate of the stream.
        | Must be a valid member of the `Quality` enum.

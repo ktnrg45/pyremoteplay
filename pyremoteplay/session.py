@@ -220,7 +220,7 @@ class Session:
         PS4_PRO = 1
         PS5 = 2
 
-    class Protocol(asyncio.Protocol):
+    class _Protocol(asyncio.Protocol):
         """Protocol for session."""
 
         def __init__(self, session: Session):
@@ -276,9 +276,9 @@ class Session:
         profile: Union[dict, UserProfile],
         loop: asyncio.AbstractEventLoop = None,
         receiver: AVReceiver = None,
-        resolution: Union[Resolution, str, int] = "360p",
+        resolution: Union[Resolution, str, int] = "720p",
         fps: Union[FPS, str, int] = "low",
-        quality: Union[Quality, str, int] = "very_low",
+        quality: Union[Quality, str, int] = "default",
         codec: str = "h264",
         hdr: bool = False,
     ):
@@ -327,6 +327,12 @@ class Session:
                 f"Codec: {self._codec} does not seem to match stream type: {self._stream_type.name}"
             )
         self.set_receiver(receiver)
+
+    def _set_lowest_stream(self):
+        """Set stream parameters to lowest config possible."""
+        self._quality = Quality.VERY_LOW
+        self._resolution = Resolution.RESOLUTION_360P
+        self._fps = FPS.LOW
 
     def _init_profile(self, status: dict) -> bool:
         """Return True if Init profile."""
@@ -618,6 +624,10 @@ class Session:
         self._ready_event = asyncio.Event()
         self._stop_event = asyncio.Event()
 
+        if not self._receiver:
+            # Set Stream settings to lowest possible to reduce load
+            self._set_lowest_stream()
+
         self.events.on("av_ready", self._init_av_handler)
 
         if not self.loop:
@@ -642,7 +652,7 @@ class Session:
         _LOGGER.info("Session Auth Success")
         self._state = Session.State.RUNNING
         _, self._protocol = await self.loop.connect_accepted_socket(
-            lambda: Session.Protocol(self), self._sock
+            lambda: Session._Protocol(self), self._sock
         )
         await self._ready_event.wait()
         if autostart:

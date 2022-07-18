@@ -245,9 +245,9 @@ class RPDevice:
         profiles: Profiles = None,
         loop: asyncio.AbstractEventLoop = None,
         receiver: AVReceiver = None,
-        resolution: Union[Resolution, str, int] = "360p",
+        resolution: Union[Resolution, str, int] = "720p",
         fps: Union[FPS, str, int] = "low",
-        quality: Union[Quality, str, int] = "very_low",
+        quality: Union[Quality, str, int] = "default",
         codec: str = "h264",
         hdr: bool = False,
     ) -> Union[Session, None]:

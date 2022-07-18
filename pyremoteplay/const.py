@@ -162,6 +162,14 @@ class Resolution(IntEnum):
         if isinstance(value, Resolution):
             return value
         if isinstance(value, str):
+            _enum = None
+            try:
+                # Accept string like 'RESOLUTION_360P'
+                _enum = Resolution[value.upper()]
+                return _enum
+            except KeyError:
+                pass
+            # Accept string like '360P'
             _value = f"RESOLUTION_{value}".upper()
             _enum = Resolution.__members__.get(_value.upper())
             if _enum is not None:
