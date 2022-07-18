@@ -38,8 +38,8 @@ class AVHandler:
             raise RuntimeError("Cannot add Receiver more than once")
         if receiver is not None:
             self._receiver = receiver
-            self._receiver.set_session(self._session)
             # pylint: disable=protected-access
+            self._receiver._set_session(self._session)
             self._receiver._get_video_codec()
 
     def set_cipher(self, cipher):

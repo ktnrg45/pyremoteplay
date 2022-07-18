@@ -42,13 +42,35 @@ class AVReceiver(abc.ABC):
     }
 
     @staticmethod
-    def audio_frame(buf: bytes, codec_ctx: av.CodecContext) -> av.AudioFrame:
+    def audio_frame(
+        buf: bytes,
+        codec_ctx: av.CodecContext,
+        resampler: av.audio.resampler.AudioResampler = None,
+    ) -> av.AudioFrame:
         """Return decoded audio frame."""
+        frames = None
         packet = av.packet.Packet(buf)
-        frames = codec_ctx.decode(packet)
+        try:
+            frames = codec_ctx.decode(packet)
+        except av.error.InvalidDataError as error:
+            _LOGGER.error("Error decoding audio frame: %s", error)
         if not frames:
             return None
         frame = frames[0]
+        if frame.is_corrupt:
+            _LOGGER.error("Corrupt Frame: %s", frame)
+            return None
+
+        if resampler:
+            frames = resampler.resample(frame)
+            if not frames:
+                return None
+
+            # For av > 9.0.0
+            if isinstance(frames, Sequence):
+                frame = frames[0]
+            else:
+                frame = frames
         return frame
 
     @staticmethod
@@ -62,8 +84,12 @@ class AVReceiver(abc.ABC):
         :param codec_ctx: av codec context for decoding
         :param video_format: Format to output frames as.
         """
+        frames = None
         packet = av.packet.Packet(b"".join([buf, bytes(FFMPEG_PADDING)]))
-        frames = codec_ctx.decode(packet)
+        try:
+            frames = codec_ctx.decode(packet)
+        except av.error.InvalidDataError as error:
+            _LOGGER.error("Error decoding video frame: %s", error)
         if not frames:
             return None
         frame = frames[0]
@@ -106,45 +132,66 @@ class AVReceiver(abc.ABC):
         codec_ctx.format = "s16"
         return codec_ctx
 
+    @staticmethod
+    def audio_resampler(
+        audio_format: str = "s16", channels=2, rate=48000
+    ) -> av.audio.resampler.AudioResampler:
+        """Return Audio Resampler."""
+        resampler = None
+        try:
+            resampler = av.audio.resampler.AudioResampler(
+                audio_format,
+                channels,
+                rate,
+            )
+        # pylint: disable=broad-except
+        except Exception as error:
+            _LOGGER.error("Error getting resampler: %s", error)
+        return resampler
+
     def __init__(self):
         self._session: Session = None
         self._video_format = "rgb24"
-        self.video_decoder = None
-        self.audio_decoder = None
-        self.audio_resampler = None
-        self.audio_config = {}
+        self._video_decoder = None
+        self._audio_decoder = None
+        self._audio_resampler = None
+        self._audio_config = {}
+
+    def _set_session(self, session: Session):
+        self._session = session
 
     def _get_audio_codec(self, header: bytes):
         """Get Audio config from header. Get Audio codec."""
-        self.audio_config = {
+        self._audio_config = {
             "channels": header[0],
             "bits": header[1],
             "rate": unpack_from("!I", header, 2)[0],
             "frame_size": unpack_from("!I", header, 6)[0],
             "unknown": unpack_from("!I", header, 10)[0],
         }
-        self.audio_config["packet_size"] = (
-            self.audio_config["channels"]
-            * (self.audio_config["bits"] // 8)
-            * self.audio_config["frame_size"]
+        self._audio_config["packet_size"] = (
+            self._audio_config["channels"]
+            * (self._audio_config["bits"] // 8)
+            * self._audio_config["frame_size"]
         )
-        _LOGGER.info("Audio Config: %s", self.audio_config)
+        _LOGGER.info("Audio Config: %s", self._audio_config)
 
-        if not self.audio_decoder:
-            self.audio_decoder = AVReceiver.audio_codec()
-            self.audio_resampler = av.audio.resampler.AudioResampler(
+        if not self._audio_decoder:
+            self._audio_decoder = AVReceiver.audio_codec()
+            # Need format to be s16. Format is float.
+            self._audio_resampler = AVReceiver.audio_resampler(
                 "s16",
-                self.audio_config["channels"],
-                self.audio_config["rate"],
+                self._audio_config["channels"],
+                self._audio_config["rate"],
             )
             self._session.events.emit("audio_config")
 
     def _get_video_codec(self):
         """Get Video Codec Context."""
         codec_name = self._session.codec
-        self.video_decoder = AVReceiver.video_codec(codec_name)
+        self._video_decoder = AVReceiver.video_codec(codec_name)
         try:
-            self.video_decoder.open()
+            self._video_decoder.open()
         except av.error.ValueError as error:
             if self._session:
                 try:
@@ -154,32 +201,20 @@ class AVReceiver(abc.ABC):
                 self._session.error = msg
                 self._session.stop()
 
-    def set_session(self, session: Session):
-        """Set Session."""
-        self._session = session
-
     def decode_video_frame(self, buf: bytes) -> av.VideoFrame:
         """Return decoded Video Frame."""
-        if not self.video_decoder:
+        if not self._video_decoder:
+            _LOGGER.warning("Video decoder not created.")
             return None
-        frame = AVReceiver.video_frame(buf, self.video_decoder, self.video_format)
+        frame = AVReceiver.video_frame(buf, self._video_decoder, self.video_format)
         return frame
 
     def decode_audio_frame(self, buf: bytes) -> av.AudioFrame:
         """Return decoded Audio Frame."""
-        if not self.audio_config or not self.audio_decoder:
+        if not self._audio_config or not self._audio_decoder:
+            _LOGGER.warning("Audio config not received")
             return None
-
-        frame = AVReceiver.audio_frame(buf, self.audio_decoder)
-        if frame:
-            # Need format to be s16. Format is float.
-            frames = self.audio_resampler.resample(frame)
-            if not frames:
-                return None
-            if isinstance(frames, Sequence):
-                frame = frames[0]
-            else:
-                frame = frames
+        frame = AVReceiver.audio_frame(buf, self._audio_decoder, self._audio_resampler)
         return frame
 
     def handle_video_data(self, buf: bytes):
@@ -228,11 +263,11 @@ class AVReceiver(abc.ABC):
 
     def close(self):
         """Close Receiver."""
-        if self.video_decoder is not None:
-            self.video_decoder.close()
-        if self.audio_decoder is not None:
-            self.audio_decoder.close()
-        self.video_decoder = self.audio_decoder = None
+        if self._video_decoder is not None:
+            self._video_decoder.close()
+        if self._audio_decoder is not None:
+            self._audio_decoder.close()
+        self._video_decoder = self._audio_decoder = None
 
     @property
     def video_format(self):
@@ -243,6 +278,21 @@ class AVReceiver(abc.ABC):
     def video_format(self, video_format: str):
         """Set Video Format."""
         self._video_format = video_format
+
+    @property
+    def video_decoder(self) -> av.CodecContext:
+        """Return Video Codec Context."""
+        return self._video_decoder
+
+    @property
+    def audio_decoder(self) -> av.CodecContext:
+        """Return Audio Codec Context."""
+        return self._audio_decoder
+
+    @property
+    def audio_config(self) -> dict:
+        """Return Audio config."""
+        return dict(self._audio_config)
 
 
 class QueueReceiver(AVReceiver):
