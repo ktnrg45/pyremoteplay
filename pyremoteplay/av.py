@@ -243,7 +243,7 @@ class AVStream:
         try:
             import pyjerasure  # pylint: disable=import-outside-toplevel
         except ModuleNotFoundError:
-            pass
+            return
         if not self._frame_bad_order and not self._missing:
             # Ignore FEC packets if all src packets received.
             return
