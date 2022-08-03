@@ -45,6 +45,7 @@ extensions = [
     "myst_parser",
     "sphinx.ext.autodoc",
     "sphinxcontrib.apidoc",
+    "sphinx_autodoc_typehints",
     #    'sphinx.ext.doctest',
     #    'sphinx.ext.coverage',
     #    'sphinx.ext.viewcode',
@@ -214,3 +215,5 @@ epub_exclude_files = ["search.html"]
 
 
 # -- Extension configuration -------------------------------------------------
+
+# typehints_fully_qualified = True

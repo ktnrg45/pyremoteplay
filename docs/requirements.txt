@@ -2,6 +2,7 @@ sphinx
 sphinx-rtd-theme
 myst-parser
 sphinxcontrib-apidoc
+sphinx-autodoc-typehints
 
 av>=8.0.0
 pygame>=2.1.2
