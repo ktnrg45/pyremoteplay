@@ -311,8 +311,6 @@ class PacketSection(abc.ABC):
 
     LENGTH = 0
 
-    _STRUCT = Struct("!")
-
     class Type(IntEnum):
         """Abstract Type Class."""
 
@@ -397,8 +395,6 @@ class Header(PacketSection):
         "key_pos",
     ]
 
-    _STRUCT = Struct("!bIII")
-
     class Type(IntEnum):
         """Enums for RP Headers."""
 
@@ -416,10 +412,10 @@ class Header(PacketSection):
     @staticmethod
     def parse(buf: bytearray, params: dict) -> int:
         """Return type. Unpack and parse header."""
-        _type, tag_remote, gmac, key_pos = Header._STRUCT.unpack(buf)
-        params["tag_remote"] = tag_remote
-        params["gmac"] = gmac
-        params["key_pos"] = key_pos
+        _type = unpack_from("!b", buf, 0)[0]
+        params["tag_remote"] = unpack_from("!I", buf, 1)[0]
+        params["gmac"] = unpack_from("!I", buf, 5)[0]
+        params["key_pos"] = unpack_from("!I", buf, 9)[0]
         return _type
 
     def __init__(self, header_type: int, **kwargs):
@@ -439,7 +435,8 @@ class Header(PacketSection):
 
     def pack(self, buf: bytearray):
         """Pack buffer with compiled bytes."""
-        Header._STRUCT.pack_into(
+        pack_into(
+            "!bIII",
             buf,
             0,
             self.type,
