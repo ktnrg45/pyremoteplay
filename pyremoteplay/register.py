@@ -178,7 +178,7 @@ async def _async_regist_init(host: str, host_type: str, timeout: float) -> bool:
         local_addr=(UDP_IP, 0), remote_addr=(host, RP_PORT)
     )
     sock.sendto(data["init"], (host, RP_PORT))
-    response, _ = await sock.recv(timeout=timeout)
+    response = await sock.recv(timeout=timeout)
     success = _check_init(data, response)
     sock.close()
     return success
@@ -212,7 +212,7 @@ async def _async_get_register_info(
     sock = await AsyncTCPSocket.create(remote_addr=(host, RP_PORT))
     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     sock.send(b"".join([headers, payload]))
-    response, _ = await sock.recv(timeout)
+    response = await sock.recv(timeout)
     if not response:
         _LOGGER.error("No Register Response Received")
     sock.close()

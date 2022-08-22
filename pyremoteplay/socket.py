@@ -35,16 +35,25 @@ class AsyncBaseProtocol(asyncio.BaseProtocol):
         """Error Received."""
         _LOGGER.error("Socket at: %s received error: %s", self.sock.getsockname(), exc)
 
-    async def recv(
+    async def recvfrom(
         self, timeout: float = None
     ) -> Optional[tuple[bytes, tuple[str, int]]]:
-        """Return received data."""
+        """Return received data and addr."""
         if self.has_callback:
             return None
         try:
             return await asyncio.wait_for(self._packets.get(), timeout=timeout)
         except (asyncio.TimeoutError, asyncio.CancelledError):
             pass
+        return None
+
+    async def recv(self, timeout: float = None) -> Optional[bytes]:
+        """Return received data."""
+        if self.has_callback:
+            return None
+        response = await self.recvfrom(timeout=timeout)
+        if response:
+            return response[0]
         return None
 
     def sendto(self, data: bytes, *_):
@@ -54,10 +63,10 @@ class AsyncBaseProtocol(asyncio.BaseProtocol):
     def set_callback(
         self, callback: Union[Callable[[bytes, tuple[str, int]], None], None]
     ):
-        """Set callback for datagram received.
+        """Set callback for data received.
 
         Setting this will flush packet received packet queue.
-        :meth:`recv() <pyremoteplay.socket.AsyncUDPProtocol.recv>`
+        :meth:`recv() <pyremoteplay.socket.AsyncBaseSocket.recv>`
         will always return None.
 
         :param callback: callback for data received
@@ -121,7 +130,7 @@ class AsyncTCPProtocol(asyncio.Protocol, AsyncBaseProtocol):
             self._packets.put_nowait(item)
 
     def sendto(self, data: bytes, *_):
-        """Send packet."""
+        """Send packet to address."""
         self._transport.write(data)
 
 
@@ -140,21 +149,9 @@ class AsyncUDPProtocol(asyncio.DatagramProtocol, AsyncBaseProtocol):
         else:
             self._packets.put_nowait(item)
 
-    async def recv(
-        self, timeout: float = None
-    ) -> Optional[tuple[bytes, tuple[str, int]]]:
-        """Return received data."""
-        if self.has_callback:
-            return None
-        try:
-            return await asyncio.wait_for(self._packets.get(), timeout=timeout)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
-            pass
-        return None
-
     # pylint: disable=arguments-differ
     def sendto(self, data: bytes, addr: tuple[str, int] = None):
-        """Send packet."""
+        """Send packet to address."""
         self._transport.sendto(data, addr)
 
 
@@ -194,7 +191,7 @@ class AsyncBaseSocket:
         """Send Packet"""
         self._protocol.sendto(data, addr)
 
-    async def recv(self, timeout: float = None):
+    async def recv(self, timeout: float = None) -> Optional[bytes]:
         """Receive a packet."""
 
         packet = await self._protocol.recv(timeout)
@@ -203,6 +200,18 @@ class AsyncBaseSocket:
             raise OSError("Socket is closed")
 
         return packet
+
+    async def recvfrom(
+        self, timeout: float = None
+    ) -> Optional[tuple[bytes, tuple[str, int]]]:
+        """Receive a packet and address."""
+
+        response = await self._protocol.recvfrom(timeout)
+
+        if response is None and self._protocol.closed:
+            raise OSError("Socket is closed")
+
+        return response
 
     def get_extra_info(self, name: str, default: Any = None) -> Any:
         """Return Extra Info."""
@@ -215,7 +224,7 @@ class AsyncBaseSocket:
     def set_callback(
         self, callback: Union[Callable[[bytes, tuple[str, int]], None], None]
     ):
-        """Set callback for datagram received.
+        """Set callback for data received.
 
         Setting this will flush packet received packet queue.
         :meth:`recv() <pyremoteplay.socket.AsyncBaseSocket.recv>`

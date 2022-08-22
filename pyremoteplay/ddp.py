@@ -519,7 +519,7 @@ async def _async_recv_search_msg(
         data = addr = response = None
         if stop_event.is_set():
             return devices
-        response = await sock.recv(0.01)
+        response = await sock.recvfrom(0.01)
         if response is not None:
             data, addr = response
         if data is not None and addr is not None:
