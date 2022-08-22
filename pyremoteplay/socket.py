@@ -8,8 +8,8 @@ import socket
 _LOGGER = logging.getLogger(__name__)
 
 
-class AsyncUDPProtocol(asyncio.DatagramProtocol):
-    """UDP Protocol."""
+class AsyncBaseProtocol(asyncio.BaseProtocol):
+    """Base Protocol. Do not use directly."""
 
     def __del__(self):
         self.close()
@@ -20,7 +20,7 @@ class AsyncUDPProtocol(asyncio.DatagramProtocol):
         self._transport = None
         self._callback = None
 
-    def connection_made(self, transport: asyncio.DatagramTransport):
+    def connection_made(self, transport: asyncio.BaseTransport):
         """Connection Made."""
         self._transport = transport
 
@@ -31,17 +31,25 @@ class AsyncUDPProtocol(asyncio.DatagramProtocol):
         self.close()
         self._packets.put_nowait(None)
 
-    def datagram_received(self, data: bytes, addr: tuple[str, int]):
-        """Datagram Received."""
-        item = (data, addr)
-        if self.has_callback:
-            self._callback(*item)
-        else:
-            self._packets.put_nowait(item)
-
     def error_received(self, exc: Exception):
         """Error Received."""
         _LOGGER.error("Socket at: %s received error: %s", self.sock.getsockname(), exc)
+
+    async def recv(
+        self, timeout: float = None
+    ) -> Optional[tuple[bytes, tuple[str, int]]]:
+        """Return received data."""
+        if self.has_callback:
+            return None
+        try:
+            return await asyncio.wait_for(self._packets.get(), timeout=timeout)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            pass
+        return None
+
+    def sendto(self, data: bytes, *_):
+        """Send packet."""
+        raise NotImplementedError
 
     def set_callback(
         self, callback: Union[Callable[[bytes, tuple[str, int]], None], None]
@@ -70,22 +78,6 @@ class AsyncUDPProtocol(asyncio.DatagramProtocol):
             except Exception:
                 self.sock.close()
 
-    async def recv(
-        self, timeout: float = None
-    ) -> Optional[tuple[bytes, tuple[str, int]]]:
-        """Return received data."""
-        if self.has_callback:
-            return None
-        try:
-            return await asyncio.wait_for(self._packets.get(), timeout=timeout)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
-            pass
-        return None
-
-    def sendto(self, data: bytes, addr: tuple[str, int] = None):
-        """Send packet."""
-        self._transport.sendto(data, addr)
-
     def get_extra_info(self, name: str, default: Any = None) -> Any:
         """Return Extra Info."""
         return self._transport.get_extra_info(name, default)
@@ -113,8 +105,61 @@ class AsyncUDPProtocol(asyncio.DatagramProtocol):
         return self._transport.get_extra_info("socket")
 
 
-class AsyncUDPSocket:
-    """Async UDP socket."""
+class AsyncTCPProtocol(asyncio.Protocol, AsyncBaseProtocol):
+    """UDP Protocol."""
+
+    def connection_made(self, transport: asyncio.Transport):
+        """Connection Made."""
+        self._transport = transport
+
+    def data_received(self, data: bytes):
+        peername = self._transport.get_extra_info("peername")
+        item = (data, peername)
+        if self.has_callback:
+            self._callback(*item)
+        else:
+            self._packets.put_nowait(item)
+
+    def sendto(self, data: bytes, *_):
+        """Send packet."""
+        self._transport.write(data)
+
+
+class AsyncUDPProtocol(asyncio.DatagramProtocol, AsyncBaseProtocol):
+    """UDP Protocol."""
+
+    def connection_made(self, transport: asyncio.DatagramTransport):
+        """Connection Made."""
+        self._transport = transport
+
+    def datagram_received(self, data: bytes, addr: tuple[str, int]):
+        """Datagram Received."""
+        item = (data, addr)
+        if self.has_callback:
+            self._callback(*item)
+        else:
+            self._packets.put_nowait(item)
+
+    async def recv(
+        self, timeout: float = None
+    ) -> Optional[tuple[bytes, tuple[str, int]]]:
+        """Return received data."""
+        if self.has_callback:
+            return None
+        try:
+            return await asyncio.wait_for(self._packets.get(), timeout=timeout)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            pass
+        return None
+
+    # pylint: disable=arguments-differ
+    def sendto(self, data: bytes, addr: tuple[str, int] = None):
+        """Send packet."""
+        self._transport.sendto(data, addr)
+
+
+class AsyncBaseSocket:
+    """Async Base socket. Do not use directly."""
 
     @classmethod
     async def create(
@@ -122,29 +167,11 @@ class AsyncUDPSocket:
         local_addr: tuple[str, int] = None,
         remote_addr: tuple[str, int] = None,
         *,
-        reuse_port: bool = None,
-        allow_broadcast: bool = None,
         sock: socket.socket = None,
         **kwargs,
-    ) -> AsyncUDPSocket:
-        """Create and return UDP Socket."""
-        _local_addr = local_addr
-        if sock is not None:
-            local_addr = remote_addr = None
-        loop = asyncio.get_running_loop()
-        if not hasattr(socket, "SO_REUSEPORT"):
-            reuse_port = None
-        _, protocol = await loop.create_datagram_endpoint(
-            AsyncUDPProtocol,
-            local_addr=local_addr,
-            remote_addr=remote_addr,
-            reuse_port=reuse_port,
-            allow_broadcast=allow_broadcast,
-            sock=sock,
-            **kwargs,
-        )
-
-        return cls(protocol, _local_addr)
+    ) -> AsyncBaseSocket:
+        """Create and return Socket."""
+        raise NotImplementedError
 
     async def __aenter__(self):
         return self
@@ -155,7 +182,7 @@ class AsyncUDPSocket:
     def __del__(self):
         self.close()
 
-    def __init__(self, protocol: AsyncUDPProtocol, local_addr: tuple[str, int] = None):
+    def __init__(self, protocol: AsyncBaseProtocol, local_addr: tuple[str, int] = None):
         self._protocol = protocol
         self._ip_address = local_addr[0] if local_addr else None
 
@@ -168,7 +195,7 @@ class AsyncUDPSocket:
         self._protocol.sendto(data, addr)
 
     async def recv(self, timeout: float = None):
-        """Receive a UDP packet."""
+        """Receive a packet."""
 
         packet = await self._protocol.recv(timeout)
 
@@ -181,11 +208,9 @@ class AsyncUDPSocket:
         """Return Extra Info."""
         return self._protocol.get_extra_info(name, default)
 
-    def set_broadcast(self, enabled: bool):
-        """Set Broadcast enabled."""
-        self._protocol.sock.setsockopt(
-            socket.SOL_SOCKET, socket.SO_BROADCAST, int(enabled)
-        )
+    def setsockopt(self, __level: int, __optname: int, __value: int | bytes, /):
+        """Set Sock Opt."""
+        self.sock.setsockopt(__level, __optname, __value)
 
     def set_callback(
         self, callback: Union[Callable[[bytes, tuple[str, int]], None], None]
@@ -193,7 +218,7 @@ class AsyncUDPSocket:
         """Set callback for datagram received.
 
         Setting this will flush packet received packet queue.
-        :meth:`recv() <pyremoteplay.socket.AsyncUDPSocket.recv>`
+        :meth:`recv() <pyremoteplay.socket.AsyncBaseSocket.recv>`
         will always return None.
 
         :param callback: callback for data received
@@ -222,3 +247,82 @@ class AsyncUDPSocket:
         if self._ip_address:
             return (self._ip_address, addr[1])
         return addr
+
+
+class AsyncTCPSocket(AsyncBaseSocket):
+    """Async TCP socket."""
+
+    @classmethod
+    async def create(
+        cls,
+        local_addr: tuple[str, int] = None,
+        remote_addr: tuple[str, int] = None,
+        *,
+        sock: socket.socket = None,
+        **kwargs,
+    ) -> AsyncTCPSocket:
+        """Create and return Socket."""
+        _local_addr = local_addr
+        host = port = None
+        if sock is not None:
+            local_addr = remote_addr = None
+        if remote_addr:
+            host, port = remote_addr
+
+        if sock is None and not remote_addr:
+            raise ValueError("Both sock and remote_addr cannot be None")
+        loop = asyncio.get_running_loop()
+        _, protocol = await loop.create_connection(
+            AsyncTCPProtocol,
+            host=host,
+            port=port,
+            sock=sock,
+            local_addr=local_addr,
+            **kwargs,
+        )
+
+        return cls(protocol, _local_addr)
+
+    def send(self, data: bytes):
+        """Send Packet."""
+        self.sendto(data)
+
+
+class AsyncUDPSocket(AsyncBaseSocket):
+    """Async UDP socket."""
+
+    @classmethod
+    async def create(
+        cls,
+        local_addr: tuple[str, int] = None,
+        remote_addr: tuple[str, int] = None,
+        *,
+        sock: socket.socket = None,
+        reuse_port: bool = None,
+        allow_broadcast: bool = None,
+        **kwargs,
+    ) -> AsyncUDPSocket:
+        """Create and return UDP Socket."""
+        _local_addr = local_addr
+        if sock is not None:
+            local_addr = remote_addr = None
+        loop = asyncio.get_running_loop()
+        if not hasattr(socket, "SO_REUSEPORT"):
+            reuse_port = None
+        _, protocol = await loop.create_datagram_endpoint(
+            AsyncUDPProtocol,
+            local_addr=local_addr,
+            remote_addr=remote_addr,
+            reuse_port=reuse_port,
+            allow_broadcast=allow_broadcast,
+            sock=sock,
+            **kwargs,
+        )
+
+        return cls(protocol, _local_addr)
+
+    def set_broadcast(self, enabled: bool):
+        """Set Broadcast enabled."""
+        self._protocol.sock.setsockopt(
+            socket.SOL_SOCKET, socket.SO_BROADCAST, int(enabled)
+        )

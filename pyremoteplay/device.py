@@ -25,7 +25,7 @@ from .const import (
 from .ddp import async_get_status, get_status, wakeup, STATUS_OK, search, async_search
 from .session import Session
 from .util import format_regist_key
-from .register import register
+from .register import register, async_register
 from .controller import Controller
 from .profile import Profiles, UserProfile
 
@@ -433,6 +433,44 @@ class RPDevice:
             _LOGGER.error("Error retrieving ID for user: %s", user)
             return None
         regist_data = register(self.host, psn_id, pin, timeout)
+        if not regist_data:
+            _LOGGER.error("Registering failed")
+            return None
+        profile.add_regist_data(self.status, regist_data)
+        profiles.update_user(profile)
+        if save:
+            profiles.save()
+        return profile
+
+    @_load_profiles
+    async def async_register(
+        self,
+        user: str,
+        pin: str,
+        timeout: float = 2.0,
+        profiles: Profiles = None,
+        save: bool = True,
+    ) -> UserProfile:
+        """Register psn_id with device. Return updated user profile.
+
+        :param user: User name. Can be found with `get_all_users`
+        :param pin: PIN for linking found on Remote Play Host
+        :param timeout: Timeout to wait for completion
+        :param profiles: Profiles to use
+        :param save: Save profiles if True
+        """
+        if not self.status:
+            _LOGGER.error("No status")
+            return None
+        profile = profiles.get_user_profile(user)
+        if not profile:
+            _LOGGER.error("User: %s not found", user)
+            return None
+        psn_id = profile.id
+        if not psn_id:
+            _LOGGER.error("Error retrieving ID for user: %s", user)
+            return None
+        regist_data = await async_register(self.host, psn_id, pin, timeout)
         if not regist_data:
             _LOGGER.error("Registering failed")
             return None

@@ -13,9 +13,11 @@ from .const import (
     USER_AGENT,
 )
 from .crypt import SessionCipher
-from .ddp import get_host_type, get_status
+from .ddp import get_host_type, get_status, async_get_status
 from .keys import REG_KEY_0_PS4, REG_KEY_1_PS4, REG_KEY_0_PS5, REG_KEY_1_PS5
 from .util import log_bytes
+from .const import UDP_IP
+from .socket import AsyncUDPSocket, AsyncTCPSocket
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -121,12 +123,34 @@ def _get_regist_headers(host_type: str, payload_length: int) -> bytes:
     return headers
 
 
-def _regist_init(host: str, host_type: str, timeout: float) -> bool:
-    """Check if device is accepting registrations."""
-    success = False
+def _get_host_type_data(host_type: str) -> dict:
     data = HOST_TYPES.get(host_type)
     if not data:
         _LOGGER.error("Invalid host_type: %s", host_type)
+    return data
+
+
+def _check_init(data: dict, response: bytes) -> bool:
+    if not response:
+        _LOGGER.error(
+            "Device not in Register Mode;\nGo to Settings -> "
+            "Remote Play Connection Settings -> Add Device\n"
+        )
+    else:
+        if bytearray(response)[0:4] == data["start"]:
+            _LOGGER.info("Register Started")
+            return True
+        else:
+            _LOGGER.error("Unknown Register response")
+    return False
+
+
+def _regist_init(host: str, host_type: str, timeout: float) -> bool:
+    """Check if device is accepting registrations."""
+    success = False
+    response = None
+    data = _get_host_type_data(host_type)
+    if not data:
         return success
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -136,16 +160,26 @@ def _regist_init(host: str, host_type: str, timeout: float) -> bool:
     try:
         response = sock.recv(32)
     except socket.timeout:
-        _LOGGER.error(
-            "Device not in Register Mode;\nGo to Settings -> "
-            "Remote Play Connection Settings -> Add Device\n"
-        )
-    else:
-        if response is not None and bytearray(response)[0:4] == data["start"]:
-            _LOGGER.info("Register Started")
-            success = True
-        else:
-            _LOGGER.error("Unknown Register response")
+        pass
+    success = _check_init(data, response)
+    sock.close()
+    return success
+
+
+async def _async_regist_init(host: str, host_type: str, timeout: float) -> bool:
+    """Check if device is accepting registrations."""
+    success = False
+    response = None
+    data = _get_host_type_data(host_type)
+    if not data:
+        return success
+
+    sock = await AsyncUDPSocket.create(
+        local_addr=(UDP_IP, 0), remote_addr=(host, RP_PORT)
+    )
+    sock.sendto(data["init"], (host, RP_PORT))
+    response, _ = await sock.recv(timeout=timeout)
+    success = _check_init(data, response)
     sock.close()
     return success
 
@@ -170,6 +204,21 @@ def _get_register_info(
     return response
 
 
+async def _async_get_register_info(
+    host: str, headers: bytes, payload: bytes, timeout: float
+) -> bytes:
+    """Send Register Packet and receive register info."""
+    response = None
+    sock = await AsyncTCPSocket.create(remote_addr=(host, RP_PORT))
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    sock.send(b"".join([headers, payload]))
+    response, _ = await sock.recv(timeout)
+    if not response:
+        _LOGGER.error("No Register Response Received")
+    sock.close()
+    return response
+
+
 def _parse_response(cipher, response: bytes) -> dict:
     """Parse Register Response."""
     info = {}
@@ -190,6 +239,18 @@ def _parse_response(cipher, response: bytes) -> dict:
     return info
 
 
+def _get_regist_cipher_headers_payload(host_type: str, psn_id: str, pin: str):
+    nonce = get_random_bytes(16)
+    key_0 = _gen_key_0(host_type, int(pin))
+    key_1 = _gen_key_1(host_type, nonce)
+    payload = _get_regist_payload(key_1)
+    cipher = SessionCipher(host_type, key_0, nonce, counter=0)
+    enc_payload = _encrypt_payload(cipher, psn_id)
+    payload = b"".join([payload, enc_payload])
+    headers = _get_regist_headers(host_type, len(payload))
+    return cipher, headers, payload
+
+
 def register(host: str, psn_id: str, pin: str, timeout: float = 2.0) -> dict:
     """Return Register info.
     Register this client and a PSN Account with a Remote Play Device.
@@ -207,15 +268,40 @@ def register(host: str, psn_id: str, pin: str, timeout: float = 2.0) -> dict:
     host_type = get_host_type(status).upper()
     if not _regist_init(host, host_type, timeout):
         return info
-    nonce = get_random_bytes(16)
-    key_0 = _gen_key_0(host_type, int(pin))
-    key_1 = _gen_key_1(host_type, nonce)
-    payload = _get_regist_payload(key_1)
-    cipher = SessionCipher(host_type, key_0, nonce, counter=0)
-    enc_payload = _encrypt_payload(cipher, psn_id)
-    payload = b"".join([payload, enc_payload])
-    headers = _get_regist_headers(host_type, len(payload))
+
+    cipher, headers, payload = _get_regist_cipher_headers_payload(
+        host_type, psn_id, pin
+    )
+
     response = _get_register_info(host, headers, payload, timeout)
+    if response is not None:
+        info = _parse_response(cipher, response)
+    return info
+
+
+async def async_register(
+    host: str, psn_id: str, pin: str, timeout: float = 2.0
+) -> dict:
+    """Return Register info.
+    Register this client and a PSN Account with a Remote Play Device.
+
+    :param host: IP Address of Remote Play Device
+    :param psn_id: Base64 encoded PSN ID from completing OAuth login
+    :param pin: PIN for linking found on Remote Play Host
+    :param timeout: Timeout to wait for completion
+    """
+    info = {}
+    status = await async_get_status(host)
+    if not status:
+        _LOGGER.error("Host: %s not found", host)
+        return info
+    host_type = get_host_type(status).upper()
+    if not await _async_regist_init(host, host_type, timeout):
+        return info
+    cipher, headers, payload = _get_regist_cipher_headers_payload(
+        host_type, psn_id, pin
+    )
+    response = await _async_get_register_info(host, headers, payload, timeout)
     if response is not None:
         info = _parse_response(cipher, response)
     return info
