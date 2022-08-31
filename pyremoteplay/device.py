@@ -168,7 +168,7 @@ class RPDevice:
         if user not in users:
             _LOGGER.error("User: %s not registered", user)
             return None
-        return profiles.get(user)
+        return profiles.get_user_profile(user)
 
     def get_status(self) -> dict:
         """Return status."""

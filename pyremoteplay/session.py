@@ -273,7 +273,7 @@ class Session:
     def __init__(
         self,
         host: str,
-        profile: Union[dict, UserProfile],
+        profile: UserProfile,
         loop: asyncio.AbstractEventLoop = None,
         receiver: AVReceiver = None,
         resolution: Union[Resolution, str, int] = "720p",
@@ -742,6 +742,11 @@ class Session:
     def type(self) -> str:
         """Return host type."""
         return self._type
+
+    @property
+    def profile(self) -> UserProfile:
+        """Return the User profile for the session."""
+        return self._profile
 
     @property
     def state(self) -> State:
