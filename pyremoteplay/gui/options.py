@@ -503,8 +503,8 @@ class OptionsWidget(QtWidgets.QWidget):
             "When you reach this page, copy the page URL and click 'Ok' to continue"
         )
         clipboard = QtWidgets.QApplication.clipboard()
-        clipboard.clear(mode=clipboard.Clipboard)
-        clipboard.setText(login_url, mode=clipboard.Clipboard)
+        clipboard.clear(mode=clipboard.Mode.Clipboard)
+        clipboard.setText(login_url, mode=clipboard.Mode.Clipboard)
         if not dialog.exec():
             return
 
